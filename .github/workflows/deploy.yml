@@ -36,4 +36,4 @@ jobs:
           SOURCE: "fungis/" # 【注意】如果你打包出来的是 dist 文件夹，这里就写 dist/
           REMOTE_HOST: ${{ secrets.SERVER_HOST }}
           REMOTE_USER: ${{ secrets.SERVER_USER }}
-          TARGET: "/var/www/fungis" # 填第一步在 Ubuntu 上创建的网页目录
+          TARGET: "/etc/nginx/html/fungis" # 填第一步在 Ubuntu 上创建的网页目录
