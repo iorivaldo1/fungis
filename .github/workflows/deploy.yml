@@ -1,0 +1,39 @@
+name: 部署 FunGIS 到 Ubuntu
+
+on:
+  push:
+    branches:
+      - main # 当你往 main 分支 push 代码时，自动触发流水线
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest # 在 GitHub 免费提供的云端机器上运行
+
+    steps:
+      # 1. 把你的代码拉取到 GitHub 的云端机器
+      - name: 检出代码
+        uses: actions/checkout@v3
+
+      # 2. 在云端机器上安装 Node.js (这里填你项目用的 Node 版本)
+      - name: 设置 Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      # 3. 执行安装和打包
+      - name: 安装依赖与打包
+        run: |
+          npm install
+          npm run build
+          # Vite 默认打包出的文件夹叫 dist，或者你的可能叫 fungis
+
+      # 4. 把打包好的文件夹推送到你的 Ubuntu 服务器
+      - name: 部署到 Ubuntu 服务器
+        uses: easingthemes/ssh-deploy@main
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SERVER_SSH_KEY }}
+          ARGS: "-avz --delete" # --delete 表示把服务器上多余的旧碎片文件删掉
+          SOURCE: "fungis/" # 【注意】如果你打包出来的是 dist 文件夹，这里就写 dist/
+          REMOTE_HOST: ${{ secrets.SERVER_HOST }}
+          REMOTE_USER: ${{ secrets.SERVER_USER }}
+          TARGET: "/var/www/fungis" # 填第一步在 Ubuntu 上创建的网页目录
