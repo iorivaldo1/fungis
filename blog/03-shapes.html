@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>03. 形状 — GLSL 学习笔记</title>
+    <link rel="stylesheet" href="common.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+<div class="page-wrapper">
+    <button class="mobile-toggle" aria-label="菜单">☰</button>
+    <nav class="sidebar"></nav>
+    <main class="main-content">
+        <header class="page-header">
+            <div class="chapter-num">Chapter 03</div>
+            <h1>形状 Shapes</h1>
+            <p class="description">
+                用 shader 绘制形状的核心思路是"距离场"（Distance Field）：计算每个像素到目标形状边界的距离，
+                再用 <code>step()</code> 或 <code>smoothstep()</code> 划分内外区域。
+                从矩形、圆形到任意多边形，一切皆可用数学描述。
+            </p>
+            <a class="ref-link" href="https://thebookofshaders.com/07/?lan=ch" target="_blank">📚 参考：The Book of Shaders 第七章</a>
+        </header>
+
+        <!-- Demo 1: Rectangle -->
+        <article class="demo-card">
+            <div class="demo-card-header">
+                <h3>矩形 — step 组合</h3>
+                <span class="demo-tag static">静态</span>
+            </div>
+            <div class="demo-row">
+                <div class="canvas-container" id="demo-1"></div>
+                <div class="code-block-wrapper">
+                    <div class="code-label">Fragment Shader</div>
+                    <pre class="code-block" data-raw="varying vec2 vUv;
+void main() {
+    vec3 rectColor = vec3(0.2, 0.7, 0.9);
+    // 用多组 step 定义矩形的四条边
+    vec2 bl1 = step(vec2(0.0, 0.0), vUv);
+    vec2 tr1 = step(vec2(0.7, 0.6), 1.0 - vUv);
+    float pct1 = bl1.x * bl1.y * tr1.x * tr1.y;
+
+    vec2 bl2 = step(vec2(0.8, 0.5), vUv);
+    vec2 tr2 = step(vec2(0.0, 0.0), 1.0 - vUv);
+    float pct2 = bl2.x * bl2.y * tr2.x * tr2.y;
+
+    // max = 并集
+    float pct = max(pct1, pct2);
+    vec3 color = mix(vec3(1.0), rectColor, pct);
+    gl_FragColor = vec4(color, 1.0);
+}"></pre>
+                </div>
+            </div>
+            <div class="demo-description">
+                矩形由四条边界组成。<code>step(edge, x)</code> 定义每条边，四个 step 相乘得到矩形内部区域。
+                多个矩形用 <code>max()</code> 取并集。
+            </div>
+        </article>
+
+        <!-- Demo 2: Circle -->
+        <article class="demo-card">
+            <div class="demo-card-header">
+                <h3>圆形 — distance</h3>
+                <span class="demo-tag animated">动画</span>
+            </div>
+            <div class="demo-row">
+                <div class="canvas-container" id="demo-2"></div>
+                <div class="code-block-wrapper">
+                    <div class="code-label">Fragment Shader</div>
+                    <pre class="code-block" data-raw="#define PI 3.14159265359
+varying vec2 vUv;
+uniform float u_time;
+
+void main() {
+    // 呼吸效果：半径随时间变化
+    float radius = 0.25 + 0.05 * sin(u_time * PI * 2.0);
+    float pct = step(distance(vUv, vec2(0.5)), radius);
+    vec3 circleColor = vec3(0.2, 0.7, 0.9);
+    vec3 color = mix(vec3(1.0), circleColor, pct);
+    gl_FragColor = vec4(color, 1.0);
+}"></pre>
+                </div>
+            </div>
+            <div class="demo-description">
+                <code>distance(uv, center)</code> 计算到圆心的距离，<code>step()</code> 将距离小于半径的区域标记为圆内。
+                添加 <code>sin(u_time)</code> 让半径呼吸变化。
+            </div>
+        </article>
+
+        <!-- Demo 3: Polar Flower -->
+        <article class="demo-card">
+            <div class="demo-card-header">
+                <h3>极坐标花瓣</h3>
+                <span class="demo-tag static">静态</span>
+            </div>
+            <div class="demo-row">
+                <div class="canvas-container" id="demo-3"></div>
+                <div class="code-block-wrapper">
+                    <div class="code-label">Fragment Shader</div>
+                    <pre class="code-block" data-raw="#define PI 3.1415926535
+varying vec2 vUv;
+
+void main() {
+    float p = 0.3; // 距离场中心
+    float r = length(vUv - p);
+    float a = atan(vUv.y - p, vUv.x - p);
+    // sin(a*3) 产生 3 个花瓣，0.2 控制花瓣半径
+    float f = sin((a + 0.3) * 3.0) * 0.2;
+    vec3 color = vec3(1.0 - smoothstep(f, f+0.02, r));
+    gl_FragColor = vec4(color, 1.0);
+}"></pre>
+                </div>
+            </div>
+            <div class="demo-description">
+                极坐标是绘制花瓣、星形等对称图案的利器。<code>atan(y,x)</code> 获取角度，
+                <code>sin(angle * N)</code> 中的 N 控制花瓣数量。<code>+0.3</code> 旋转花瓣方向。
+            </div>
+        </article>
+
+        <!-- Demo 4: Regular Polygon SDF -->
+        <article class="demo-card">
+            <div class="demo-card-header">
+                <h3>正多边形 SDF</h3>
+                <span class="demo-tag static">静态</span>
+            </div>
+            <div class="demo-row">
+                <div class="canvas-container" id="demo-4"></div>
+                <div class="code-block-wrapper">
+                    <div class="code-label">Fragment Shader</div>
+                    <pre class="code-block" data-raw="#define PI 3.1415926535
+#define TWO_PI 6.28318530718
+varying vec2 vUv;
+
+void main() {
+    float p = 0.15;
+    float a = atan(vUv.y - p, vUv.x - p);
+    // N=3 → 三角形 SDF
+    int N = 3;
+    float r = TWO_PI / float(N);
+    float f = cos(floor(0.5+a/r)*r - a) * length(vUv-p);
+    vec3 color = vec3(1.0 - smoothstep(0.05, 0.051, f));
+    gl_FragColor = vec4(color, 1.0);
+}"></pre>
+                </div>
+            </div>
+            <div class="demo-description">
+                正多边形 SDF 公式：<code>cos(floor(0.5+a/r)*r - a) * length(p)</code>。
+                改变 N 即可生成三角形、正方形、五边形…… 这是 shader 中最优雅的几何公式之一。
+            </div>
+        </article>
+
+        <!-- Demo 5: Bio-hazard Symbol -->
+        <article class="demo-card">
+            <div class="demo-card-header">
+                <h3>生化标志 — SDF 布尔运算</h3>
+                <span class="demo-tag static">静态</span>
+            </div>
+            <div class="demo-row">
+                <div class="canvas-container" id="demo-5"></div>
+                <div class="code-block-wrapper">
+                    <div class="code-label">Fragment Shader</div>
+                    <pre class="code-block" data-raw="#define PI 3.1415926
+#define TAU 6.2831853
+varying vec2 vUv;
+
+float sdCircle(vec2 p, float r) {
+    return length(p) - r;
+}
+float sdRing(vec2 p, float r, float w) {
+    return abs(length(p)-r) - w;
+}
+float sdTriangle(vec2 p) {
+    float a = atan(p.y, p.x);
+    float r = TAU / 3.0;
+    return cos(floor(0.5+a/r)*r-a) * length(p);
+}
+vec2 polarRepeat(vec2 p, float n) {
+    float r = length(p);
+    float a = atan(p.y, p.x);
+    float sector = TAU / n;
+    a = mod(a+sector*0.5, sector) - sector*0.5;
+    return vec2(cos(a), sin(a)) * r;
+}
+void main() {
+    vec2 p = vUv - 0.5;
+    vec2 q = polarRepeat(p, 3.0);
+    float circles = sdCircle(q-vec2(0.0,0.18), 0.16);
+    float a = atan(p.y,p.x) + PI;
+    vec2 rp = vec2(cos(a),sin(a))*length(p);
+    float tri = sdTriangle(rp*1.2);
+    float shape = max(circles, -tri);
+    float ring = sdRing(p, 0.42, 0.01);
+    float d = min(shape, ring);
+    float col = 1.0-smoothstep(0.0,0.002,d);
+    gl_FragColor = vec4(vec3(col), 1.0);
+}"></pre>
+                </div>
+            </div>
+            <div class="demo-description">
+                组合多种 SDF 技巧：<code>polarRepeat</code> 实现三重旋转对称，
+                <code>max(A, -B)</code> 实现减法（从圆中裁去三角形），
+                <code>min(A, B)</code> 实现并集。最终组合出生化标志图案。
+            </div>
+        </article>
+
+        <footer class="page-footer">
+            <a href="02-colors.html">← 上一章：颜色</a>
+            <a href="04-matrices.html">下一章：二维矩阵 →</a>
+        </footer>
+    </main>
+</div>
+<script src="common.js"></script>
+<script>
+const fs1 = `
+varying vec2 vUv;
+void main() {
+    vec3 rectColor = vec3(0.2,0.7,0.9);
+    vec2 bl1 = step(vec2(0.0,0.0), vUv);
+    vec2 tr1 = step(vec2(0.7,0.6),1.0 - vUv);
+    float pct1 = bl1.x * bl1.y * tr1.x * tr1.y;
+    vec2 bl2 = step(vec2(0.8,0.5), vUv);
+    vec2 tr2 = step(vec2(0.0,0.0), 1.0 - vUv);
+    float pct2 = bl2.x * bl2.y * tr2.x * tr2.y;
+    vec2 bl3 = step(vec2(0.0,0.7), vUv);
+    vec2 tr3 = step(vec2(0.9,0.0), 1.0 - vUv);
+    float pct3 = bl3.x * bl3.y * tr3.x * tr3.y;
+    vec2 bl4 = step(vec2(0.9,0.0),vUv);
+    vec2 tr4 = step(vec2(0.0,0.8),1.0-vUv);
+    float pct4 = bl4.x * bl4.y * tr4.x * tr4.y;
+    float pct = max(pct1, pct2);
+    pct = max(pct,pct3);
+    pct = max(pct,pct4);
+    vec3 color = mix(vec3(1.0),rectColor,pct);
+    gl_FragColor = vec4(color,1.0);
+}`;
+
+const fs2 = `
+#define PI 3.14159265359
+varying vec2 vUv;
+uniform float u_time;
+void main() {
+    float radius = 0.25 + 0.05 * sin(u_time * PI * 2.0);
+    float pct = step(distance(vUv, vec2(0.5)), radius);
+    vec3 circleColor = vec3(0.2,0.7,0.9);
+    vec3 color = mix(vec3(1.0), circleColor, pct);
+    gl_FragColor = vec4(color,1.0);
+}`;
+
+const fs3 = `
+#define PI 3.1415926535
+varying vec2 vUv;
+void main() {
+    float p = 0.3;
+    float r = length(vUv - p);
+    float a = atan(vUv.y - p, vUv.x - p);
+    float f = sin((a+0.3) *3.0) * 0.2;
+    vec3 color = vec3(1.0 - smoothstep(f,f+0.02,r));
+    gl_FragColor = vec4(color,1.0);
+}`;
+
+const fs4 = `
+#define PI 3.1415926535
+#define TWO_PI 6.28318530718
+varying vec2 vUv;
+void main() {
+    float p = 0.15;
+    float a = atan(vUv.y - p, vUv.x - p);
+    int N = 3;
+    float r = TWO_PI/float(N);
+    float f = cos(floor(0.5+a/r)*r-a)*length(vUv-p);
+    vec3 color = vec3(1.0 - smoothstep(0.05,0.051,f));
+    gl_FragColor = vec4(color,1.0);
+}`;
+
+const fs5 = `
+#define PI 3.1415926
+#define TAU 6.2831853
+varying vec2 vUv;
+float sdCircle(vec2 p, float r) { return length(p) - r; }
+float sdRing(vec2 p, float r, float w) { return abs(length(p)-r)-w; }
+float sdTriangle(vec2 p) {
+    float a = atan(p.y,p.x);
+    float r = TAU/3.0;
+    return cos(floor(0.5+a/r)*r-a)*length(p);
+}
+vec2 polarRepeat(vec2 p, float n) {
+    float r = length(p);
+    float a = atan(p.y,p.x);
+    float sector = TAU/n;
+    a = mod(a+sector*0.5, sector) - sector*0.5;
+    return vec2(cos(a),sin(a))*r;
+}
+void main() {
+    vec2 p = vUv - 0.5;
+    vec2 q = polarRepeat(p,3.0);
+    float circles = sdCircle(q-vec2(0.0,0.18),0.16);
+    float a = atan(p.y,p.x) + PI;
+    vec2 rp = vec2(cos(a),sin(a))*length(p);
+    float tri = sdTriangle(rp*1.2);
+    float shape = max(circles,-tri);
+    float ring = sdRing(p,0.42,0.01);
+    float d = min(shape, ring);
+    float col = 1.0-smoothstep(0.0,0.002,d);
+    gl_FragColor = vec4(vec3(col),1.0);
+}`;
+
+ShaderBlog.createDemo('demo-1', fs1);
+ShaderBlog.createDemo('demo-2', fs2, { animated: true });
+ShaderBlog.createDemo('demo-3', fs3);
+ShaderBlog.createDemo('demo-4', fs4);
+ShaderBlog.createDemo('demo-5', fs5);
+</script>
+</body>
+</html>

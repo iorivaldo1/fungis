@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>04. 二维矩阵 — GLSL 学习笔记</title>
+    <link rel="stylesheet" href="common.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+<div class="page-wrapper">
+    <button class="mobile-toggle" aria-label="菜单">☰</button>
+    <nav class="sidebar"></nav>
+    <main class="main-content">
+        <header class="page-header">
+            <div class="chapter-num">Chapter 04</div>
+            <h1>二维矩阵 2D Matrices</h1>
+            <p class="description">
+                矩阵变换是 shader 动画的基石。通过平移、旋转、缩放 UV 坐标，
+                我们可以让图形在画布上运动、旋转、弹跳。理解坐标变换的顺序至关重要。
+            </p>
+            <a class="ref-link" href="https://thebookofshaders.com/08/?lan=ch" target="_blank">📚 参考：The Book of Shaders 第八章</a>
+        </header>
+
+        <!-- Demo 1: Translate Cross -->
+        <article class="demo-card">
+            <div class="demo-card-header">
+                <h3>平移十字</h3>
+                <span class="demo-tag animated">动画</span>
+            </div>
+            <div class="demo-row">
+                <div class="canvas-container" id="demo-1"></div>
+                <div class="code-block-wrapper">
+                    <div class="code-label">Fragment Shader</div>
+                    <pre class="code-block" data-raw="varying vec2 vUv;
+uniform float u_time;
+
+float box(vec2 uv, vec2 size) {
+    size = vec2(0.5) - size * 0.5;
+    vec2 s = smoothstep(size, size+vec2(0.001), uv);
+    s *= smoothstep(size, size+vec2(0.001), 1.0-uv);
+    return s.x * s.y;
+}
+float crossf(vec2 uv, float size) {
+    return box(uv, vec2(size, size/4.0))
+         + box(uv, vec2(size/4.0, size));
+}
+void main() {
+    vec2 pos = vUv;
+    // cos/sin 驱动圆周运动
+    vec2 translate = vec2(cos(u_time), sin(u_time));
+    pos += translate * 0.35;
+    vec3 color = vec3(pos.x, pos.y, 0.0);
+    color += vec3(crossf(pos, 0.25));
+    gl_FragColor = vec4(color, 1.0);
+}"></pre>
+                </div>
+            </div>
+            <div class="demo-description">
+                平移的本质是移动 UV 坐标：<code>pos += translate</code>。
+                <code>cos/sin</code> 驱动十字做圆周运动，背景色跟随坐标变化产生流动渐变。
+            </div>
+        </article>
+
+        <!-- Demo 2: Rotate Pentagon -->
+        <article class="demo-card">
+            <div class="demo-card-header">
+                <h3>旋转五边形</h3>
+                <span class="demo-tag animated">动画</span>
+            </div>
+            <div class="demo-row">
+                <div class="canvas-container" id="demo-2"></div>
+                <div class="code-block-wrapper">
+                    <div class="code-label">Fragment Shader</div>
+                    <pre class="code-block" data-raw="#define PI 3.1415926535
+#define TWO_PI 6.28318530718
+varying vec2 vUv;
+uniform float u_time;
+
+float triangleSDF(vec2 uv, vec2 center) {
+    vec2 p = uv - center;
+    float a = atan(p.y, p.x);
+    int N = 5;
+    float r = TWO_PI / float(N);
+    return cos(floor(0.5+a/r)*r-a) * length(p);
+}
+mat2 rotate2d(float angle) {
+    return mat2(cos(angle),-sin(angle),
+                sin(angle), cos(angle));
+}
+void main() {
+    vec2 pos = vUv;
+    vec2 center = vec2(0.5, 0.5);
+    float angle = sin(u_time) * PI;
+    // 先移到原点，旋转，再移回
+    pos = pos - center;
+    pos = rotate2d(angle) * pos;
+    pos = pos + center;
+    float pg = triangleSDF(pos, center);
+    vec3 color = vec3(1.0-smoothstep(0.05,0.051,pg));
+    gl_FragColor = vec4(color, 1.0);
+}"></pre>
+                </div>
+            </div>
+            <div class="demo-description">
+                旋转三步曲：① 坐标移到旋转中心 ② 乘以旋转矩阵 <code>rotate2d(angle)</code> ③ 移回原位。
+                <code>mat2(cos,-sin,sin,cos)</code> 就是 2D 旋转矩阵。
+            </div>
+        </article>
+
+        <!-- Demo 3: Rolling Pentagon -->
+        <article class="demo-card">
+            <div class="demo-card-header">
+                <h3>滚动五边形</h3>
+                <span class="demo-tag animated">动画</span>
+            </div>
+            <div class="demo-row">
+                <div class="canvas-container" id="demo-3"></div>
+                <div class="code-block-wrapper">
+                    <div class="code-label">Fragment Shader</div>
+                    <pre class="code-block" data-raw="#define TWO_PI 6.28318530718
+varying vec2 vUv;
+uniform float u_time;
+
+float triangleSDF(vec2 uv) {
+    float a = atan(uv.y, uv.x);
+    int N = 5;
+    float r = TWO_PI / float(N);
+    return cos(floor(0.5+a/r)*r-a) * length(uv);
+}
+mat2 rotate2d(float angle) {
+    return mat2(cos(angle),-sin(angle),
+                sin(angle), cos(angle));
+}
+void main() {
+    // 平移 + 自转组合
+    float t = fract(u_time * 0.5);
+    vec2 center = vec2(t, 0.0);
+    vec2 pos = vec2(vUv.x, vUv.y-0.5) - center;
+    float angle = -u_time * 3.0;
+    pos = rotate2d(angle) * pos;
+    float pg = triangleSDF(pos);
+    vec3 color = vec3(1.0-smoothstep(0.05,0.051,pg));
+    gl_FragColor = vec4(color, 1.0);
+}"></pre>
+                </div>
+            </div>
+            <div class="demo-description">
+                将平移和旋转组合：五边形一边向右移动，一边绕自身中心旋转。
+                关键是先从 UV 减去运动中心，再应用旋转，这样旋转就围绕图形自身中心进行。
+            </div>
+        </article>
+
+        <!-- Demo 4: Pendulum -->
+        <article class="demo-card">
+            <div class="demo-card-header">
+                <h3>钟摆运动</h3>
+                <span class="demo-tag animated">动画</span>
+            </div>
+            <div class="demo-row">
+                <div class="canvas-container" id="demo-4"></div>
+                <div class="code-block-wrapper">
+                    <div class="code-label">Fragment Shader</div>
+                    <pre class="code-block" data-raw="#define PI 3.1415926535
+#define TWO_PI 6.28318530718
+varying vec2 vUv;
+uniform float u_time;
+
+mat2 rotate2d(float angle) {
+    return mat2(cos(angle),-sin(angle),
+                sin(angle), cos(angle));
+}
+float triangleSDF(vec2 uv, vec2 center) {
+    vec2 p = uv - center;
+    float a = atan(p.y, p.x);
+    int N = 5;
+    float r = TWO_PI / float(N);
+    return cos(floor(0.5+a/r)*r-a) * length(p);
+}
+void main() {
+    vec2 pos = vUv;
+    vec2 pivot = vec2(0.5, 0.9);   // 悬挂点
+    vec2 center = vec2(0.5, 0.5);  // 图形中心
+    float swingAngle = sin(u_time*0.3) * (PI/4.0);
+    // 绕悬挂点摆动
+    pos = pos - pivot;
+    pos = rotate2d(swingAngle) * pos;
+    pos = pos + pivot;
+    float pg = triangleSDF(pos, center);
+    vec3 color = vec3(1.0-smoothstep(0.1,0.11,pg));
+    gl_FragColor = vec4(color, 1.0);
+}"></pre>
+                </div>
+            </div>
+            <div class="demo-description">
+                钟摆效果的关键是<strong>旋转中心不在图形中心</strong>，而在 <code>pivot(0.5, 0.9)</code>——
+                就像钉子钉在顶部。<code>sin(u_time)</code> 控制摆角，产生来回摆动效果。
+            </div>
+        </article>
+
+        <!-- Demo 5: Bouncing Pentagon -->
+        <article class="demo-card">
+            <div class="demo-card-header">
+                <h3>弹跳五边形</h3>
+                <span class="demo-tag animated">动画</span>
+            </div>
+            <div class="demo-row">
+                <div class="canvas-container" id="demo-5"></div>
+                <div class="code-block-wrapper">
+                    <div class="code-label">Fragment Shader</div>
+                    <pre class="code-block" data-raw="#define TWO_PI 6.28318530718
+varying vec2 vUv;
+uniform float u_time;
+
+float triangleSDF(vec2 uv, vec2 center) {
+    vec2 p = uv - center;
+    float a = atan(p.y, p.x);
+    int N = 5;
+    float r = TWO_PI / float(N);
+    return cos(floor(0.5+a/r)*r-a) * length(p);
+}
+void main() {
+    vec2 pos = vUv;
+    // 抛物线弹跳：1 - t² 产生弹跳曲线
+    float t = fract(u_time * 0.3) * 2.0 - 1.0;
+    float bounce = 1.0 - t * t;
+    float moveY = 0.2 + bounce * 0.6;
+    vec2 center = vec2(0.5, moveY);
+    float pg = triangleSDF(pos, center);
+    vec3 color = vec3(1.0-smoothstep(0.05,0.051,pg));
+    gl_FragColor = vec4(color, 1.0);
+}"></pre>
+                </div>
+            </div>
+            <div class="demo-description">
+                弹跳效果用 <code>1.0 - t²</code> 模拟抛物线运动。<code>fract()</code> 让时间循环，
+                <code>*2-1</code> 将范围映射到 [-1,1]，然后 <code>1-t²</code> 自然形成"跳起-落下"的弧线。
+            </div>
+        </article>
+
+        <footer class="page-footer">
+            <a href="03-shapes.html">← 上一章：形状</a>
+            <a href="05-patterns.html">下一章：图案 →</a>
+        </footer>
+    </main>
+</div>
+<script src="common.js"></script>
+<script>
+const fs1 = `
+varying vec2 vUv;
+uniform float u_time;
+float box(vec2 uv, vec2 size){
+    size = vec2(0.5) - size*0.5;
+    vec2 s = smoothstep(size,size+vec2(0.001),uv);
+    s *= smoothstep(size,size+vec2(0.001),vec2(1.0)-uv);
+    return s.x*s.y;
+}
+float crossf(vec2 uv, float size){
+    return box(uv,vec2(size,size/4.0)) + box(uv,vec2(size/4.0,size));
+}
+void main() {
+    vec2 pos = vUv;
+    vec2 translate = vec2(cos(u_time),sin(u_time));
+    pos += translate*0.35;
+    vec3 color = vec3(pos.x,pos.y,0.0);
+    color += vec3(crossf(pos,0.25));
+    gl_FragColor = vec4(color, 1.0);
+}`;
+
+const fs2 = `
+#define PI 3.1415926535
+#define TWO_PI 6.28318530718
+varying vec2 vUv;
+uniform float u_time;
+float triangleSDF(vec2 uv, vec2 center){
+    vec2 p = uv - center;
+    float a = atan(p.y, p.x);
+    int N = 5;
+    float r = TWO_PI/float(N);
+    return cos(floor(0.5+a/r)*r-a)*length(p);
+}
+mat2 rotate2d(float angle){
+    return mat2(cos(angle),-sin(angle),sin(angle),cos(angle));
+}
+void main() {
+    vec2 pos = vUv;
+    vec2 center = vec2(0.5,0.5);
+    float angle = sin(u_time) * PI;
+    pos = pos - center;
+    pos = rotate2d(angle)*pos;
+    pos = pos + center;
+    float pg = triangleSDF(pos,center);
+    vec3 color = vec3(1.0-smoothstep(0.05,0.051,pg));
+    gl_FragColor = vec4(color, 1.0);
+}`;
+
+const fs3 = `
+#define TWO_PI 6.28318530718
+varying vec2 vUv;
+uniform float u_time;
+float triangleSDF(vec2 uv){
+    float a = atan(uv.y, uv.x);
+    int N = 5;
+    float r = TWO_PI/float(N);
+    return cos(floor(0.5+a/r)*r-a)*length(uv);
+}
+mat2 rotate2d(float angle){
+    return mat2(cos(angle),-sin(angle),sin(angle),cos(angle));
+}
+void main() {
+    vec2 pos = vec2(vUv.x, vUv.y - 0.5);
+    float t = fract(u_time * 0.5);
+    vec2 center = vec2(t,0.0);
+    float angle = -u_time *3.0;
+    pos = pos - center;
+    pos = rotate2d(angle)*pos;
+    float pg = triangleSDF(pos);
+    vec3 color = vec3(1.0-smoothstep(0.05,0.051,pg));
+    gl_FragColor = vec4(color, 1.0);
+}`;
+
+const fs4 = `
+#define PI 3.1415926535
+#define TWO_PI 6.28318530718
+varying vec2 vUv;
+uniform float u_time;
+mat2 rotate2d(float angle){
+    return mat2(cos(angle),-sin(angle),sin(angle),cos(angle));
+}
+float triangleSDF(vec2 uv, vec2 center){
+    vec2 p = uv - center;
+    float a = atan(p.y, p.x);
+    int N = 5;
+    float r = TWO_PI/float(N);
+    return cos(floor(0.5+a/r)*r-a)*length(p);
+}
+void main() {
+    vec2 pos = vUv;
+    vec2 pivot = vec2(0.5, 0.9);
+    vec2 center = vec2(0.5, 0.5);
+    float swingAngle = sin(u_time*0.3) * (PI/4.0);
+    pos = pos - pivot;
+    pos = rotate2d(swingAngle) * pos;
+    pos = pos + pivot;
+    float pg = triangleSDF(pos, center);
+    vec3 color = vec3(1.0-smoothstep(0.1,0.11,pg));
+    gl_FragColor = vec4(color, 1.0);
+}`;
+
+const fs5 = `
+#define TWO_PI 6.28318530718
+varying vec2 vUv;
+uniform float u_time;
+float triangleSDF(vec2 uv, vec2 center){
+    vec2 p = uv - center;
+    float a = atan(p.y, p.x);
+    int N = 5;
+    float r = TWO_PI/float(N);
+    return cos(floor(0.5+a/r)*r-a)*length(p);
+}
+void main() {
+    vec2 pos = vUv;
+    float t = fract(u_time * 0.3) * 2.0 - 1.0;
+    float bounce = 1.0 - t * t;
+    float moveY = 0.2 + bounce * 0.6;
+    vec2 center = vec2(0.5, moveY);
+    float pg = triangleSDF(pos, center);
+    vec3 color = vec3(1.0-smoothstep(0.05,0.051,pg));
+    gl_FragColor = vec4(color, 1.0);
+}`;
+
+ShaderBlog.createDemo('demo-1', fs1, { animated: true });
+ShaderBlog.createDemo('demo-2', fs2, { animated: true });
+ShaderBlog.createDemo('demo-3', fs3, { animated: true });
+ShaderBlog.createDemo('demo-4', fs4, { animated: true });
+ShaderBlog.createDemo('demo-5', fs5, { animated: true });
+</script>
+</body>
+</html>

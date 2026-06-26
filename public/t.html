@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Three.js Ping-Pong GPGPU Ball</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #000;
+            font-family: sans-serif;
+        }
+
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            pointer-events: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="info">Ping-Pong GPGPU Rendering: Ball moving row-by-row on 200x200 plane</div>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+            }
+        }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        // --- 1. Scene Setup ---
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 0, 180);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.body.appendChild(renderer.domElement);
+
+        // --- 2. Plane Mesh (200x200) ---
+        const planeSize = 200;
+        const planeGeometry = new THREE.PlaneGeometry(planeSize, planeSize, 40, 40);
+        const planeMaterial = new THREE.MeshBasicMaterial({
+            color: 0x444444,
+            wireframe: true,
+            transparent: true,
+            opacity: 0.5
+        });
+        const plane = new THREE.Mesh(planeGeometry, planeMaterial);
+        scene.add(plane);
+
+        // --- 3. GPGPU Ping-Pong Setup ---
+        // We store the ball's (x, y) grid coordinates in a 1x1 texture.
+        const gpuSize = 1;
+
+        // Initial state: Top-left corner (0, 0)
+        const initialData = new Float32Array(4);
+        initialData[0] = 0.0; // grid x
+        initialData[1] = 50.0; // grid y
+        initialData[2] = 0.0;
+        initialData[3] = 1.0;
+
+        const initialTexture = new THREE.DataTexture(initialData, gpuSize, gpuSize, THREE.RGBAFormat, THREE.FloatType);
+        initialTexture.minFilter = THREE.NearestFilter;
+        initialTexture.magFilter = THREE.NearestFilter;
+        initialTexture.needsUpdate = true;
+
+
+
+        const rtOptions = {
+            format: THREE.RGBAFormat,
+            type: THREE.FloatType,
+            minFilter: THREE.NearestFilter,
+            magFilter: THREE.NearestFilter,
+            stencilBuffer: false,
+            depthBuffer: false
+        };
+
+        let rtA = new THREE.WebGLRenderTarget(gpuSize, gpuSize, rtOptions);
+        let rtB = new THREE.WebGLRenderTarget(gpuSize, gpuSize, rtOptions);
+
+        // Computation Shader
+        const compScene = new THREE.Scene();
+        const compCamera = new THREE.OrthographicCamera(-0.5, 0.5, 0.5, -0.5, 0, 1);
+        const compQuad = new THREE.Mesh(
+            new THREE.PlaneGeometry(1, 1),
+            new THREE.ShaderMaterial({
+                uniforms: {
+                    tPrevPos: { value: initialTexture }
+                },
+                vertexShader: `
+                    varying vec2 vUv;
+                    void main() {
+                        vUv = uv;
+                        gl_Position = vec4(position, 1.0);
+                    }
+                `,
+                fragmentShader: `
+                    uniform sampler2D tPrevPos;
+                    varying vec2 vUv;
+                    void main() {
+                        vec4 data = texture2D(tPrevPos, vUv);
+                        float x = data.x;
+                        float y = data.y;
+
+                        // Move along the row
+                        x += 0.1;
+
+                        // If at the end of the row, jump to the next row
+                        if (x >= 200.0) {
+                            x = 0.0;
+                            y += 5.0;
+                        }
+
+                        // If at the end of the plane, loop back to the start
+                        if (y >= 200.0) {
+                            y = 0.0;
+                        }
+
+                        gl_FragColor = vec4(x, y, 0.0, 1.0);
+                    }
+                `
+            })
+        );
+        compScene.add(compQuad);
+
+        renderer.setRenderTarget(rtA);
+        renderer.render(compScene, compCamera);
+
+        // --- 4. Ball Mesh ---
+        const ballGeometry = new THREE.SphereGeometry(3, 16, 16);
+        const ballMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                tPos: { value: null }
+            },
+            vertexShader: `
+                uniform sampler2D tPos;
+                void main() {
+                    // Fetch position from our GPGPU texture
+                    vec4 posData = texture2D(tPos, vec2(0.5, 0.5));
+                    float gx = posData.x;
+                    float gy = posData.y;
+
+                    // Map grid [0, 199] to world [-100, 100]
+                    // Plane is 200 units wide, centered at 0.
+                    // gx=0 -> -100 + 0.5 = -99.5
+                    // gy=0 -> 100 - 0.5 = 99.5 (Top)
+                    float worldX = -100.0 + gx + 0.5;
+                    float worldY = 100.0 - gy - 0.5;
+
+                    vec3 newPos = position + vec3(worldX, worldY, 2.0);
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(newPos, 1.0);
+                }
+            `,
+            fragmentShader: `
+                void main() {
+                    gl_FragColor = vec4(1.0, 0.2, 0.2, 1.0);
+                }
+            `
+        });
+        const ball = new THREE.Mesh(ballGeometry, ballMaterial);
+        scene.add(ball);
+
+        // --- 5. Rendering Loop ---
+        let firstFrame = true;
+        function animate() {
+            requestAnimationFrame(animate);
+
+
+            compQuad.material.uniforms.tPrevPos.value = rtA.texture;
+
+            renderer.setRenderTarget(rtB);
+            renderer.render(compScene, compCamera);
+            renderer.setRenderTarget(null);
+
+            // Pass the updated position to the ball's material
+            ballMaterial.uniforms.tPos.value = rtB.texture;
+
+            // Render the actual scene
+            renderer.render(scene, camera);
+
+            // Swap the render targets for the next frame
+            let temp = rtA;
+            rtA = rtB;
+            rtB = temp;
+
+        }
+
+        animate();
+
+        // --- 6. Event Listeners ---
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+    </script>
+</body>
+
+</html>

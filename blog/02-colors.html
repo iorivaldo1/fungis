@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>02. 颜色 — GLSL 学习笔记</title>
+    <link rel="stylesheet" href="common.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+<div class="page-wrapper">
+    <button class="mobile-toggle" aria-label="菜单">☰</button>
+    <nav class="sidebar"></nav>
+
+    <main class="main-content">
+        <header class="page-header">
+            <div class="chapter-num">Chapter 02</div>
+            <h1>颜色 Colors</h1>
+            <p class="description">
+                在 shader 中操控颜色是创造视觉效果的核心。我们将学习 RGB 颜色混合、
+                HSB/HSL 色彩空间转换，以及如何用极坐标绘制色相环。
+            </p>
+            <a class="ref-link" href="https://thebookofshaders.com/06/?lan=ch" target="_blank">
+                📚 参考：The Book of Shaders 第六章
+            </a>
+        </header>
+
+        <!-- Demo 1: Color Mixing Animation -->
+        <article class="demo-card">
+            <div class="demo-card-header">
+                <h3>颜色混合动画</h3>
+                <span class="demo-tag animated">动画</span>
+            </div>
+            <div class="demo-row">
+                <div class="canvas-container" id="demo-1"></div>
+                <div class="code-block-wrapper">
+                    <div class="code-label">Fragment Shader</div>
+                    <pre class="code-block" data-raw="#define PI 3.14159265359
+varying vec2 vUv;
+uniform float u_time;
+
+vec3 colorA = vec3(0.149, 0.141, 0.912);
+vec3 colorB = vec3(1.000, 0.833, 0.224);
+
+void main() {
+    // 用 cos 函数在两种颜色间平滑过渡
+    float pct = 1.0 - cos((u_time * PI) * 0.5);
+    vec3 color = mix(colorA, colorB, pct);
+    gl_FragColor = vec4(color, 1.0);
+}"></pre>
+                </div>
+            </div>
+            <div class="demo-description">
+                <code>mix(colorA, colorB, t)</code> 是 GLSL 中最常用的颜色混合函数。
+                这里用 <code>cos(u_time)</code> 驱动混合因子，让画面在蓝色和金色之间循环呼吸。
+            </div>
+        </article>
+
+        <!-- Demo 2: HSB Rainbow Curve -->
+        <article class="demo-card">
+            <div class="demo-card-header">
+                <h3>HSB 彩虹曲线</h3>
+                <span class="demo-tag static">静态</span>
+            </div>
+            <div class="demo-row">
+                <div class="canvas-container" id="demo-2"></div>
+                <div class="code-block-wrapper">
+                    <div class="code-label">Fragment Shader</div>
+                    <pre class="code-block" data-raw="#define PI 3.14159265359
+varying vec2 vUv;
+
+// HSB 转 RGB
+vec3 hsb2rgb(in vec3 c) {
+    vec3 rgb = clamp(
+        abs(mod(c.x*6.0+vec3(0.0,4.0,2.0), 6.0)-3.0)-1.0,
+        0.0, 1.0);
+    rgb = rgb*rgb*(3.0-2.0*rgb);
+    return c.z * mix(vec3(1.0), rgb, c.y);
+}
+
+void main() {
+    vec3 bgColor = vec3(abs(vUv.x));
+    // 将 x 坐标映射为色相
+    vec3 lineColor = hsb2rgb(vec3(vUv.x, 1.0, 1.0));
+    float p = pow(cos(PI*(vUv.x*2.0-1.0)/2.0), 2.0);
+    float pct = smoothstep(p-0.01,p,vUv.y)
+              - smoothstep(p,p+0.01,vUv.y);
+    vec3 color = mix(bgColor, lineColor, pct);
+    gl_FragColor = vec4(color, 1.0);
+}"></pre>
+                </div>
+            </div>
+            <div class="demo-description">
+                <code>hsb2rgb()</code> 函数将色相-饱和度-亮度转换为 RGB。
+                x 轴映射为色相，绘制了一条彩虹色的 cos 曲线。背景则是灰度渐变。
+            </div>
+        </article>
+
+        <!-- Demo 3: Color Wheel -->
+        <article class="demo-card">
+            <div class="demo-card-header">
+                <h3>极坐标色相环</h3>
+                <span class="demo-tag static">静态</span>
+            </div>
+            <div class="demo-row">
+                <div class="canvas-container" id="demo-3"></div>
+                <div class="code-block-wrapper">
+                    <div class="code-label">Fragment Shader</div>
+                    <pre class="code-block" data-raw="#define PI 3.14159265359
+varying vec2 vUv;
+
+vec3 hsb2rgb(in vec3 c) {
+    vec3 rgb = clamp(
+        abs(mod(c.x*6.0+vec3(0.0,4.0,2.0), 6.0)-3.0)-1.0,
+        0.0, 1.0);
+    rgb = rgb*rgb*(3.0-2.0*rgb);
+    return c.z * mix(vec3(1.0), rgb, c.y);
+}
+
+void main() {
+    vec2 toCenter = vec2(0.5) - vUv;
+    float angle = atan(toCenter.y, toCenter.x);
+    float radius = length(toCenter) * 2.0;
+    // 角度 → 色相，半径 → 饱和度
+    vec3 color = hsb2rgb(vec3(
+        angle / (2.0*PI) + 0.5,
+        radius,
+        1.0
+    ));
+    gl_FragColor = vec4(color, 1.0);
+}"></pre>
+                </div>
+            </div>
+            <div class="demo-description">
+                经典的 HSB 色相环！用 <code>atan(y, x)</code> 计算极角作为色相，
+                用 <code>length()</code> 计算半径作为饱和度。中心为白色（饱和度为 0），边缘颜色最鲜艳。
+            </div>
+        </article>
+
+        <!-- Demo 4: Color Wheel with Mask -->
+        <article class="demo-card">
+            <div class="demo-card-header">
+                <h3>带遮罩的色相环</h3>
+                <span class="demo-tag static">静态</span>
+            </div>
+            <div class="demo-row">
+                <div class="canvas-container" id="demo-4"></div>
+                <div class="code-block-wrapper">
+                    <div class="code-label">Fragment Shader</div>
+                    <pre class="code-block" data-raw="#define PI 3.14159265359
+varying vec2 vUv;
+
+vec3 hsb2rgb(in vec3 c) {
+    vec3 rgb = clamp(
+        abs(mod(c.x*6.0+vec3(0.0,4.0,2.0), 6.0)-3.0)-1.0,
+        0.0, 1.0);
+    rgb = rgb*rgb*(3.0-2.0*rgb);
+    return c.z * mix(vec3(1.0), rgb, c.y);
+}
+
+void main() {
+    vec2 toCenter = vec2(0.5) - vUv;
+    float angle = atan(toCenter.y, toCenter.x);
+    float radius = length(toCenter) * 2.0;
+    vec3 color = hsb2rgb(vec3(angle/(2.0*PI)+0.5, radius, 1.0));
+    // 圆形遮罩：radius > 1 的区域变为黑色
+    vec3 bgColor = vec3(0.0);
+    float pct = smoothstep(1.0, 0.98, radius);
+    color = mix(bgColor, color, pct);
+    gl_FragColor = vec4(color, 1.0);
+}"></pre>
+                </div>
+            </div>
+            <div class="demo-description">
+                在色相环基础上增加了 <code>smoothstep</code> 圆形遮罩，让外围区域平滑过渡到黑色背景。
+                这种技巧在绘制任何圆形区域时都非常实用。
+            </div>
+        </article>
+
+        <footer class="page-footer">
+            <a href="01-shaping.html">← 上一章：造型函数</a>
+            <a href="03-shapes.html">下一章：形状 →</a>
+        </footer>
+    </main>
+</div>
+
+<script src="common.js"></script>
+<script>
+const fs1 = `
+#define PI 3.14159265359
+varying vec2 vUv;
+uniform float u_time;
+vec3 colorA = vec3(0.149, 0.141, 0.912);
+vec3 colorB = vec3(1.000, 0.833, 0.224);
+void main() {
+    float pct = 1.0 - cos((u_time * PI) * 0.5);
+    vec3 color = mix(colorA, colorB, pct);
+    gl_FragColor = vec4(color, 1.0);
+}`;
+
+const fs2 = `
+#define PI 3.14159265359
+varying vec2 vUv;
+vec3 hsb2rgb(in vec3 c) {
+    vec3 rgb = clamp(abs(mod(c.x*6.0+vec3(0.0,4.0,2.0), 6.0)-3.0)-1.0, 0.0, 1.0);
+    rgb = rgb*rgb*(3.0-2.0*rgb);
+    return c.z * mix(vec3(1.0), rgb, c.y);
+}
+void main() {
+    vec3 bgColor = vec3(abs(vUv.x));
+    vec3 lineColor = hsb2rgb(vec3(vUv.x, 1.0, 1.0));
+    float p = pow(cos(PI * (vUv.x * 2.0 - 1.0) / 2.0), 2.0);
+    float pct = smoothstep(p-0.01,p,vUv.y) - smoothstep(p,p+0.01,vUv.y);
+    vec3 color = mix(bgColor, lineColor, pct);
+    gl_FragColor = vec4(color, 1.0);
+}`;
+
+const fs3 = `
+#define PI 3.14159265359
+varying vec2 vUv;
+vec3 hsb2rgb(in vec3 c) {
+    vec3 rgb = clamp(abs(mod(c.x*6.0+vec3(0.0,4.0,2.0), 6.0)-3.0)-1.0, 0.0, 1.0);
+    rgb = rgb*rgb*(3.0-2.0*rgb);
+    return c.z * mix(vec3(1.0), rgb, c.y);
+}
+void main() {
+    vec2 toCenter = vec2(0.5) - vUv;
+    float angle = atan(toCenter.y, toCenter.x);
+    float radius = length(toCenter)*2.0;
+    vec3 color = hsb2rgb(vec3(angle / (2.0 * PI) + 0.5, radius, 1.0));
+    gl_FragColor = vec4(color, 1.0);
+}`;
+
+const fs4 = `
+#define PI 3.14159265359
+varying vec2 vUv;
+vec3 hsb2rgb(in vec3 c) {
+    vec3 rgb = clamp(abs(mod(c.x*6.0+vec3(0.0,4.0,2.0), 6.0)-3.0)-1.0, 0.0, 1.0);
+    rgb = rgb*rgb*(3.0-2.0*rgb);
+    return c.z * mix(vec3(1.0), rgb, c.y);
+}
+void main() {
+    vec2 toCenter = vec2(0.5) - vUv;
+    float angle = atan(toCenter.y, toCenter.x);
+    float radius = length(toCenter)*2.0;
+    vec3 color = hsb2rgb(vec3(angle/(2.0*PI)+0.5, radius, 1.0));
+    vec3 bgColor = vec3(0.0);
+    float pct = smoothstep(1.0, 0.98, radius);
+    color = mix(bgColor, color, pct);
+    gl_FragColor = vec4(color, 1.0);
+}`;
+
+ShaderBlog.createDemo('demo-1', fs1, { animated: true });
+ShaderBlog.createDemo('demo-2', fs2);
+ShaderBlog.createDemo('demo-3', fs3);
+ShaderBlog.createDemo('demo-4', fs4);
+</script>
+</body>
+</html>

@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>05. 图案 — GLSL 学习笔记</title>
+    <link rel="stylesheet" href="common.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+<div class="page-wrapper">
+    <button class="mobile-toggle" aria-label="菜单">☰</button>
+    <nav class="sidebar"></nav>
+    <main class="main-content">
+        <header class="page-header">
+            <div class="chapter-num">Chapter 05</div>
+            <h1>图案 Patterns</h1>
+            <p class="description">
+                图案的核心是 <code>fract()</code> 和 <code>floor()</code>——将 UV 空间切割为重复的网格单元。
+                通过偏移奇偶行/列、旋转子单元、嵌套分割，可以创造无穷变化的平铺图案。
+            </p>
+            <a class="ref-link" href="https://thebookofshaders.com/09/?lan=ch" target="_blank">📚 参考：The Book of Shaders 第九章</a>
+        </header>
+
+        <article class="demo-card">
+            <div class="demo-card-header"><h3>基础圆形网格</h3><span class="demo-tag static">静态</span></div>
+            <div class="demo-row">
+                <div class="canvas-container" id="demo-1"></div>
+                <div class="code-block-wrapper"><div class="code-label">Fragment Shader</div>
+                    <pre class="code-block" data-raw="varying vec2 vUv;
+float circle(vec2 uv, float radius) {
+    return smoothstep(radius+0.001, radius, length(uv-0.5));
+}
+void main() {
+    // fract(uv * 5.0) 将空间分为 5×5 网格
+    vec2 pos = fract(vUv * 5.0);
+    vec3 color = vec3(circle(pos, 0.25));
+    gl_FragColor = vec4(color, 1.0);
+}"></pre></div>
+            </div>
+            <div class="demo-description"><code>fract(uv * N)</code> 是图案的核心：将 [0,1] 空间重复 N 次。每个子单元内独立绘制圆形。</div>
+        </article>
+
+        <article class="demo-card">
+            <div class="demo-card-header"><h3>砖墙偏移</h3><span class="demo-tag static">静态</span></div>
+            <div class="demo-row">
+                <div class="canvas-container" id="demo-2"></div>
+                <div class="code-block-wrapper"><div class="code-label">Fragment Shader</div>
+                    <pre class="code-block" data-raw="varying vec2 vUv;
+float box(vec2 uv, vec2 center, vec2 size) {
+    vec2 d = abs(uv - center) - size / 2.0;
+    return step(max(d.x, d.y), 0.0);
+}
+void main() {
+    vec2 scaledUv = vUv * 5.0;
+    // 奇数行偏移 0.2，产生砖墙效果
+    scaledUv.x += step(1.0, mod(scaledUv.y, 2.0)) * 0.2;
+    vec2 pos = fract(scaledUv);
+    float tp = box(pos, vec2(0.5), vec2(0.9));
+    gl_FragColor = vec4(vec3(tp), 1.0);
+}"></pre></div>
+            </div>
+            <div class="demo-description"><code>step(1.0, mod(y, 2.0))</code> 判断奇偶行，奇数行在 x 方向偏移，产生经典的砖墙排列。</div>
+        </article>
+
+        <article class="demo-card">
+            <div class="demo-card-header"><h3>旋转菱形网格</h3><span class="demo-tag static">静态</span></div>
+            <div class="demo-row">
+                <div class="canvas-container" id="demo-3"></div>
+                <div class="code-block-wrapper"><div class="code-label">Fragment Shader</div>
+                    <pre class="code-block" data-raw="#define PI 3.1415926535
+#define TWO_PI 6.28318530718
+varying vec2 vUv;
+
+float geometrySDF(vec2 uv) {
+    float a = atan(uv.y, uv.x);
+    int N = 4;
+    float r = TWO_PI / float(N);
+    return cos(floor(0.5+a/r)*r-a) * length(uv);
+}
+mat2 rotate2d(float angle) {
+    return mat2(cos(angle),-sin(angle),sin(angle),cos(angle));
+}
+void main() {
+    vec2 scaledUv = vUv * 6.0;
+    vec2 pos = fract(scaledUv) - 0.5;
+    // 旋转 45° 让正方形变菱形
+    pos = rotate2d(PI/4.0) * pos;
+    float tri = geometrySDF(pos);
+    gl_FragColor = vec4(vec3(smoothstep(0.351,0.35,tri)), 1.0);
+}"></pre></div>
+            </div>
+            <div class="demo-description">在每个网格单元内，对坐标应用 <code>rotate2d(PI/4)</code> 旋转 45°，正方形 SDF 就变成了菱形平铺。</div>
+        </article>
+
+        <article class="demo-card">
+            <div class="demo-card-header"><h3>交替行滚动圆</h3><span class="demo-tag animated">动画</span></div>
+            <div class="demo-row">
+                <div class="canvas-container" id="demo-4"></div>
+                <div class="code-block-wrapper"><div class="code-label">Fragment Shader</div>
+                    <pre class="code-block" data-raw="varying vec2 vUv;
+uniform float u_time;
+
+float circle(vec2 uv, float radius) {
+    return smoothstep(radius, radius+0.001, length(uv-0.5));
+}
+void main() {
+    vec2 scaledUv = vUv * 6.0;
+    float colIndex = floor(scaledUv.x);
+    // 奇偶列向相反方向滚动
+    scaledUv.y -= (1.0-mod(colIndex,2.0)) * fract(u_time*0.5);
+    scaledUv.y += mod(colIndex,2.0) * fract(u_time*0.5);
+    vec2 pos = fract(scaledUv);
+    float tp = circle(pos, 0.19);
+    gl_FragColor = vec4(vec3(tp), 1.0);
+}"></pre></div>
+            </div>
+            <div class="demo-description">奇偶列以相反方向滚动。<code>mod(colIndex, 2.0)</code> 区分列，<code>fract(u_time)</code> 驱动无限循环滚动。</div>
+        </article>
+
+        <article class="demo-card">
+            <div class="demo-card-header"><h3>嵌套旋转多彩图案</h3><span class="demo-tag animated">动画</span></div>
+            <div class="demo-row">
+                <div class="canvas-container" id="demo-5"></div>
+                <div class="code-block-wrapper"><div class="code-label">Fragment Shader</div>
+                    <pre class="code-block" data-raw="#define TWO_PI 6.28318530718
+varying vec2 vUv;
+uniform float u_time;
+
+float geometrySDF(vec2 uv) {
+    float a = atan(uv.y, uv.x);
+    int N = 5;
+    float r = TWO_PI / float(N);
+    return cos(floor(0.5+a/r)*r-a) * length(uv);
+}
+mat2 rotate2d(float a) {
+    return mat2(cos(a),-sin(a),sin(a),cos(a));
+}
+void main() {
+    vec2 scaledUv = vUv * vec2(9.0, 7.0);
+    vec2 pos = fract(fract(scaledUv) * vec2(3.0)) - 0.5;
+    float colI = floor(fract(scaledUv).x * 3.0);
+    float rowI = floor(fract(scaledUv).y * 3.0);
+    float eC = mod(colI,2.0), eR = mod(rowI,2.0);
+    float oC = 1.0-eC, oR = 1.0-eR;
+    float angle = u_time * 0.5;
+    pos = mix(pos, rotate2d(angle)*pos, eC*eR);
+    pos = mix(pos, rotate2d(angle+0.2)*pos, oC*oR);
+    pos = mix(pos, rotate2d(angle+0.4)*pos, eC*oR);
+    pos = mix(pos, rotate2d(angle+0.6)*pos, oC*eR);
+    float tri = geometrySDF(pos);
+    vec3 color = vec3(smoothstep(0.251,0.25,tri));
+    vec3 base = mix(vec3(1.0),vec3(1.0,0.0,0.0), eC*eR);
+    base = mix(base,vec3(0.0,1.0,0.0), oC*oR);
+    base = mix(base,vec3(0.0,0.0,1.0), eC*oR);
+    base = mix(base,vec3(1.0,0.0,1.0), oC*eR);
+    gl_FragColor = vec4(color*base, 1.0);
+}"></pre></div>
+            </div>
+            <div class="demo-description">双层 <code>fract()</code> 嵌套分割 + 奇偶行列不同旋转角度 + 不同颜色，产生万花筒般的复杂图案。</div>
+        </article>
+
+        <footer class="page-footer">
+            <a href="04-matrices.html">← 上一章：二维矩阵</a>
+            <a href="06-random.html">下一章：随机 →</a>
+        </footer>
+    </main>
+</div>
+<script src="common.js"></script>
+<script>
+const fs1=`varying vec2 vUv;
+float circle(vec2 uv,float radius){return smoothstep(radius+0.001,radius,length(uv-0.5));}
+void main(){vec2 pos=fract(vUv*5.0);gl_FragColor=vec4(vec3(circle(pos,0.25)),1.0);}`;
+
+const fs2=`varying vec2 vUv;
+float box(vec2 uv,vec2 center,vec2 size){vec2 d=abs(uv-center)-size/2.0;return step(max(d.x,d.y),0.0);}
+void main(){vec2 s=vUv*5.0;s.x+=step(1.0,mod(s.y,2.0))*0.2;vec2 pos=fract(s);gl_FragColor=vec4(vec3(box(pos,vec2(0.5),vec2(0.9))),1.0);}`;
+
+const fs3=`#define PI 3.1415926535
+#define TWO_PI 6.28318530718
+varying vec2 vUv;
+float geometrySDF(vec2 uv){float a=atan(uv.y,uv.x);int N=4;float r=TWO_PI/float(N);return cos(floor(0.5+a/r)*r-a)*length(uv);}
+mat2 rotate2d(float angle){return mat2(cos(angle),-sin(angle),sin(angle),cos(angle));}
+void main(){vec2 s=vUv*6.0;vec2 pos=fract(s)-0.5;pos=rotate2d(PI/4.0)*pos;float tri=geometrySDF(pos);gl_FragColor=vec4(vec3(smoothstep(0.351,0.35,tri)),1.0);}`;
+
+const fs4=`varying vec2 vUv;
+uniform float u_time;
+float circle(vec2 uv,float radius){return smoothstep(radius,radius+0.001,length(uv-0.5));}
+void main(){vec2 s=vUv*6.0;float ci=floor(s.x);s.y-=(1.0-mod(ci,2.0))*fract(u_time*0.5);s.y+=mod(ci,2.0)*fract(u_time*0.5);vec2 pos=fract(s);gl_FragColor=vec4(vec3(circle(pos,0.19)),1.0);}`;
+
+const fs5=`#define TWO_PI 6.28318530718
+varying vec2 vUv;
+uniform float u_time;
+float geometrySDF(vec2 uv){float a=atan(uv.y,uv.x);int N=5;float r=TWO_PI/float(N);return cos(floor(0.5+a/r)*r-a)*length(uv);}
+mat2 rotate2d(float a){return mat2(cos(a),-sin(a),sin(a),cos(a));}
+void main(){vec2 s1=vUv*vec2(9.0,7.0);vec2 p1=fract(s1);vec2 s2=p1*vec2(3.0);vec2 pos=fract(s2)-0.5;float ci=floor(s2.x);float ri=floor(s2.y);float eC=mod(ci,2.0),eR=mod(ri,2.0);float oC=1.0-eC,oR=1.0-eR;float angle=u_time*0.5;pos=mix(pos,rotate2d(angle)*pos,eC*eR);pos=mix(pos,rotate2d(angle+0.2)*pos,oC*oR);pos=mix(pos,rotate2d(angle+0.4)*pos,eC*oR);pos=mix(pos,rotate2d(angle+0.6)*pos,oC*eR);float tri=geometrySDF(pos);vec3 color=vec3(smoothstep(0.251,0.25,tri));vec3 base=mix(vec3(1.0),vec3(1.0,0.0,0.0),eC*eR);base=mix(base,vec3(0.0,1.0,0.0),oC*oR);base=mix(base,vec3(0.0,0.0,1.0),eC*oR);base=mix(base,vec3(1.0,0.0,1.0),oC*eR);gl_FragColor=vec4(color*base,1.0);}`;
+
+ShaderBlog.createDemo('demo-1',fs1);
+ShaderBlog.createDemo('demo-2',fs2);
+ShaderBlog.createDemo('demo-3',fs3);
+ShaderBlog.createDemo('demo-4',fs4,{animated:true});
+ShaderBlog.createDemo('demo-5',fs5,{animated:true});
+</script>
+</body>
+</html>

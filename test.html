@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <title>TianDiTu</title>
+  <script src="/Public/js/tianditu.api.js"></script>
+  <script src="/Public/js/jquery-3.7.1.min.js"></script>
+  <style>
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+    }
+
+    #mapDiv {
+      position: relative;
+      width: 100%;
+      height: 100%;
+    }
+
+    #getLocation {
+
+      position: absolute;
+      bottom: 50px;
+      left: 20px;
+      z-index: 450;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="mapDiv">
+    <button id="getLocation">定位</button>
+  </div>
+
+  <script type="module">
+    var map = new T.Map("mapDiv")
+    var zoom = 18;
+    // map.centerAndZoom(new T.LngLat(103, 33), zoom);
+    map.centerAndZoom(new T.LngLat(103.716404, 33.03072), zoom);
+
+    var circle = new T.Circle(
+      new T.LngLat(103.716404, 33.03072),
+      10,
+      { strokeColor: "red", strokeWeight: 6, fillOpacity: 0.5, fillcolor: "red" }
+    )
+    map.addOverLay(circle)
+
+    var ctrl = new T.Control.MapType(
+      { position: T_ANCHOR_BOTTOM_RIGHT }
+    )
+    map.addControl(ctrl)
+
+  </script>
+</body>
+
+</html>

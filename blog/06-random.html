@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>06. 随机 — GLSL 学习笔记</title>
+    <link rel="stylesheet" href="common.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+<div class="page-wrapper">
+    <button class="mobile-toggle" aria-label="菜单">☰</button>
+    <nav class="sidebar"></nav>
+    <main class="main-content">
+        <header class="page-header">
+            <div class="chapter-num">Chapter 06</div>
+            <h1>随机 Random</h1>
+            <p class="description">
+                GPU 没有真正的随机数发生器。我们用 <code>fract(sin(dot(…)) * 43758.5453)</code> 这个经典技巧
+                生成伪随机数。配合 <code>floor()</code> 离散化坐标，可以产生各种随机化的网格图案。
+            </p>
+            <a class="ref-link" href="https://thebookofshaders.com/10/?lan=ch" target="_blank">📚 参考：The Book of Shaders 第十章</a>
+        </header>
+
+        <article class="demo-card">
+            <div class="demo-card-header"><h3>连续随机噪点</h3><span class="demo-tag static">静态</span></div>
+            <div class="demo-row">
+                <div class="canvas-container" id="demo-1"></div>
+                <div class="code-block-wrapper"><div class="code-label">Fragment Shader</div>
+                    <pre class="code-block" data-raw="varying vec2 vUv;
+
+float random(vec2 st) {
+    return fract(sin(dot(st.xy,
+        vec2(12.9898, 78.233))) * 43758.5453);
+}
+
+void main() {
+    float r = random(vUv);
+    gl_FragColor = vec4(r, r, r, 1.0);
+}"></pre></div>
+            </div>
+            <div class="demo-description">
+                <code>fract(sin(dot(…)))</code> 是 shader 中最经典的伪随机函数。
+                每个像素的 UV 坐标不同，产生的随机值也不同，看起来像电视雪花噪点。
+            </div>
+        </article>
+
+        <article class="demo-card">
+            <div class="demo-card-header"><h3>2D 随机色块</h3><span class="demo-tag static">静态</span></div>
+            <div class="demo-row">
+                <div class="canvas-container" id="demo-2"></div>
+                <div class="code-block-wrapper"><div class="code-label">Fragment Shader</div>
+                    <pre class="code-block" data-raw="varying vec2 vUv;
+
+float random(vec2 st) {
+    return fract(sin(dot(st.xy,
+        vec2(12.9898, 78.233))) * 43758.5453);
+}
+
+vec3 switchColor(float index) {
+    if(index > 0.5) return vec3(1.0,0.0,0.0);
+    else return vec3(0.0,0.0,1.0);
+}
+
+void main() {
+    vec2 pos = vUv * 10.0;
+    vec2 ipos = floor(pos);
+    // floor 离散化 → 每个格子获得相同的随机值
+    vec3 color = switchColor(random(ipos));
+    gl_FragColor = vec4(color, 1.0);
+}"></pre></div>
+            </div>
+            <div class="demo-description">
+                <code>floor(uv * N)</code> 让每个网格单元共享同一个整数坐标。对这个整数坐标取随机值，
+                再用条件选择颜色，就得到了随机红蓝色块。
+            </div>
+        </article>
+
+        <article class="demo-card">
+            <div class="demo-card-header"><h3>Truchet 半圆迷宫</h3><span class="demo-tag static">静态</span></div>
+            <div class="demo-row">
+                <div class="canvas-container" id="demo-3"></div>
+                <div class="code-block-wrapper"><div class="code-label">Fragment Shader</div>
+                    <pre class="code-block" data-raw="varying vec2 vUv;
+
+float random(vec2 st) {
+    return fract(sin(dot(st.xy,
+        vec2(12.9898,78.233))) * 43758.5453);
+}
+
+void main() {
+    vec2 pos = vUv * 5.0;
+    vec2 ipos = floor(pos);
+    vec2 fpos = fract(pos);
+
+    float s = step(0.5, random(ipos));
+    // s 决定翻转方向
+    vec2 cp = vec2(mix(fpos.x, 1.0-fpos.x, s), fpos.y);
+    // 两个对角半圆环
+    float circle = step(length(cp), 0.6)
+        - step(length(cp), 0.4)
+        + step(length(cp-vec2(1.0)), 0.6)
+        - step(length(cp-vec2(1.0)), 0.4);
+    gl_FragColor = vec4(vec3(circle), 1.0);
+}"></pre></div>
+            </div>
+            <div class="demo-description">
+                Truchet 瓷砖：每个格子随机选择两种对角方向之一。半圆环在相邻格子间自然连接，
+                形成迷宫般的连续图案。改变 <code>step(0.5, random())</code> 的阈值可以调整密度。
+            </div>
+        </article>
+
+        <article class="demo-card">
+            <div class="demo-card-header"><h3>矩阵雨（Matrix Rain）</h3><span class="demo-tag animated">动画</span></div>
+            <div class="demo-row">
+                <div class="canvas-container" id="demo-4"></div>
+                <div class="code-block-wrapper"><div class="code-label">Fragment Shader</div>
+                    <pre class="code-block" data-raw="varying vec2 vUv;
+uniform float u_time;
+
+float random1(float x) {
+    return fract(sin(x) * 10000.0);
+}
+float random2(vec2 st) {
+    return fract(sin(dot(st.xy,
+        vec2(12.9898,78.233))) * 43758.5453);
+}
+
+void main() {
+    vec2 pos = vUv;
+    vec2 grid = vec2(300.0, 50.0);
+    pos = pos * grid;
+    vec2 ipos = floor(pos);
+    vec2 fpos = fract(pos);
+    // 每行以不同速度左移
+    vec2 offset = vec2(-u_time*50.0, 0.0) * random1(ipos.y);
+    vec2 p = floor(pos + offset);
+    vec3 color = vec3(step(0.9,
+        random2(100.0+p*0.000001) + random1(p.x)*0.8));
+    // 行间留空隙
+    color = color * step(0.3, fpos.y);
+    gl_FragColor = vec4(1.0-color, 1.0);
+}"></pre></div>
+            </div>
+            <div class="demo-description">
+                矩阵雨效果：每行以 <code>random1(ipos.y)</code> 决定的不同速度水平滚动，
+                <code>step(0.9, ...)</code> 稀疏采样产生闪烁的"字符"效果。<code>fpos.y</code> 创建行间间隙。
+            </div>
+        </article>
+
+        <article class="demo-card">
+            <div class="demo-card-header"><h3>滚动色彩条纹</h3><span class="demo-tag animated">动画</span></div>
+            <div class="demo-row">
+                <div class="canvas-container" id="demo-5"></div>
+                <div class="code-block-wrapper"><div class="code-label">Fragment Shader</div>
+                    <pre class="code-block" data-raw="varying vec2 vUv;
+uniform float u_time;
+
+float scaleX(float x) {
+    return fract(sin(x) * 1000000.0);
+}
+
+float serie(float x, float freq, float speed) {
+    return step(0.8,
+        scaleX(floor(x*freq) - floor(speed)));
+}
+
+void main() {
+    vec2 pos = vUv;
+    vec3 color = vec3(0.0);
+    float cols = 2.0;
+    float freq = scaleX(floor(u_time))
+        + abs(atan(u_time)*0.1);
+    float speed = 60.0 + u_time*(1.0-freq)*30.0;
+    // 奇偶行反向
+    if(fract(pos.y*cols*0.5) < 0.5) speed *= -1.0;
+    freq += scaleX(floor(pos.y));
+    float offset = 0.025;
+    // RGB 三通道微偏移 → 色差效果
+    color = vec3(
+        serie(pos.x, freq*100.0, speed+offset),
+        serie(pos.x, freq*100.0, speed),
+        serie(pos.x, freq*100.0, speed-offset)
+    );
+    gl_FragColor = vec4(1.0-color, 1.0);
+}"></pre></div>
+            </div>
+            <div class="demo-description">
+                三个通道使用微小的 <code>offset</code> 偏移，产生 RGB 色差效果。
+                <code>scaleX(floor(u_time))</code> 让频率在整秒变化，<code>atan(u_time)</code> 提供缓慢漂移。
+            </div>
+        </article>
+
+        <footer class="page-footer">
+            <a href="05-patterns.html">← 上一章：图案</a>
+            <a href="07-noise.html">下一章：噪声 →</a>
+        </footer>
+    </main>
+</div>
+<script src="common.js"></script>
+<script>
+const fs1=`varying vec2 vUv;
+float random(vec2 st){return fract(sin(dot(st.xy,vec2(12.9898,78.233)))*43758.5453);}
+void main(){float r=random(vUv);gl_FragColor=vec4(r,r,r,1.0);}`;
+
+const fs2=`varying vec2 vUv;
+float random(vec2 st){return fract(sin(dot(st.xy,vec2(12.9898,78.233)))*43758.5453);}
+vec3 switchColor(float index){if(index>0.5)return vec3(1.0,0.0,0.0);else return vec3(0.0,0.0,1.0);}
+void main(){vec2 pos=vUv*10.0;vec2 ipos=floor(pos);vec3 color=switchColor(random(ipos));gl_FragColor=vec4(color,1.0);}`;
+
+const fs3=`varying vec2 vUv;
+float random(vec2 st){return fract(sin(dot(st.xy,vec2(12.9898,78.233)))*43758.5453);}
+void main(){vec2 pos=vUv*5.0;vec2 ipos=floor(pos);vec2 fpos=fract(pos);float s=step(0.5,random(ipos));vec2 cp=vec2(mix(fpos.x,1.0-fpos.x,s),fpos.y);float circle=step(length(cp),0.6)-step(length(cp),0.4)+step(length(cp-vec2(1.0)),0.6)-step(length(cp-vec2(1.0)),0.4);gl_FragColor=vec4(vec3(circle),1.0);}`;
+
+const fs4=`varying vec2 vUv;
+uniform float u_time;
+float random1(float x){return fract(sin(x)*10000.0);}
+float random2(vec2 st){return fract(sin(dot(st.xy,vec2(12.9898,78.233)))*43758.5453);}
+void main(){vec2 pos=vUv;vec2 grid=vec2(300.0,50.0);pos=pos*grid;vec2 ipos=floor(pos);vec2 fpos=fract(pos);vec2 offset=vec2(-u_time*50.0,0.0)*random1(ipos.y);vec2 p=floor(pos+offset);vec3 color=vec3(step(0.9,random2(100.0+p*0.000001)+random1(p.x)*0.8));color=color*step(0.3,fpos.y);gl_FragColor=vec4(1.0-color,1.0);}`;
+
+const fs5=`varying vec2 vUv;
+uniform float u_time;
+float scaleX(float x){return fract(sin(x)*1000000.0);}
+float serie(float x,float freq,float speed){return step(0.8,scaleX(floor(x*freq)-floor(speed)));}
+void main(){vec2 pos=vUv;vec3 color=vec3(0.0);float cols=2.0;float freq=scaleX(floor(u_time))+abs(atan(u_time)*0.1);float speed=60.0+u_time*(1.0-freq)*30.0;if(fract(pos.y*cols*0.5)<0.5){speed*=-1.0;}freq+=scaleX(floor(pos.y));float offset=0.025;color=vec3(serie(pos.x,freq*100.0,speed+offset),serie(pos.x,freq*100.0,speed),serie(pos.x,freq*100.0,speed-offset));gl_FragColor=vec4(1.0-color,1.0);}`;
+
+ShaderBlog.createDemo('demo-1',fs1);
+ShaderBlog.createDemo('demo-2',fs2);
+ShaderBlog.createDemo('demo-3',fs3);
+ShaderBlog.createDemo('demo-4',fs4,{animated:true});
+ShaderBlog.createDemo('demo-5',fs5,{animated:true});
+</script>
+</body>
+</html>

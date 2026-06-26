@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>08. 网格噪声 — GLSL 学习笔记</title>
+    <link rel="stylesheet" href="common.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+<div class="page-wrapper">
+    <button class="mobile-toggle" aria-label="菜单">☰</button>
+    <nav class="sidebar"></nav>
+    <main class="main-content">
+        <header class="page-header">
+            <div class="chapter-num">Chapter 08</div>
+            <h1>网格噪声 Cellular Noise</h1>
+            <p class="description">
+                网格噪声（也称 Worley 噪声或 Voronoi 噪声）通过计算到最近特征点的距离来生成图案。
+                它能模拟细胞结构、龟裂、水泡、皮肤纹理等自然形态，是程序化纹理的重要工具。
+            </p>
+            <a class="ref-link" href="https://thebookofshaders.com/12/?lan=ch" target="_blank">📚 参考：The Book of Shaders 第十二章</a>
+        </header>
+
+        <article class="demo-card">
+            <div class="demo-card-header"><h3>基础 Voronoi 距离场</h3><span class="demo-tag static">静态</span></div>
+            <div class="demo-row">
+                <div class="canvas-container" id="demo-1"></div>
+                <div class="code-block-wrapper"><div class="code-label">Fragment Shader</div>
+                    <pre class="code-block" data-raw="varying vec2 vUv;
+
+vec2 random(vec2 st) {
+    st = vec2(dot(st,vec2(127.1,311.7)),
+              dot(st,vec2(269.5,183.3)));
+    return fract(sin(st) * 43758.5453123);
+}
+
+void main() {
+    vec2 uv = vUv * 3.0;
+    vec2 ipos = floor(uv);
+    vec2 fpos = fract(uv);
+    float m_dist = 1.0;
+
+    // 9宫格搜索最近特征点
+    for(int j=-1; j<=1; j++) {
+        for(int i=-1; i<=1; i++) {
+            vec2 neighbor = vec2(float(i), float(j));
+            vec2 point = random(ipos + neighbor);
+            vec2 diff = neighbor + point - fpos;
+            float dist = length(diff);
+            m_dist = min(m_dist, dist);
+        }
+    }
+    gl_FragColor = vec4(vec3(m_dist), 1.0);
+}"></pre></div>
+            </div>
+            <div class="demo-description">
+                Voronoi 的核心：每个网格单元放置一个随机特征点，每个像素计算到最近特征点的距离。
+                9 宫格搜索确保跨单元边界的距离也被正确计算。距离值直接映射为灰度。
+            </div>
+        </article>
+
+        <article class="demo-card">
+            <div class="demo-card-header"><h3>动态 Voronoi + 细胞高亮</h3><span class="demo-tag animated">动画</span></div>
+            <div class="demo-row">
+                <div class="canvas-container" id="demo-2"></div>
+                <div class="code-block-wrapper"><div class="code-label">Fragment Shader</div>
+                    <pre class="code-block" data-raw="varying vec2 vUv;
+uniform float u_time;
+
+vec2 random(vec2 st) {
+    st = vec2(dot(st,vec2(127.1,311.7)),
+              dot(st,vec2(269.5,183.3)));
+    return fract(sin(st) * 43758.5453123);
+}
+
+void main() {
+    vec2 uv = vUv * 4.0;
+    vec2 ipos = floor(uv);
+    vec2 fpos = fract(uv);
+    float m_dist = 1.0;
+    vec2 m_point;
+
+    for(int j=-1; j<=1; j++) {
+        for(int i=-1; i<=1; i++) {
+            vec2 nb = vec2(float(i), float(j));
+            vec2 pt = random(ipos + nb);
+            // sin(u_time) 让特征点移动
+            pt = 0.5 + 0.5*sin(u_time + 6.2831*pt);
+            vec2 diff = nb + pt - fpos;
+            float dist = length(diff);
+            if(dist < m_dist) {
+                m_dist = dist;
+                m_point = pt;
+            }
+        }
+    }
+    // dot(m_point, vec2(.3,.6)) 为每个细胞赋予唯一色调
+    vec3 color = vec3(dot(m_point, vec2(0.3, 0.6)));
+    gl_FragColor = vec4(color, 1.0);
+}"></pre></div>
+            </div>
+            <div class="demo-description">
+                <code>sin(u_time + 6.2831*point)</code> 让特征点做周期运动，模拟细胞的有机蠕动。
+                <code>dot(m_point, vec2(0.3, 0.6))</code> 将每个细胞的特征点位置映射为唯一灰度值。
+            </div>
+        </article>
+
+        <article class="demo-card">
+            <div class="demo-card-header"><h3>Worley 边缘检测</h3><span class="demo-tag animated">动画</span></div>
+            <div class="demo-row">
+                <div class="canvas-container" id="demo-3"></div>
+                <div class="code-block-wrapper"><div class="code-label">Fragment Shader</div>
+                    <pre class="code-block" data-raw="varying vec2 vUv;
+uniform float u_time;
+
+vec2 random(vec2 st) {
+    st = vec2(dot(st,vec2(127.1,311.7)),
+              dot(st,vec2(269.5,183.3)));
+    return fract(sin(st) * 43758.5453123);
+}
+
+float worley(vec2 uv, float time) {
+    vec2 ipos = floor(uv);
+    vec2 fpos = fract(uv);
+    float F1 = 1.0, F2 = 1.0;
+    for(int j=-1; j<=1; j++) {
+        for(int i=-1; i<=1; i++) {
+            vec2 nb = vec2(float(i), float(j));
+            vec2 pt = random(ipos + nb);
+            pt = 0.5 + 0.5*sin(time + 6.2831*pt);
+            float dist = length(nb + pt - fpos);
+            // 同时记录最近和次近距离
+            if(dist < F1) { F2 = F1; F1 = dist; }
+            else if(dist < F2) { F2 = dist; }
+        }
+    }
+    return F2 - F1;  // 边缘 = 次近-最近
+}
+
+void main() {
+    vec2 uv = vUv * 10.0;
+    vec3 color = vec3(worley(uv, u_time * 0.5));
+    gl_FragColor = vec4(color, 1.0);
+}"></pre></div>
+            </div>
+            <div class="demo-description">
+                Worley 噪声同时追踪 F1（最近距离）和 F2（次近距离）。<code>F2 - F1</code> 在细胞边界处接近 0，
+                产生清晰的裂缝/边缘效果。这是龟裂纹理、蜻蜓翅膀的基础。
+            </div>
+        </article>
+
+        <article class="demo-card">
+            <div class="demo-card-header"><h3>圆环映射</h3><span class="demo-tag static">静态</span></div>
+            <div class="demo-row">
+                <div class="canvas-container" id="demo-4"></div>
+                <div class="code-block-wrapper"><div class="code-label">Fragment Shader</div>
+                    <pre class="code-block" data-raw="varying vec2 vUv;
+
+vec2 random(vec2 st) {
+    st = vec2(dot(st,vec2(127.1,311.7)),
+              dot(st,vec2(269.5,183.3)));
+    return fract(sin(st) * 43758.5453123);
+}
+
+void main() {
+    vec2 uv = vUv * 10.0;
+    vec2 ipos = floor(uv);
+    vec2 fpos = fract(uv);
+    float minDist = 1.0;
+
+    for(int x=-1; x<=1; x++) {
+        for(int y=-1; y<=1; y++) {
+            vec2 nb = vec2(float(x), float(y));
+            vec2 pt = random(ipos + nb);
+            float dist = length(nb + pt - fpos);
+            minDist = min(minDist, dist);
+        }
+    }
+
+    // 圆环映射：exp(-width * |dist - radius|)
+    float radius = 0.4;
+    float width = 4.0;
+    float t = exp(-width * abs(minDist - radius));
+    gl_FragColor = vec4(vec3(t), 1.0);
+}"></pre></div>
+            </div>
+            <div class="demo-description">
+                <code>exp(-width * |dist - radius|)</code> 在距离等于 radius 处产生亮环，远离则迅速衰减。
+                这种映射可以让 Voronoi 细胞呈现"泡泡"效果，调节 width 控制环的清晰度。
+            </div>
+        </article>
+
+        <article class="demo-card">
+            <div class="demo-card-header"><h3>Metaball 融合</h3><span class="demo-tag static">静态</span></div>
+            <div class="demo-row">
+                <div class="canvas-container" id="demo-5"></div>
+                <div class="code-block-wrapper"><div class="code-label">Fragment Shader</div>
+                    <pre class="code-block" data-raw="varying vec2 vUv;
+
+void main() {
+    vec2 uv = vUv;
+    vec3 color = vec3(0.0);
+
+    vec2 point[4];
+    point[0] = vec2(0.83, 0.75);
+    point[1] = vec2(0.60, 0.37);
+    point[2] = vec2(0.28, 0.64);
+    point[3] = vec2(0.31, 0.26);
+
+    float m_dist = 0.0;
+    for(int i=0; i<4; i++) {
+        float dist = distance(uv, point[i]);
+        // 反距离平方累加 → Metaball 效果
+        m_dist += 0.03 / (dist * dist);
+    }
+    // step 阈值产生融合的 blob
+    color += step(1.0, m_dist);
+    gl_FragColor = vec4(color, 1.0);
+}"></pre></div>
+            </div>
+            <div class="demo-description">
+                Metaball 融合效果：累加多个点的反距离平方值 <code>1/d²</code>，当总和超过阈值时着色。
+                多个"能量源"的等势面自然融合，产生有机的 blob 形状。
+            </div>
+        </article>
+
+        <footer class="page-footer">
+            <a href="07-noise.html">← 上一章：噪声</a>
+            <a href="../index_beian.html">返回首页 →</a>
+        </footer>
+    </main>
+</div>
+<script src="common.js"></script>
+<script>
+const f1=`varying vec2 vUv;
+vec2 random(vec2 st){st=vec2(dot(st,vec2(127.1,311.7)),dot(st,vec2(269.5,183.3)));return fract(sin(st)*43758.5453123);}
+void main(){vec2 uv=vUv*3.0;vec2 ipos=floor(uv);vec2 fpos=fract(uv);float m_dist=1.0;for(int j=-1;j<=1;j++){for(int i=-1;i<=1;i++){vec2 nb=vec2(float(i),float(j));vec2 pt=random(ipos+nb);vec2 diff=nb+pt-fpos;m_dist=min(m_dist,length(diff));}}gl_FragColor=vec4(vec3(m_dist),1.0);}`;
+
+const f2=`varying vec2 vUv;
+uniform float u_time;
+vec2 random(vec2 st){st=vec2(dot(st,vec2(127.1,311.7)),dot(st,vec2(269.5,183.3)));return fract(sin(st)*43758.5453123);}
+void main(){vec2 uv=vUv*4.0;vec2 ipos=floor(uv);vec2 fpos=fract(uv);float m_dist=1.0;vec2 m_point;for(int j=-1;j<=1;j++){for(int i=-1;i<=1;i++){vec2 nb=vec2(float(i),float(j));vec2 pt=random(ipos+nb);pt=0.5+0.5*sin(u_time+6.2831*pt);vec2 diff=nb+pt-fpos;float dist=length(diff);if(dist<m_dist){m_dist=dist;m_point=pt;}}}vec3 color=vec3(dot(m_point,vec2(0.3,0.6)));gl_FragColor=vec4(color,1.0);}`;
+
+const f3=`varying vec2 vUv;
+uniform float u_time;
+vec2 random(vec2 st){st=vec2(dot(st,vec2(127.1,311.7)),dot(st,vec2(269.5,183.3)));return fract(sin(st)*43758.5453123);}
+float worley(vec2 uv,float time){vec2 ipos=floor(uv);vec2 fpos=fract(uv);float F1=1.0,F2=1.0;for(int j=-1;j<=1;j++){for(int i=-1;i<=1;i++){vec2 nb=vec2(float(i),float(j));vec2 pt=random(ipos+nb);pt=0.5+0.5*sin(time+6.2831*pt);float dist=length(nb+pt-fpos);if(dist<F1){F2=F1;F1=dist;}else if(dist<F2){F2=dist;}}}return F2-F1;}
+void main(){vec2 uv=vUv*10.0;gl_FragColor=vec4(vec3(worley(uv,u_time*0.5)),1.0);}`;
+
+const f4=`varying vec2 vUv;
+vec2 random(vec2 st){st=vec2(dot(st,vec2(127.1,311.7)),dot(st,vec2(269.5,183.3)));return fract(sin(st)*43758.5453123);}
+void main(){vec2 uv=vUv*10.0;vec2 ipos=floor(uv);vec2 fpos=fract(uv);float minDist=1.0;for(int x=-1;x<=1;x++){for(int y=-1;y<=1;y++){vec2 nb=vec2(float(x),float(y));vec2 pt=random(ipos+nb);minDist=min(minDist,length(nb+pt-fpos));}}float radius=0.4;float width=4.0;float t=exp(-width*abs(minDist-radius));gl_FragColor=vec4(vec3(t),1.0);}`;
+
+const f5=`varying vec2 vUv;
+void main(){vec2 uv=vUv;vec3 color=vec3(0.0);vec2 point[4];point[0]=vec2(0.83,0.75);point[1]=vec2(0.60,0.37);point[2]=vec2(0.28,0.64);point[3]=vec2(0.31,0.26);float m_dist=0.0;for(int i=0;i<4;i++){float dist=distance(uv,point[i]);m_dist+=0.03/(dist*dist);}color+=step(1.0,m_dist);gl_FragColor=vec4(color,1.0);}`;
+
+ShaderBlog.createDemo('demo-1',f1);
+ShaderBlog.createDemo('demo-2',f2,{animated:true});
+ShaderBlog.createDemo('demo-3',f3,{animated:true});
+ShaderBlog.createDemo('demo-4',f4);
+ShaderBlog.createDemo('demo-5',f5);
+</script>
+</body>
+</html>

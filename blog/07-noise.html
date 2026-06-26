@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>07. 噪声 — GLSL 学习笔记</title>
+    <link rel="stylesheet" href="common.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+<div class="page-wrapper">
+    <button class="mobile-toggle" aria-label="菜单">☰</button>
+    <nav class="sidebar"></nav>
+    <main class="main-content">
+        <header class="page-header">
+            <div class="chapter-num">Chapter 07</div>
+            <h1>噪声 Noise</h1>
+            <p class="description">
+                噪声是程序化生成自然纹理的核心。从值噪声（Value Noise）到梯度噪声（Gradient Noise），
+                再到分形布朗运动（FBM）和域扭曲（Domain Warping），噪声函数让我们能够创造云、山脉、水面等有机效果。
+            </p>
+            <a class="ref-link" href="https://thebookofshaders.com/11/?lan=ch" target="_blank">📚 参考：The Book of Shaders 第十一章</a>
+        </header>
+
+        <article class="demo-card">
+            <div class="demo-card-header"><h3>值噪声 + FBM 域扭曲</h3><span class="demo-tag static">静态</span></div>
+            <div class="demo-row">
+                <div class="canvas-container" id="demo-1"></div>
+                <div class="code-block-wrapper"><div class="code-label">Fragment Shader</div>
+                    <pre class="code-block" data-raw="varying vec2 vUv;
+
+float random(vec2 st) {
+    return fract(sin(dot(st, vec2(12.9898,78.233)))
+        * 43758.5453);
+}
+
+float noise(vec2 st) {
+    vec2 i = floor(st);
+    vec2 f = fract(st);
+    float a = random(i);
+    float b = random(i + vec2(1.0,0.0));
+    float c = random(i + vec2(0.0,1.0));
+    float d = random(i + vec2(1.0,1.0));
+    // Hermite 插值曲线
+    vec2 u = f*f*(3.0-2.0*f);
+    return mix(a,b,u.x) + (c-a)*u.y*(1.0-u.x)
+         + (d-b)*u.x*u.y;
+}
+
+float fbm(vec2 uv) {
+    float v = 0.0, a = 0.5;
+    for(int i=0; i<5; i++) {
+        v += a * noise(uv);
+        uv *= 2.0; a *= 0.5;
+    }
+    return v;
+}
+
+void main() {
+    vec2 uv = vUv * 10.0;
+    // 域扭曲：用 FBM 偏移坐标
+    uv += vec2(fbm(uv+vec2(1,0)), fbm(uv+vec2(0,1)));
+    float n = fbm(uv) * 0.5 + 0.5;
+    gl_FragColor = vec4(vec3(smoothstep(0.2,0.75,n)), 1.0);
+}"></pre></div>
+            </div>
+            <div class="demo-description">
+                <code>noise()</code> 用四角随机值 + Hermite 插值构建平滑噪声。
+                <code>fbm()</code> 叠加 5 层不同频率的噪声。域扭曲用 FBM 偏移 UV 坐标，产生流动的有机纹理。
+            </div>
+        </article>
+
+        <article class="demo-card">
+            <div class="demo-card-header"><h3>梯度噪声 + FBM</h3><span class="demo-tag static">静态</span></div>
+            <div class="demo-row">
+                <div class="canvas-container" id="demo-2"></div>
+                <div class="code-block-wrapper"><div class="code-label">Fragment Shader</div>
+                    <pre class="code-block" data-raw="varying vec2 vUv;
+
+vec2 random(vec2 st) {
+    st = vec2(dot(st,vec2(127.1,311.7)),
+              dot(st,vec2(269.5,183.3)));
+    return -1.0 + 2.0*fract(sin(st)*43758.5453123);
+}
+
+// 梯度噪声：对随机向量做 dot product
+float noise(vec2 st) {
+    vec2 i = floor(st), f = fract(st);
+    vec2 u = f*f*(3.0-2.0*f);
+    return mix(
+        mix(dot(random(i),           f),
+            dot(random(i+vec2(1,0)), f-vec2(1,0)), u.x),
+        mix(dot(random(i+vec2(0,1)), f-vec2(0,1)),
+            dot(random(i+vec2(1,1)), f-vec2(1,1)), u.x),
+        u.y);
+}
+
+float fbm(vec2 uv) {
+    float v = 0.0, a = 0.5;
+    for(int i=0; i<5; i++) {
+        v += a * noise(uv);
+        uv *= 2.0; a *= 0.5;
+    }
+    return v;
+}
+
+void main() {
+    vec2 uv = vUv * 3.0;
+    uv += vec2(fbm(uv+vec2(1,0)), fbm(uv+vec2(0,1)));
+    float n = fbm(uv) * 0.5 + 0.5;
+    gl_FragColor = vec4(vec3(smoothstep(0.2,0.75,n)), 1.0);
+}"></pre></div>
+            </div>
+            <div class="demo-description">
+                与值噪声不同，梯度噪声用 <code>dot(randomVec, offset)</code> 替代纯随机值。
+                随机向量 <code>random()</code> 返回 [-1,1] 范围的 vec2，产生更平滑、无方格感的噪声。
+            </div>
+        </article>
+
+        <article class="demo-card">
+            <div class="demo-card-header"><h3>噪声扭曲多边形边缘</h3><span class="demo-tag animated">动画</span></div>
+            <div class="demo-row">
+                <div class="canvas-container" id="demo-3"></div>
+                <div class="code-block-wrapper"><div class="code-label">Fragment Shader</div>
+                    <pre class="code-block" data-raw="#define TWO_PI 6.28318530718
+varying vec2 vUv;
+uniform float u_time;
+
+vec2 random(vec2 st) {
+    st = vec2(dot(st,vec2(127.1,311.7)),
+              dot(st,vec2(269.5,183.3)));
+    return -1.0+2.0*fract(sin(st)*43758.5453123);
+}
+float noise(vec2 st) {
+    vec2 i=floor(st), f=fract(st);
+    vec2 u=f*f*(3.0-2.0*f);
+    return mix(
+        mix(dot(random(i),f),
+            dot(random(i+vec2(1,0)),f-vec2(1,0)),u.x),
+        mix(dot(random(i+vec2(0,1)),f-vec2(0,1)),
+            dot(random(i+vec2(1,1)),f-vec2(1,1)),u.x),
+        u.y);
+}
+float geometrySDF(vec2 uv, float dis) {
+    float a = atan(uv.y, uv.x);
+    int N = 5;
+    float r = TWO_PI/float(N);
+    float d = cos(floor(0.5+a/r)*r-a)*length(uv);
+    // 噪声扰动边缘
+    float n1 = noise(uv*8.0);
+    float n2 = noise(uv*20.0);
+    float en = (n1*0.6+n2*0.4-0.5)*0.2
+        *(sin(u_time*0.5)+1.5);
+    d += en;
+    return smoothstep(dis+0.01, dis, d);
+}
+void main() {
+    vec2 pos = vUv*2.0 - 1.0;
+    gl_FragColor = vec4(vec3(geometrySDF(pos,0.6)), 1.0);
+}"></pre></div>
+            </div>
+            <div class="demo-description">
+                将噪声叠加到 SDF 距离值上，让规则的五边形边缘变得有机、毛糙。
+                <code>sin(u_time)</code> 让噪声强度呼吸变化，产生"融化-凝固"的动画效果。
+            </div>
+        </article>
+
+        <article class="demo-card">
+            <div class="demo-card-header"><h3>噪声旋转线条纹理</h3><span class="demo-tag static">静态</span></div>
+            <div class="demo-row">
+                <div class="canvas-container" id="demo-4"></div>
+                <div class="code-block-wrapper"><div class="code-label">Fragment Shader</div>
+                    <pre class="code-block" data-raw="varying vec2 vUv;
+
+float random(vec2 st) {
+    return fract(sin(dot(st, vec2(12.9898,78.233)))
+        * 43758.5453);
+}
+float noise(vec2 st) {
+    vec2 i=floor(st), f=fract(st);
+    vec2 u=f*f*(3.0-2.0*f);
+    return mix(
+        mix(random(i), random(i+vec2(1,0)), u.x),
+        mix(random(i+vec2(0,1)), random(i+vec2(1,1)), u.x),
+        u.y);
+}
+mat2 rotate2d(float a) {
+    return mat2(cos(a),-sin(a),sin(a),cos(a));
+}
+float lines(vec2 uv, float b) {
+    float scale = 10.0;
+    uv *= scale;
+    return smoothstep(0.0, 0.5+b*0.5,
+        abs(sin(uv.x*3.1415)+b*2.0)*0.5);
+}
+void main() {
+    vec2 pos = vUv * vec2(3.0,10.0);
+    pos = pos.yx; // 旋转 90°
+    // 用噪声旋转坐标系 → 木纹/水纹效果
+    pos = rotate2d(noise(pos)) * pos;
+    float pattern = lines(pos, 0.5);
+    gl_FragColor = vec4(vec3(pattern), 1.0);
+}"></pre></div>
+            </div>
+            <div class="demo-description">
+                木纹/水纹效果的核心：用 <code>noise(pos)</code> 的值作为旋转角度，
+                每个位置以不同角度旋转坐标后采样线条图案。噪声的连续性保证了线条的平滑弯曲。
+            </div>
+        </article>
+
+        <article class="demo-card">
+            <div class="demo-card-header"><h3>罗斯科风格色块</h3><span class="demo-tag static">静态</span></div>
+            <div class="demo-row">
+                <div class="canvas-container" id="demo-5"></div>
+                <div class="code-block-wrapper"><div class="code-label">Fragment Shader</div>
+                    <pre class="code-block" data-raw="varying vec2 vUv;
+
+float random(vec2 p) {
+    return fract(sin(dot(p,vec2(127.1,311.7)))
+        * 43758.5453);
+}
+float noise(vec2 st) {
+    vec2 i=floor(st), f=fract(st);
+    vec2 u=f*f*(3.0-2.0*f);
+    float a=random(i), b=random(i+vec2(1,0));
+    float c=random(i+vec2(0,1)), d=random(i+vec2(1,1));
+    return mix(a,b,u.x)+(c-a)*u.y*(1.0-u.x)+(d-b)*u.x*u.y;
+}
+float softRectNoise(vec2 uv, vec2 center, vec2 size,
+    float blur) {
+    vec2 p = uv - center;
+    float n1=noise(uv*8.0), n2=noise(uv*20.0);
+    float en = (n1*0.6 + n2*0.4 - 0.5) * 0.08;
+    vec2 d = abs(p) - size;
+    float dist = length(max(d,0.0))
+        + min(max(d.x,d.y), 0.0);
+    dist += en;
+    return smoothstep(blur, -blur, dist);
+}
+void main() {
+    vec2 uv = vUv;
+    float n = noise(uv*6.0);
+    vec3 bg = vec3(0.15,0.05,0.02) + n*0.1;
+    vec3 color = bg;
+    // 三个噪声扰动矩形
+    float r1 = softRectNoise(uv, vec2(0.2,0.5),
+        vec2(0.15,0.4), 0.08);
+    color = mix(color, vec3(0.6,0.05,0.05)+noise(uv*20.0)*0.08, r1);
+    float r2 = softRectNoise(uv, vec2(0.45,0.5),
+        vec2(0.18,0.42), 0.08);
+    color = mix(color, vec3(0.1,0.2,0.02)+noise(uv*15.0)*0.06, r2);
+    float r3 = softRectNoise(uv, vec2(0.75,0.5),
+        vec2(0.15,0.4), 0.08);
+    color = mix(color, vec3(0.9,0.75,0.5)+noise(uv*25.0)*0.05, r3);
+    gl_FragColor = vec4(color, 1.0);
+}"></pre></div>
+            </div>
+            <div class="demo-description">
+                致敬 Mark Rothko 的色域绘画。<code>softRectNoise()</code> 将噪声加到矩形 SDF 边界上，
+                让色块边缘呈现手绘般的不规则质感。每个色块还叠加了画布纹理噪声。
+            </div>
+        </article>
+
+        <footer class="page-footer">
+            <a href="06-random.html">← 上一章：随机</a>
+            <a href="08-cellular.html">下一章：网格噪声 →</a>
+        </footer>
+    </main>
+</div>
+<script src="common.js"></script>
+<script>
+const fs1=`varying vec2 vUv;
+float random(vec2 st){return fract(sin(dot(st,vec2(12.9898,78.233)))*43758.5453);}
+float noise(vec2 st){vec2 i=floor(st);vec2 f=fract(st);float a=random(i);float b=random(i+vec2(1.0,0.0));float c=random(i+vec2(0.0,1.0));float d=random(i+vec2(1.0,1.0));vec2 u=f*f*(3.0-2.0*f);return mix(a,b,u.x)+(c-a)*u.y*(1.0-u.x)+(d-b)*u.x*u.y;}
+float fbm(vec2 uv){float v=0.0;float a=0.5;for(int i=0;i<5;i++){v+=a*noise(uv);uv*=2.0;a*=0.5;}return v;}
+void main(){vec2 uv=vUv*10.0;uv+=vec2(fbm(uv+vec2(1.0,0.0)),fbm(uv+vec2(0.0,1.0)));float n=fbm(uv)*0.5+0.5;gl_FragColor=vec4(vec3(smoothstep(0.2,0.75,n)),1.0);}`;
+
+const fs2=`varying vec2 vUv;
+vec2 random(vec2 st){st=vec2(dot(st,vec2(127.1,311.7)),dot(st,vec2(269.5,183.3)));return -1.0+2.0*fract(sin(st)*43758.5453123);}
+float noise(vec2 st){vec2 i=floor(st);vec2 f=fract(st);vec2 u=f*f*(3.0-2.0*f);return mix(mix(dot(random(i),f),dot(random(i+vec2(1.0,0.0)),f-vec2(1.0,0.0)),u.x),mix(dot(random(i+vec2(0.0,1.0)),f-vec2(0.0,1.0)),dot(random(i+vec2(1.0,1.0)),f-vec2(1.0,1.0)),u.x),u.y);}
+float fbm(vec2 uv){float v=0.0;float a=0.5;for(int i=0;i<5;i++){v+=a*noise(uv);uv*=2.0;a*=0.5;}return v;}
+void main(){vec2 uv=vUv*3.0;uv+=vec2(fbm(uv+vec2(1.0,0.0)),fbm(uv+vec2(0.0,1.0)));float n=fbm(uv)*0.5+0.5;gl_FragColor=vec4(vec3(smoothstep(0.2,0.75,n)),1.0);}`;
+
+const fs3=`#define TWO_PI 6.28318530718
+varying vec2 vUv;
+uniform float u_time;
+vec2 random(vec2 st){st=vec2(dot(st,vec2(127.1,311.7)),dot(st,vec2(269.5,183.3)));return -1.0+2.0*fract(sin(st)*43758.5453123);}
+float noise(vec2 st){vec2 i=floor(st);vec2 f=fract(st);vec2 u=f*f*(3.0-2.0*f);return mix(mix(dot(random(i),f),dot(random(i+vec2(1.0,0.0)),f-vec2(1.0,0.0)),u.x),mix(dot(random(i+vec2(0.0,1.0)),f-vec2(0.0,1.0)),dot(random(i+vec2(1.0,1.0)),f-vec2(1.0,1.0)),u.x),u.y);}
+float geometrySDF(vec2 uv,float dis){float a=atan(uv.y,uv.x);int N=5;float r=TWO_PI/float(N);float d=cos(floor(0.5+a/r)*r-a)*length(uv);float n1=noise(uv*8.0);float n2=noise(uv*20.0);float en=(n1*0.6+n2*0.4-0.5)*0.2*(sin(u_time*0.5)+1.5);d+=en;return smoothstep(dis+0.01,dis,d);}
+void main(){vec2 pos=vUv*2.0-1.0;gl_FragColor=vec4(vec3(geometrySDF(pos,0.6)),1.0);}`;
+
+const fs4=`varying vec2 vUv;
+float random(vec2 st){return fract(sin(dot(st,vec2(12.9898,78.233)))*43758.5453);}
+float noise(vec2 st){vec2 i=floor(st);vec2 f=fract(st);vec2 u=f*f*(3.0-2.0*f);return mix(mix(random(i),random(i+vec2(1.0,0.0)),u.x),mix(random(i+vec2(0.0,1.0)),random(i+vec2(1.0,1.0)),u.x),u.y);}
+mat2 rotate2d(float a){return mat2(cos(a),-sin(a),sin(a),cos(a));}
+float lines(vec2 uv,float b){float s=10.0;uv*=s;return smoothstep(0.0,0.5+b*0.5,abs(sin(uv.x*3.1415)+b*2.0)*0.5);}
+void main(){vec2 pos=vUv*vec2(3.0,10.0);pos=pos.yx;pos=rotate2d(noise(pos))*pos;float p=lines(pos,0.5);gl_FragColor=vec4(vec3(p),1.0);}`;
+
+const fs5=`varying vec2 vUv;
+float random(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+float noise(vec2 st){vec2 i=floor(st);vec2 f=fract(st);float a=random(i);float b=random(i+vec2(1.0,0.0));float c=random(i+vec2(0.0,1.0));float d=random(i+vec2(1.0,1.0));vec2 u=f*f*(3.0-2.0*f);return mix(a,b,u.x)+(c-a)*u.y*(1.0-u.x)+(d-b)*u.x*u.y;}
+float softRectNoise(vec2 uv,vec2 center,vec2 size,float blur){vec2 p=uv-center;float n1=noise(uv*8.0);float n2=noise(uv*20.0);float en=(n1*0.6+n2*0.4-0.5)*0.08;vec2 d=abs(p)-size;float dist=length(max(d,0.0))+min(max(d.x,d.y),0.0);dist+=en;return smoothstep(blur,-blur,dist);}
+void main(){vec2 uv=vUv;float n=noise(uv*6.0);vec3 bg=vec3(0.15,0.05,0.02)+n*0.1;vec3 color=bg;float r1=softRectNoise(uv,vec2(0.2,0.5),vec2(0.15,0.4),0.08);vec3 c1=vec3(0.6,0.05,0.05)+noise(uv*20.0)*0.08;color=mix(color,c1,r1);float r2=softRectNoise(uv,vec2(0.45,0.5),vec2(0.18,0.42),0.08);vec3 c2=vec3(0.1,0.2,0.02)+noise(uv*15.0)*0.06;color=mix(color,c2,r2);float r3=softRectNoise(uv,vec2(0.75,0.5),vec2(0.15,0.4),0.08);vec3 c3=vec3(0.9,0.75,0.5)+noise(uv*25.0)*0.05;color=mix(color,c3,r3);gl_FragColor=vec4(color,1.0);}`;
+
+ShaderBlog.createDemo('demo-1',fs1);
+ShaderBlog.createDemo('demo-2',fs2);
+ShaderBlog.createDemo('demo-3',fs3,{animated:true});
+ShaderBlog.createDemo('demo-4',fs4);
+ShaderBlog.createDemo('demo-5',fs5);
+</script>
+</body>
+</html>

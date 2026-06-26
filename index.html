@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FUNGIS地图平台</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+</head>
+<body>
+  <div id="app">
+    <!-- 骨架屏：Vue 加载完毕后自动替换，让 LCP 元素提前出现，消除 3s+ 的白屏延迟 -->
+    <style>
+      #app-skeleton {
+        display: flex; width: 100%; height: 100vh;
+        background: #001a12; font-family: 'Inter', sans-serif;
+      }
+      .sk-sidebar {
+        width: 240px; height: 100%;
+        background: linear-gradient(160deg, #002a20 0%, #004d3a 50%, #003d2e 100%);
+        border-right: 1px solid rgba(94,206,144,0.12);
+        flex-shrink: 0; padding: 0;
+      }
+      .sk-sidebar-header {
+        height: 50px; display: flex; align-items: center; padding: 0 20px;
+        border-bottom: 1px solid rgba(94,206,144,0.1);
+        background: rgba(0,77,64,0.4);
+      }
+      .sk-logo-icon {
+        width: 28px; height: 28px; border-radius: 6px;
+        background: rgba(94,206,144,0.3); margin-right: 10px; flex-shrink: 0;
+      }
+      .sk-logo-text {
+        width: 90px; height: 14px; border-radius: 4px;
+        background: rgba(94,206,144,0.25);
+      }
+      .sk-menu { padding: 8px 0; }
+      .sk-menu-item {
+        height: 44px; margin: 2px 12px; border-radius: 8px;
+        background: rgba(255,255,255,0.04);
+        animation: sk-pulse 1.5s ease-in-out infinite;
+      }
+      .sk-menu-item:nth-child(2) { animation-delay: 0.1s; }
+      .sk-menu-item:nth-child(3) { animation-delay: 0.2s; }
+      .sk-menu-item:nth-child(4) { animation-delay: 0.3s; }
+      .sk-main {
+        flex: 1; display: flex; align-items: center;
+        justify-content: center; padding: 20px;
+      }
+      .sk-card-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 20px; width: 100%; max-width: 1400px;
+      }
+      .sk-card {
+        height: 240px; border-radius: 16px;
+        background: rgba(255,255,255,0.05);
+        border: 1px solid rgba(255,255,255,0.08);
+        animation: sk-pulse 1.5s ease-in-out infinite;
+      }
+      .sk-card:nth-child(2) { animation-delay: 0.08s; }
+      .sk-card:nth-child(3) { animation-delay: 0.16s; }
+      .sk-card:nth-child(4) { animation-delay: 0.24s; }
+      .sk-card:nth-child(5) { animation-delay: 0.32s; }
+      .sk-card:nth-child(6) { animation-delay: 0.40s; }
+      .sk-card:nth-child(7) { animation-delay: 0.48s; }
+      .sk-card:nth-child(8) { animation-delay: 0.56s; }
+      @keyframes sk-pulse {
+        0%, 100% { opacity: 0.5; }
+        50% { opacity: 1; }
+      }
+      @media (max-width: 1300px) { .sk-card-grid { grid-template-columns: repeat(3, 1fr); } }
+      @media (max-width: 900px)  { .sk-card-grid { grid-template-columns: repeat(2, 1fr); } }
+    </style>
+    <div id="app-skeleton">
+      <div class="sk-sidebar">
+        <div class="sk-sidebar-header">
+          <div class="sk-logo-icon"></div>
+          <div class="sk-logo-text"></div>
+        </div>
+        <div class="sk-menu">
+          <div class="sk-menu-item"></div>
+          <div class="sk-menu-item"></div>
+          <div class="sk-menu-item"></div>
+          <div class="sk-menu-item"></div>
+        </div>
+      </div>
+      <div class="sk-main">
+        <div class="sk-card-grid">
+          <div class="sk-card"></div>
+          <div class="sk-card"></div>
+          <div class="sk-card"></div>
+          <div class="sk-card"></div>
+          <div class="sk-card"></div>
+          <div class="sk-card"></div>
+          <div class="sk-card"></div>
+          <div class="sk-card"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
