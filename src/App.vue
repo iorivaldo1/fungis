@@ -226,7 +226,7 @@ const currentRouteName = computed(() => {
     'Baidu': '百度地图',
     'BaiduTopicMap': '百度坐标转换',
     'Three': 'Three.js',
-    'ParticleSim1': '粒子模拟1',
+    'ParticleSim1': '粒子模拟AA',
     'FluidSimulation': '流体模拟',
     'ThreeTianDitu': 'Three+TianDitu',
     'LiveSlicedTerrain': '现切地形',
