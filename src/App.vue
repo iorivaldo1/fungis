@@ -52,7 +52,7 @@
               <div v-show="isThreeMenuExpanded" class="sub-menu">
                 <router-link to="/three/particle1" class="menu-item sub" active-class="active">
                   <div class="sub-dot"></div>
-                  <span class="menu-text">粒子模拟1</span>
+                  <span class="menu-text">粒子模拟</span>
                 </router-link>
                 <router-link to="/three/fluid" class="menu-item sub" active-class="active">
                   <div class="sub-dot"></div>
