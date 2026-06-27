@@ -268,7 +268,7 @@
         html += '  <div class="sidebar-title">The Book of Shaders</div>';
         html += '</div>';
         html += '<ul class="nav-list">';
-        html += '  <li class="nav-item"><a class="nav-link" href="../index_beian.html"><span class="nav-number">⌂</span> 首页</a></li>';
+        html += '  <li class="nav-item"><a class="nav-link" href="../blog.html"><span class="nav-number">⌂</span> 首页</a></li>';
 
         chapters.forEach(function (ch) {
             var active = currentPage === ch.file ? ' active' : '';
