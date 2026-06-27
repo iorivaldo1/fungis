@@ -71,6 +71,10 @@ export default defineConfig(({ mode }) => {
       outDir: 'fungis',
       assetsDir: 'assets',
       rollupOptions: {
+        input: {
+          main: resolve(__dirname, 'index.html'),
+          blog: resolve(__dirname, 'blog.html')
+        },
         output: {
           manualChunks: {
             'vue-vendor': ['vue', 'vue-router'],

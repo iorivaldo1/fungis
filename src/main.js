@@ -14,6 +14,7 @@ const router = createRouter({
       name: 'Homev',
       component: Home,
       alias: '/gispros'
+
     },
     {
       path: '/hhgl',

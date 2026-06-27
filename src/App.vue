@@ -16,6 +16,11 @@
             <span class="menu-text">首页</span>
           </router-link>
 
+          <a href="/blog.html" target="_blank" class="menu-item">
+            <IconLogo />
+            <span class="menu-text">我的博客</span>
+          </a>
+
           <!-- Three+TianDitu 多级菜单 -->
           <div class="menu-group" :class="{ expanded: isThreeTdtMenuExpanded }">
             <div class="menu-item parent" @click="toggleThreeTdtMenu"
