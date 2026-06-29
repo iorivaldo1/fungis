@@ -65,6 +65,21 @@ function baiduTileToWmts (xb, yb, zb) {
  */
 function createWmtsLayer (layerName, zIndex = 1) {
   const layer = new BMap.TileLayer({ isTransparentPng: true, zIndex })
+  // 重写 initialize，捕获 BMap 内部创建的瓦片容器 DOM 元素
+  const origInitialize = layer.initialize.bind(layer)
+  layer.initialize = function (bmap) {
+    const mapEl = bmap.getContainer()
+    const before = new Set(mapEl.querySelectorAll('div *'))
+    const result = origInitialize(bmap)
+    const after = mapEl.querySelectorAll('div *')
+    for (const el of after) {
+      if (!before.has(el)) {
+        layer._tileContainer = el
+        break
+      }
+    }
+    return result
+  }
   layer.getTilesUrl = function (tileCoord, zoom) {
     const { TILECOL, TILEROW } = baiduTileToWmts(tileCoord.x, tileCoord.y, zoom)
     const params = new URLSearchParams({
@@ -119,11 +134,37 @@ function toggleLayer (idx) {
   }
 }
 
+/**
+ * 尝试获取 TileLayer 的瓦片容器 DOM 元素
+ */
+function getTileContainer (layer) {
+  if (layer._tileContainer) return layer._tileContainer
+  // 兜底：从地图 DOM 中查找尚未关联的瓦片容器
+  if (!map) return null
+  const mapEl = map.getContainer()
+  const candidates = mapEl.querySelectorAll('div')
+  for (const div of candidates) {
+    if (div.children.length > 0 &&
+        div.querySelector('img') &&
+        div !== mapEl &&
+        !div._layerClaimed) {
+      // 检查是否已被其他 layer 占用
+      const claimed = wmtsLayers.some(l => l.instance && l.instance._tileContainer === div)
+      if (!claimed) {
+        layer._tileContainer = div
+        div._layerClaimed = true
+        return div
+      }
+    }
+  }
+  return null
+}
+
 function updateLayerOpacity (idx) {
-  // 百度地图 TileLayer 不原生支持 opacity，此处通过 CSS 实现
   const layerCfg = wmtsLayers[idx]
-  if (layerCfg.instance && layerCfg.instance._container) {
-    layerCfg.instance._container.style.opacity = layerCfg.opacity
+  const container = layerCfg.instance ? getTileContainer(layerCfg.instance) : null
+  if (container) {
+    container.style.opacity = layerCfg.opacity
   }
 }
 
