@@ -56,7 +56,7 @@ const cards = shallowRef([
     path: "/three-tdt/terrainData",
     icon: IconThree,
     tags: ["WCS地形", "天地图DOM", "高程查询", "河流桥梁"],
-    bg: "url('/images/three_tdt.png') center/cover no-repeat",
+    bg: "url('/images/three_tdt.webp') center/cover no-repeat",
     featured: true,
     badge: "✦ 推荐",
   },
@@ -65,7 +65,7 @@ const cards = shallowRef([
     path: "/baidu/topic-map",
     icon: IconRiver,
     tags: ["BMap", "bd09mc", "投影"],
-    bg: "url('/images/baidu_screenshot.png') center/cover no-repeat",
+    bg: "url('/images/baidu_screenshot.webp') center/cover no-repeat",
     featured: true,
     badge: "NEW",
   },
@@ -74,7 +74,7 @@ const cards = shallowRef([
     path: "/baidu/tile-slice",
     icon: IconRiver,
     tags: ["BMap", "GeoServer WMTS", "栅格图层"],
-    bg: "url('/images/baidu_coord_trans_raster.png') center/cover no-repeat",
+    bg: "url('/images/baidu_coord_trans_raster.webp') center/cover no-repeat",
     featured: true,
     badge: "NEW",
   },
@@ -83,7 +83,7 @@ const cards = shallowRef([
     path: "/cesium/location",
     icon: IconLocation,
     tags: ["GPS信息", "H5定位", "相机参数", "照片预览"],
-    bg: "url('/images/locate.png') center/cover no-repeat",
+    bg: "url('/images/locate.webp') center/cover no-repeat",
   },
   {
     title: "Shader 特效",
@@ -91,7 +91,7 @@ const cards = shallowRef([
     icon: IconCesium,
     tags: ["扩散圆环", "流动线条", "轨迹球体", "渐变几何"],
     // 洋红 → 紫 → 橙：呼应炫彩着色器
-    bg: "url('/images/cesium_shader.png') center/cover no-repeat",
+    bg: "url('/images/cesium_shader.webp') center/cover no-repeat",
   },
   {
     title: "WMTS服务",
@@ -99,7 +99,7 @@ const cards = shallowRef([
     icon: IconRiver,
     tags: ["Geoserver", "WMTS图层", "透明度调节", "OSM河流"],
     // 深蓝 → 青蓝：呼应地图瓦片
-    bg: "url('/images/wmts_river.png') center/cover no-repeat",
+    bg: "url('/images/wmts_river.webp') center/cover no-repeat",
   },
   {
     title: "瓦片下载",
@@ -107,7 +107,7 @@ const cards = shallowRef([
     icon: IconPhoto,
     tags: ["框选下载", "GeoTIFF/PNG", "多线程", "进度监控"],
     // 深靛 → 蓝绿：呼应数据下载/传输
-    bg: "url('/images/tile_download.png') center/cover no-repeat",
+    bg: "url('/images/tile_download.webp') center/cover no-repeat",
   },
   {
     title: "粒子模拟",
@@ -115,7 +115,7 @@ const cards = shallowRef([
     icon: IconThree,
     tags: ["GPGPU", "地形流动", "交互发射", "Three.js"],
     // 深橙 → 琥珀 → 深红：呼应粒子火焰感
-    bg: "url('/images/shader_partical.png') center/cover no-repeat",
+    bg: "url('/images/shader_partical.webp') center/cover no-repeat",
   },
   {
     title: "流体模拟",
@@ -123,7 +123,7 @@ const cards = shallowRef([
     icon: IconThree,
     tags: ["浅水方程", "实时流体", "GPGPU", "交互"],
     // 深青 → 蔚蓝 → 深海蓝：呼应水流/流体
-    bg: "url('/images/shader_liquid.png') center/cover no-repeat",
+    bg: "url('/images/shader_liquid.webp') center/cover no-repeat",
   },
 ]);
 </script>
