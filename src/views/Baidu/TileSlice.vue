@@ -13,15 +13,8 @@
           <input type="checkbox" v-model="layer.visible" @change="toggleLayer(idx)" />
           {{ layer.name }}
         </label>
-        <input
-          type="range"
-          min="0"
-          max="1"
-          step="0.05"
-          v-model.number="layer.opacity"
-          @input="updateLayerOpacity(idx)"
-          class="opacity-slider"
-        />
+        <input type="range" min="0" max="1" step="0.05" v-model.number="layer.opacity" @input="updateLayerOpacity(idx)"
+          class="opacity-slider" />
         <span class="opacity-val">{{ (layer.opacity * 100).toFixed(0) }}%</span>
       </div>
     </div>
@@ -53,7 +46,7 @@ let BMap = null
  * 百度切片坐标 (xb, yb, zb) -> WMTS TILECOL / TILEROW
  * 百度: y 轴向北递增；WMTS: TILEROW 从北向南递增
  */
-function baiduTileToWmts (xb, yb, zb) {
+function baiduTileToWmts(xb, yb, zb) {
   const tileSpan = 256 * Math.pow(2, 18 - zb)
   const TILECOL = Math.round((xb * tileSpan - GRIDSET_MIN_X) / tileSpan)
   const TILEROW = Math.round((GRIDSET_MAX_Y - (yb + 1) * tileSpan) / tileSpan)
@@ -63,7 +56,7 @@ function baiduTileToWmts (xb, yb, zb) {
 /**
  * 工厂函数：创建 WMTS 瓦片图层
  */
-function createWmtsLayer (layerName, zIndex = 1) {
+function createWmtsLayer(layerName, zIndex = 1) {
   const layer = new BMap.TileLayer({ isTransparentPng: true, zIndex })
   layer.getTilesUrl = function (tileCoord, zoom) {
     const { TILECOL, TILEROW } = baiduTileToWmts(tileCoord.x, tileCoord.y, zoom)
@@ -87,7 +80,7 @@ function createWmtsLayer (layerName, zIndex = 1) {
 /**
  * 在 addTileLayer 前后对比 DOM，捕获新创建的瓦片容器元素
  */
-function addTileLayerAndCapture (layer) {
+function addTileLayerAndCapture(layer) {
   if (!map) return
   const mapEl = map.getContainer()
   const before = new Set(mapEl.querySelectorAll('*'))
@@ -104,8 +97,8 @@ function addTileLayerAndCapture (layer) {
 // 图层配置
 const wmtsLayers = reactive([
   {
-    name: '河流 (hydro:sc_river_bd09mc)',
-    layerName: 'hydro:sc_river_bd09mc',
+    name: '河流 (hydro:ya_river_bd09mc)',
+    layerName: 'hydro:ya_river_bd09mc',
     zIndex: 2,
     visible: true,
     opacity: 1,
@@ -121,7 +114,7 @@ const wmtsLayers = reactive([
   }
 ])
 
-function toggleLayer (idx) {
+function toggleLayer(idx) {
   const layerCfg = wmtsLayers[idx]
   if (!map) return
   if (layerCfg.visible) {
@@ -143,7 +136,7 @@ function toggleLayer (idx) {
 /**
  * 尝试获取 TileLayer 的瓦片容器 DOM 元素
  */
-function getTileContainer (layer) {
+function getTileContainer(layer) {
   if (layer._tileContainer) return layer._tileContainer
   // 兜底：从地图 DOM 中查找尚未关联的瓦片容器
   if (!map) return null
@@ -151,9 +144,9 @@ function getTileContainer (layer) {
   const candidates = mapEl.querySelectorAll('div')
   for (const div of candidates) {
     if (div.children.length > 0 &&
-        div.querySelector('img') &&
-        div !== mapEl &&
-        !div._layerClaimed) {
+      div.querySelector('img') &&
+      div !== mapEl &&
+      !div._layerClaimed) {
       // 检查是否已被其他 layer 占用
       const claimed = wmtsLayers.some(l => l.instance && l.instance._tileContainer === div)
       if (!claimed) {
@@ -166,7 +159,7 @@ function getTileContainer (layer) {
   return null
 }
 
-function updateLayerOpacity (idx) {
+function updateLayerOpacity(idx) {
   const layerCfg = wmtsLayers[idx]
   const container = layerCfg.instance ? getTileContainer(layerCfg.instance) : null
   if (container) {
@@ -174,12 +167,12 @@ function updateLayerOpacity (idx) {
   }
 }
 
-function formatScale (scaleDenominator) {
+function formatScale(scaleDenominator) {
   const rounded = Math.round(scaleDenominator)
   return `1:${rounded.toLocaleString('zh-CN')}`
 }
 
-function updateMapInfo () {
+function updateMapInfo() {
   if (!map || !BMap) return
   const zoom = map.getZoom()
   zoomLevel.value = zoom
