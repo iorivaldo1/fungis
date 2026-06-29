@@ -94,7 +94,7 @@ const cards = shallowRef([
   {
     title: "河流路径计算",
     path: "/tianditu/river-route-calc",
-    icon: IconRiver,
+    icon: IconRoute,
     tags: ["天地图", "路径计算", "动态效果", "后端分析"],
     bg: "url('/images/river_route.webp') center/cover no-repeat",
     featured: true,
