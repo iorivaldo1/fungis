@@ -3,14 +3,8 @@
     <BackgroundSpheres />
     <div class="content">
       <div class="card-container">
-        <div
-          v-for="(card, index) in cards"
-          :key="index"
-          class="card"
-          :class="{ 'card-featured': card.featured }"
-          :style="{ background: card.bg }"
-          @click="navigateTo(card.path)"
-        >
+        <div v-for="(card, index) in cards" :key="index" class="card" :class="{ 'card-featured': card.featured }"
+          :style="{ background: card.bg }" @click="navigateTo(card.path)">
           <div class="card-overlay"></div>
           <div class="card-badge" v-if="card.badge">{{ card.badge }}</div>
           <div class="card-content">
@@ -20,12 +14,7 @@
             </div>
             <h2>{{ card.title }}</h2>
             <div class="features">
-              <span
-                v-for="(tag, tIndex) in card.tags"
-                :key="tIndex"
-                class="tag"
-                >{{ tag }}</span
-              >
+              <span v-for="(tag, tIndex) in card.tags" :key="tIndex" class="tag">{{ tag }}</span>
             </div>
           </div>
         </div>
@@ -39,6 +28,7 @@ import { useRouter } from "vue-router";
 import { shallowRef } from "vue";
 import IconCesium from "../components/icons/IconCesium.vue";
 import IconRiver from "../components/icons/IconRiver.vue";
+import IconRoute from "../components/icons/IconRoute.vue";
 import IconThree from "../components/icons/IconThree.vue";
 import IconLocation from "../components/icons/IconLocation.vue";
 import IconPhoto from "../components/icons/IconPhoto.vue";
@@ -106,7 +96,7 @@ const cards = shallowRef([
     path: "/tianditu/river-route-calc",
     icon: IconRiver,
     tags: ["天地图", "路径计算", "动态效果", "后端分析"],
-    bg: "url('/images/wmts_river.webp') center/cover no-repeat",
+    bg: "url('/images/river_route.webp') center/cover no-repeat",
     featured: true,
     badge: "NEW",
   },
@@ -212,11 +202,9 @@ const cards = shallowRef([
 }
 
 .card-featured .card-overlay {
-  background: linear-gradient(
-    to bottom,
-    rgba(0, 0, 0, 0.05) 0%,
-    rgba(0, 0, 0, 0.6) 100%
-  );
+  background: linear-gradient(to bottom,
+      rgba(0, 0, 0, 0.05) 0%,
+      rgba(0, 0, 0, 0.6) 100%);
 }
 
 .card-featured:hover {
@@ -233,11 +221,9 @@ const cards = shallowRef([
   width: 100%;
   height: 100%;
   /* 让渐变底色透出，仅用轻薄遮罩保证文字可读 */
-  background: linear-gradient(
-    to bottom,
-    rgba(0, 0, 0, 0.05) 0%,
-    rgba(0, 0, 0, 0.55) 100%
-  );
+  background: linear-gradient(to bottom,
+      rgba(0, 0, 0, 0.05) 0%,
+      rgba(0, 0, 0, 0.55) 100%);
   transition: opacity 0.3s;
 }
 
@@ -249,11 +235,9 @@ const cards = shallowRef([
 }
 
 .card:hover .card-overlay {
-  background: linear-gradient(
-    to bottom,
-    rgba(0, 0, 0, 0) 0%,
-    rgba(0, 0, 0, 0.65) 100%
-  );
+  background: linear-gradient(to bottom,
+      rgba(0, 0, 0, 0) 0%,
+      rgba(0, 0, 0, 0.65) 100%);
 }
 
 .card-content {
