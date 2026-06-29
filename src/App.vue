@@ -105,6 +105,10 @@
                   <div class="sub-dot"></div>
                   <span class="menu-text">百度坐标转换计算差异</span>
                 </router-link>
+                <router-link to="/baidu/tile-slice" class="menu-item sub" active-class="active">
+                  <div class="sub-dot"></div>
+                  <span class="menu-text">百度坐标系切片</span>
+                </router-link>
               </div>
             </transition>
           </div>
@@ -230,6 +234,7 @@ const currentRouteName = computed(() => {
     'DatabaseRiver': '数据库河流',
     'Baidu': '百度地图',
     'BaiduTopicMap': '百度坐标转换',
+    'BaiduTileSlice': '百度坐标系切片',
     'Three': 'Three.js',
     'ParticleSim1': '粒子模拟AA',
     'FluidSimulation': '流体模拟',

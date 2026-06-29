@@ -1,58 +1,157 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html lang="zh-CN">
 
 <head>
-  <title>TianDiTu</title>
-  <script src="/Public/js/tianditu.api.js"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <script src="/Public/js/jquery-3.7.1.min.js"></script>
+  <script src="/Public/js/baiduUtills.js"></script>
+  <title>百度地图初始页面</title>
   <style>
     html,
-    body {
-      margin: 0;
-      padding: 0;
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-    }
-
-    #mapDiv {
+    body,
+    #map {
       position: relative;
       width: 100%;
       height: 100%;
+      margin: 0;
+      padding: 0;
     }
 
-    #getLocation {
-
-      position: absolute;
-      bottom: 50px;
-      left: 20px;
-      z-index: 450;
+    #mapInfo {
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      padding: 8px 10px;
+      background-color: rgba(0, 0, 0, 0.6);
+      color: white;
+      border-radius: 5px;
+      z-index: 9999;
+      font-size: 14px;
+      line-height: 1.5;
     }
   </style>
 </head>
 
 <body>
-  <div id="mapDiv">
-    <button id="getLocation">定位</button>
+  <div id="map"></div>
+  <div id="mapInfo">
+    <div id="levelText">level: --</div>
+    <div id="scaleText">比例尺: --</div>
   </div>
 
-  <script type="module">
-    var map = new T.Map("mapDiv")
-    var zoom = 18;
-    // map.centerAndZoom(new T.LngLat(103, 33), zoom);
-    map.centerAndZoom(new T.LngLat(103.716404, 33.03072), zoom);
+  <script src="https://api.map.baidu.com/api?v=3.0&ak=MUBHlQKKLvig0Ia3QEAOzio46qq6foiT"></script>
+  <script>
+    // ==== 配置常量 ====
+    const WMTS_URL = "http://127.0.0.1:8080/geoserver/gwc/service/wmts";
+    const TILEMATRIXSET = "BD09MC";
 
-    var circle = new T.Circle(
-      new T.LngLat(103.716404, 33.03072),
-      10,
-      { strokeColor: "red", strokeWeight: 6, fillOpacity: 0.5, fillcolor: "red" }
-    )
-    map.addOverLay(circle)
+    // GridSet 边界（必须与 GeoServer 中 BD09MC 网格集严格一致）
+    // 推荐使用对齐到 2^N 的边界，保证百度切片与网格集瓦片完美对齐
+    const GRIDSET_MIN_X = -33554432;  // -2^25
+    const GRIDSET_MIN_Y = -16777216;  // -2^24
+    const GRIDSET_MAX_X = 33554432;  //  2^25
+    const GRIDSET_MAX_Y = 16777216;  //  2^24
 
-    var ctrl = new T.Control.MapType(
-      { position: T_ANCHOR_BOTTOM_RIGHT }
-    )
-    map.addControl(ctrl)
+    /**
+     * 百度切片坐标 (xb, yb, zb) -> WMTS TILECOL / TILEROW
+     * 百度: y 轴向北递增；WMTS: TILEROW 从北向南递增
+     */
+    function baiduTileToWmts(xb, yb, zb) {
+      // 用 Math.pow 而非 1<<(18-zb)，避免 zb>18 时 32 位整数溢出
+      const tileSpan = 256 * Math.pow(2, 18 - zb); // 单个瓦片在 BD-09MC 中跨度（米）
+      // 百度瓦片左边界 BD-09MC X = xb * tileSpan
+      // 网格集列号 = (xb*tileSpan - GRIDSET_MIN_X) / tileSpan
+      const TILECOL = Math.round((xb * tileSpan - GRIDSET_MIN_X) / tileSpan);
+      // 百度瓦片顶边界 BD-09MC Y = (yb+1) * tileSpan
+      // 距网格集顶部的行号 = (GRIDSET_MAX_Y - (yb+1)*tileSpan) / tileSpan
+      const TILEROW = Math.round((GRIDSET_MAX_Y - (yb + 1) * tileSpan) / tileSpan);
+      return { TILECOL, TILEROW };
+    }
+
+    /**
+     * 工厂函数：创建 WMTS 瓦片图层
+     * @param {string} layerName - GeoServer 图层名
+     */
+    function createWmtsLayer(layerName, zIndex = 1) {
+      const layer = new BMap.TileLayer({ isTransparentPng: true, zIndex });
+
+      layer.getTilesUrl = function (tileCoord, zoom) {
+        const { TILECOL, TILEROW } = baiduTileToWmts(tileCoord.x, tileCoord.y, zoom);
+        const params = new URLSearchParams({
+          SERVICE: "WMTS",
+          REQUEST: "GetTile",
+          VERSION: "1.0.0",
+          LAYER: layerName,
+          STYLE: "",
+          FORMAT: "image/png",
+          TILEMATRIXSET,
+          TILEMATRIX: `EPSG:99001:${zoom}`,
+          TILEROW,
+          TILECOL,
+        });
+        return `${WMTS_URL}?${params}`;
+      };
+
+      return layer;
+    }
+
+    // ---- 地图初始化 ----
+    const map = new BMap.Map("map");
+    const center = new BMap.Point(103.05, 30.02);
+    map.centerAndZoom(center, 16);
+    map.enableScrollWheelZoom(true);
+
+    map.setMapStyleV2({
+      styleJson: [
+        { "featureType": "districtlabel", "elementType": "all", "stylers": { "visibility": "off" } }
+      ]
+    });
+
+    // ---- 添加 WMTS 图层 ----
+    map.addTileLayer(createWmtsLayer("hydro:sc_river_bd09mc", 2));
+    map.addTileLayer(createWmtsLayer("imagery:ya_yuchenqu_dom_l17_bd09mc", 1))
+
+
+
+    const levelText = document.getElementById("levelText");
+    const scaleText = document.getElementById("scaleText");
+
+    function formatScale(scaleDenominator) {
+      const rounded = Math.round(scaleDenominator);
+      return `1:${rounded.toLocaleString("zh-CN")}`;
+    }
+
+    function updateMapInfo() {
+      const zoom = map.getZoom();
+      const centerPoint = map.getCenter();
+
+      const px1 = new BMap.Pixel(0, 0);
+      const px2 = new BMap.Pixel(100, 0);
+      const p1 = map.pixelToPoint(px1);
+      const p2 = map.pixelToPoint(px2);
+
+      let scaleTextValue = "--";
+      if (p1 && p2) {
+        const distanceMeters = map.getDistance(p1, p2);
+        const metersPerPixel = distanceMeters / 100;
+        const dpi = 96;
+        const scaleDenominator = metersPerPixel * (dpi / 0.0254);
+        if (Number.isFinite(scaleDenominator) && scaleDenominator > 0) {
+          scaleTextValue = formatScale(scaleDenominator);
+        }
+      }
+
+      levelText.textContent = `level: ${zoom}`;
+      scaleText.textContent = `比例尺: ${scaleTextValue}`;
+    }
+
+    map.addEventListener("zoomend", updateMapInfo);
+    map.addEventListener("moveend", updateMapInfo);
+    map.addEventListener("tilesloaded", updateMapInfo);
+    updateMapInfo();
+
+    console.log(map);
 
   </script>
 </body>

@@ -93,6 +93,11 @@ const router = createRouter({
           path: 'topic-map',
           name: 'BaiduTopicMap',
           component: () => import('./views/Baidu/CoordCal.vue')
+        },
+        {
+          path: 'tile-slice',
+          name: 'BaiduTileSlice',
+          component: () => import('./views/Baidu/TileSlice.vue')
         }
       ]
     },
