@@ -96,18 +96,18 @@
           <div class="menu-group" :class="{ expanded: isBaiduMenuExpanded }">
             <div class="menu-item parent" @click="toggleBaiduMenu" :class="{ active: route.path.startsWith('/baidu') }">
               <IconRiver />
-              <span class="menu-text">百度地图</span>
+              <span class="menu-text">百度地图V3</span>
               <IconArrow class="arrow-icon" :class="{ rotated: isBaiduMenuExpanded }" width="16" height="16" />
             </div>
             <transition name="menu-slide">
               <div v-show="isBaiduMenuExpanded" class="sub-menu">
                 <router-link to="/baidu/topic-map" class="menu-item sub" active-class="active">
                   <div class="sub-dot"></div>
-                  <span class="menu-text">百度坐标转换计算差异</span>
+                  <span class="menu-text">百度矢量投影</span>
                 </router-link>
                 <router-link to="/baidu/tile-slice" class="menu-item sub" active-class="active">
                   <div class="sub-dot"></div>
-                  <span class="menu-text">百度坐标系切片</span>
+                  <span class="menu-text">百度栅格投影</span>
                 </router-link>
               </div>
             </transition>
