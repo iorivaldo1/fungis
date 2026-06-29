@@ -5,7 +5,7 @@
  */
 
 // Token 缓存键名
-const TOKEN_KEY = 'hhgl_token'
+const TOKEN_KEY = 'fungis_user'
 // Token 有效期：1 小时 (毫秒)
 const TOKEN_EXPIRE_TIME = 60 * 60 * 1000
 
@@ -21,7 +21,7 @@ export const setToken = (token) => {
 export const getToken = () => {
   const tokenStr = sessionStorage.getItem(TOKEN_KEY)
   if (!tokenStr) return null
-  
+
   try {
     const data = JSON.parse(tokenStr)
     // 检查是否超过 1 小时

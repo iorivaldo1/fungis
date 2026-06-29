@@ -102,6 +102,15 @@ const cards = shallowRef([
     bg: "url('/images/wmts_river.webp') center/cover no-repeat",
   },
   {
+    title: "河流路径计算",
+    path: "/tianditu/river-route-calc",
+    icon: IconRiver,
+    tags: ["天地图", "路径计算", "动态效果", "后端分析"],
+    bg: "url('/images/wmts_river.webp') center/cover no-repeat",
+    featured: true,
+    badge: "NEW",
+  },
+  {
     title: "瓦片下载",
     path: "/tianditu/download",
     icon: IconPhoto,

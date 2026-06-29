@@ -117,6 +117,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
 import * as THREE from 'three'
+import { api } from '@/utils/request.js'
 
 import { clearOverLays, lngLatToTile, c_dom_img_cia_lv, setDEMUrl, setSourceBounds, getBbox, cal_riv_intersects } from './utills_tianditu.js'
 import { c_mesh_dem, c_polyline_riv_animate, createScene, c_bridge, deleteGroup, calFontSizeByGeoBBox } from './utils_three.js'
@@ -850,8 +851,7 @@ onMounted(async () => {
 
         try {
             const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || ''
-            const response = await fetch(`${apiBaseUrl}/get_geo_pg/geo/ya_rivers_bbox?minLng=${minLng}&minLat=${minLat}&maxLng=${maxLng}&maxLat=${maxLat}`)
-            const result = await response.json()
+            const result = await api.get(`${apiBaseUrl}/get_geo_pg/geo/ya_rivers_bbox?minLng=${minLng}&minLat=${minLat}&maxLng=${maxLng}&maxLat=${maxLat}`)
             if (result.code === 200 && result.data) {
                 result.data.forEach(riv => {
                     if (!riv.geometry) return;
@@ -889,8 +889,8 @@ onMounted(async () => {
 
 
     // 加载桥梁
-    fetch(`${import.meta.env.VITE_API_BASE_URL}/get_geo_pg/geo/ya_bridges`)
-        .then(res => res.json())
+    const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || ''
+    api.get(`${apiBaseUrl}/get_geo_pg/geo/ya_bridges`)
         .then(result => {
             if (result.code === 200 && result.data) {
                 result.data.forEach(b => {

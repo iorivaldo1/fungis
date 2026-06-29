@@ -76,6 +76,7 @@
 
 <script setup>
 import { onMounted, onUnmounted, ref } from 'vue'
+import { api } from '@/utils/request.js'
 
 let map = null
 let recTool = null
@@ -144,8 +145,7 @@ const initMap = async () => {
 
     try {
       const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || ''
-      const response = await fetch(`${apiBaseUrl}/get_geo_pg/geo/ya_rivers_bbox?minLng=${minLng}&minLat=${minLat}&maxLng=${maxLng}&maxLat=${maxLat}`)
-      const result = await response.json()
+      const result = await api.get(`${apiBaseUrl}/get_geo_pg/geo/ya_rivers_bbox?minLng=${minLng}&minLat=${minLat}&maxLng=${maxLng}&maxLat=${maxLat}`)
       const rivers = result.data || []
 
       rivers.forEach(riv => {

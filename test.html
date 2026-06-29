@@ -1,159 +1,595 @@
-<!doctype html>
-<html lang="zh-CN">
+<!DOCTYPE html>
+<html lang="en">
 
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <script src="/Public/js/jquery-3.7.1.min.js"></script>
-  <script src="/Public/js/baiduUtills.js"></script>
-  <title>百度地图初始页面</title>
-  <style>
-    html,
-    body,
-    #map {
-      position: relative;
-      width: 100%;
-      height: 100%;
-      margin: 0;
-      padding: 0;
-    }
+    <title>TianDiTu</title>
+    <script src="/Public/js/tianditu.api.js"></script>
+    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
 
-    #mapInfo {
-      position: fixed;
-      top: 10px;
-      left: 10px;
-      padding: 8px 10px;
-      background-color: rgba(0, 0, 0, 0.6);
-      color: white;
-      border-radius: 5px;
-      z-index: 9999;
-      font-size: 14px;
-      line-height: 1.5;
-    }
-  </style>
+        #mapDiv {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+
+        #func1 {
+            position: absolute;
+            bottom: 50px;
+            left: 20px;
+            z-index: 450;
+        }
+
+        #river_route {
+            position: absolute;
+            bottom: 50px;
+            left: 110px;
+            z-index: 450;
+        }
+
+        #route_info_panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 500;
+            width: 360px;
+            max-height: 420px;
+            overflow-y: auto;
+            display: none;
+            background: rgba(255, 255, 255, 0.9);
+            border: 1px solid #2f80ed;
+            border-radius: 6px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+            font-size: 13px;
+            color: #222;
+        }
+
+        #route_info_panel .panel-title {
+            text-align: center;
+            padding: 8px 10px;
+            font-weight: bold;
+            background: rgba(47, 128, 237, 0.12);
+            border-bottom: 1px solid rgba(47, 128, 237, 0.35);
+        }
+
+        #route_info_body {
+            padding: 8px 10px;
+        }
+
+        .route-info-row {
+            display: grid;
+            grid-template-columns: 42px 1fr 54px;
+            gap: 8px;
+            align-items: center;
+            padding: 6px 0;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+        }
+
+        .route-info-row:last-child {
+            border-bottom: none;
+        }
+
+        .route-info-code {
+            font-weight: bold;
+            color: #0052ff;
+            text-align: center;
+            border-radius: 4px;
+            padding: 2px 6px;
+        }
+
+        .route-info-desc {
+            word-break: keep-all;
+            line-height: 1.4;
+        }
+
+        .route-locate-btn {
+            cursor: pointer;
+            border: 1px solid #2f80ed;
+            border-radius: 4px;
+            background: #2f80ed;
+            color: white;
+            padding: 3px 6px;
+            font-size: 12px;
+        }
+    </style>
 </head>
 
 <body>
-  <div id="map"></div>
-  <div id="mapInfo">
-    <div id="levelText">level: --</div>
-    <div id="scaleText">比例尺: --</div>
-  </div>
+    <div id="mapDiv">
+        <button id="func1">隐藏图层</button>
+        <button id="river_route">获取河流路线</button>
+        <div id="route_info_panel">
+            <div class="panel-title">河流路径节点</div>
+            <div id="route_info_body"></div>
+        </div>
+    </div>
 
-  <script src="https://api.map.baidu.com/api?v=3.0&ak=MUBHlQKKLvig0Ia3QEAOzio46qq6foiT"></script>
-  <script>
-    // ==== 配置常量 ====
-    const WMTS_URL = "http://127.0.0.1:8080/geoserver/gwc/service/wmts";
-    const TILEMATRIXSET = "BD09MC";
+    <script type="module">
+        var map = new T.Map("mapDiv")
+        var zoom = 15;
+        map.centerAndZoom(new T.LngLat(103.01, 29.99), zoom);
 
-    // GridSet 边界（必须与 GeoServer 中 BD09MC 网格集严格一致）
-    // 推荐使用对齐到 2^N 的边界，保证百度切片与网格集瓦片完美对齐
-    const GRIDSET_MIN_X = -33554432;  // -2^25
-    const GRIDSET_MIN_Y = -16777216;  // -2^24
-    const GRIDSET_MAX_X = 33554432;  //  2^25
-    const GRIDSET_MAX_Y = 16777216;  //  2^24
-
-    /**
-     * 百度切片坐标 (xb, yb, zb) -> WMTS TILECOL / TILEROW
-     * 百度: y 轴向北递增；WMTS: TILEROW 从北向南递增
-     */
-    function baiduTileToWmts(xb, yb, zb) {
-      // 用 Math.pow 而非 1<<(18-zb)，避免 zb>18 时 32 位整数溢出
-      const tileSpan = 256 * Math.pow(2, 18 - zb); // 单个瓦片在 BD-09MC 中跨度（米）
-      // 百度瓦片左边界 BD-09MC X = xb * tileSpan
-      // 网格集列号 = (xb*tileSpan - GRIDSET_MIN_X) / tileSpan
-      const TILECOL = Math.round((xb * tileSpan - GRIDSET_MIN_X) / tileSpan);
-      // 百度瓦片顶边界 BD-09MC Y = (yb+1) * tileSpan
-      // 距网格集顶部的行号 = (GRIDSET_MAX_Y - (yb+1)*tileSpan) / tileSpan
-      const TILEROW = Math.round((GRIDSET_MAX_Y - (yb + 1) * tileSpan) / tileSpan);
-      return { TILECOL, TILEROW };
-    }
-
-    /**
-     * 工厂函数：创建 WMTS 瓦片图层
-     * @param {string} layerName - GeoServer 图层名
-     */
-    function createWmtsLayer(layerName, zIndex = 1) {
-      const layer = new BMap.TileLayer({ isTransparentPng: true, zIndex });
-
-      layer.getTilesUrl = function (tileCoord, zoom) {
-        const { TILECOL, TILEROW } = baiduTileToWmts(tileCoord.x, tileCoord.y, zoom);
-        const params = new URLSearchParams({
-          SERVICE: "WMTS",
-          REQUEST: "GetTile",
-          VERSION: "1.0.0",
-          LAYER: layerName,
-          STYLE: "",
-          FORMAT: "image/png",
-          TILEMATRIXSET,
-          TILEMATRIX: `EPSG:99001:${zoom}`,
-          TILEROW,
-          TILECOL,
-        });
-        return `${WMTS_URL}?${params}`;
-      };
-
-      return layer;
-    }
-
-    // ---- 地图初始化 ----
-    const map = new BMap.Map("map");
-    const center = new BMap.Point(103.05, 30.02);
-    map.centerAndZoom(center, 16);
-    map.enableScrollWheelZoom(true);
-
-    map.setMapStyleV2({
-      styleJson: [
-        { "featureType": "districtlabel", "elementType": "all", "stylers": { "visibility": "off" } }
-      ]
-    });
-
-    // ---- 添加 WMTS 图层 ----
-    map.addTileLayer(createWmtsLayer("hydro:sc_river_bd09mc", 2));
-    map.addTileLayer(createWmtsLayer("imagery:ya_yuchenqu_dom_l17_bd09mc", 1))
+        const baseUrl = 'http://localhost:8080/geoserver/gwc/service/wmts?';
 
 
+        var imageURL =
+            baseUrl +
+            'Request=GetTile' +
+            '&Service=WMTS' +
+            '&Version=1.0.0' +
+            '&LAYER=hydro%3Aya_river' +
+            '&STYLE=' +
+            '&Format=image%2Fpng' +
+            '&TILEMATRIXSET=EPSG%3A900913' +
+            '&TILEMATRIX=EPSG%3A900913%3A{z}' +
+            '&TILEROW={y}' +
+            '&TILECOL={x}'
 
-    const levelText = document.getElementById("levelText");
-    const scaleText = document.getElementById("scaleText");
+        // 通过 WMS GetCapabilities 公开接口获取图层范围（无需认证，不暴露密码）
+        const capsUrl =
+            'http://localhost:8080/geoserver/hydro/wms' +
+            '?service=WMS&version=1.1.1&request=GetCapabilities';
 
-    function formatScale(scaleDenominator) {
-      const rounded = Math.round(scaleDenominator);
-      return `1:${rounded.toLocaleString("zh-CN")}`;
-    }
+        let wmtsLayer = null;
 
-    function updateMapInfo() {
-      const zoom = map.getZoom();
-      const centerPoint = map.getCenter();
-
-      const px1 = new BMap.Pixel(0, 0);
-      const px2 = new BMap.Pixel(100, 0);
-      const p1 = map.pixelToPoint(px1);
-      const p2 = map.pixelToPoint(px2);
-
-      let scaleTextValue = "--";
-      if (p1 && p2) {
-        const distanceMeters = map.getDistance(p1, p2);
-        const metersPerPixel = distanceMeters / 100;
-        const dpi = 96;
-        const scaleDenominator = metersPerPixel * (dpi / 0.0254);
-        if (Number.isFinite(scaleDenominator) && scaleDenominator > 0) {
-          scaleTextValue = formatScale(scaleDenominator);
+        function addLayer(bounds) {
+            var lay = new T.TileLayer(imageURL, {
+                minZoom: 1,
+                maxZoom: 18,
+                bounds: bounds
+            });
+            lay.setZIndex(1000);
+            map.addLayer(lay);
+            wmtsLayer = lay;
         }
-      }
 
-      levelText.textContent = `level: ${zoom}`;
-      scaleText.textContent = `比例尺: ${scaleTextValue}`;
-    }
+        fetch(capsUrl)
+            .then(res => {
+                if (!res.ok) throw new Error('GetCapabilities 请求失败: ' + res.status);
+                return res.text();
+            })
+            .then(xmlText => {
+                const xml = new DOMParser().parseFromString(xmlText, 'text/xml');
 
-    map.addEventListener("zoomend", updateMapInfo);
-    map.addEventListener("moveend", updateMapInfo);
-    map.addEventListener("tilesloaded", updateMapInfo);
-    updateMapInfo();
+                // 遍历所有 <Layer> 找到目标图层
+                const layers = xml.querySelectorAll('Layer > Name');
+                let bbox = null;
+                layers.forEach(nameEl => {
+                    if (nameEl.textContent.trim() === 'ya_river') {
+                        const layerEl = nameEl.parentElement;
+                        const bb = layerEl.querySelector('LatLonBoundingBox');
+                        if (bb) {
+                            bbox = {
+                                minx: parseFloat(bb.getAttribute('minx')),
+                                miny: parseFloat(bb.getAttribute('miny')),
+                                maxx: parseFloat(bb.getAttribute('maxx')),
+                                maxy: parseFloat(bb.getAttribute('maxy'))
+                            };
+                        }
+                    }
+                });
 
-    console.log(map);
+                if (!bbox) throw new Error('未在 Capabilities 中找到图层 ya_river 的范围');
 
-  </script>
+                const f_bounds = new T.LngLatBounds(
+                    new T.LngLat(bbox.minx, bbox.miny),
+                    new T.LngLat(bbox.maxx, bbox.maxy)
+                );
+                console.log('图层范围（来自 WMS Capabilities）:', f_bounds);
+                addLayer(f_bounds);
+            })
+            .catch(err => {
+                console.error('GetCapabilities 解析失败，使用四川兜底范围:', err);
+                // 降级：使用四川大致范围硬编码
+                const fallbackBounds = new T.LngLatBounds(
+                    new T.LngLat(97.35, 26.05),
+                    new T.LngLat(108.55, 34.33)
+                );
+                addLayer(fallbackBounds);
+            });
+
+
+        $('#func1').click(func1)
+
+        let isWmtsVisible = true;
+        function func1(e) {
+            e.stopPropagation();
+            if (wmtsLayer) {
+                if (isWmtsVisible) {
+                    map.removeLayer(wmtsLayer);
+                    isWmtsVisible = false;
+                    $('#func1').text("显示图层");
+                } else {
+                    map.addLayer(wmtsLayer);
+                    isWmtsVisible = true;
+                    $('#func1').text("隐藏图层");
+                }
+            } else {
+                alert("图层尚未加载完毕");
+            }
+        }
+
+        let routeOverlays = [];
+        let routeInfoPoints = {};
+        let isRouting = false;
+        let animFrameId = null;
+        let animZoomHandler = null;
+
+        $('#river_route').click(function (e) {
+            e.stopPropagation();
+            if (!isRouting) {
+                isRouting = true;
+                $('#river_route').text("取消路线查询");
+                map.addEventListener("click", getRoute);
+            } else {
+                isRouting = false;
+                $('#river_route').text("获取河流路线");
+                map.removeEventListener("click", getRoute);
+                clearRouteOverlays();
+            }
+        });
+
+        function clearRouteOverlays() {
+            if (animFrameId) {
+                cancelAnimationFrame(animFrameId);
+                animFrameId = null;
+            }
+            if (animZoomHandler) {
+                map.removeEventListener("zoomend", animZoomHandler);
+                animZoomHandler = null;
+            }
+            routeOverlays.forEach(ov => map.removeOverLay(ov));
+            routeOverlays = [];
+            routeInfoPoints = {};
+            $('#route_info_body').empty();
+            $('#route_info_panel').hide();
+        }
+
+        /** 为 T.Label 设置样式（通过 DOM，兼容天地图 API） */
+        function styleLabel(label, bgColor, borderColor, textColor, extraStyles = {}) {
+            map.addOverLay(label);
+            // 尝试多种方式获取 Label 的 DOM 节点
+            let el = typeof label.getElement === 'function' ? label.getElement() : null;
+            if (!el && label.Ow) el = label.Ow;
+            if (!el && label._label) el = label._label;
+            if (!el) {
+                // 最后兜底：从地图容器里找最新添加的 label 节点
+                const pane = document.querySelector('.tdt-label-pane') || document.querySelector('.tdt-overlay-pane');
+                if (pane) el = pane.lastElementChild;
+            }
+            if (el) {
+                el.style.backgroundColor = bgColor;
+                el.style.borderColor = borderColor;
+                el.style.color = textColor;
+                el.style.padding = '4px 8px';
+                el.style.borderRadius = '4px';
+                el.style.fontSize = '12px';
+                el.style.whiteSpace = 'normal';
+                el.style.border = '1px solid ' + borderColor;
+                el.style.maxWidth = '256px';
+                el.style.wordBreak = 'keep-all';
+                Object.keys(extraStyles).forEach(key => {
+                    el.style[key] = extraStyles[key];
+                });
+            }
+        }
+
+        function addRouteCodeLabel(code, coord, bgColor, borderColor, textColor) {
+            let codeLabel = new T.Label({
+                text: code,
+                offset: new T.Point(5, 0),
+                position: new T.LngLat(coord[0], coord[1])
+            });
+            styleLabel(codeLabel, bgColor, borderColor, textColor, {
+                padding: '2px 6px',
+                fontWeight: 'bold',
+                fontSize: '12px',
+                maxWidth: 'none'
+            });
+            routeOverlays.push(codeLabel);
+        }
+
+        function renderRouteInfoPanel(items) {
+            let html = items.map(item => `
+                <div class="route-info-row">
+                    <div class="route-info-code" style="background:${item.bgColor};border:1px solid ${item.borderColor};color:${item.textColor};">${item.code}</div>
+                    <div class="route-info-desc">${item.desc}</div>
+                    <button class="route-locate-btn" data-code="${item.code}">定位</button>
+                </div>
+            `).join('');
+            $('#route_info_body').html(html);
+            $('#route_info_panel').show();
+        }
+
+        $('#route_info_panel').on('click', function (e) {
+            e.stopPropagation();
+        });
+
+        $('#route_info_panel').on('click', '.route-locate-btn', function (e) {
+            e.stopPropagation();
+            let code = $(this).data('code');
+            let point = routeInfoPoints[code];
+            if (!point) return;
+            map.centerAndZoom(new T.LngLat(point.lng, point.lat), 18);
+        });
+
+        /** 计算两组坐标的总长度（度数，用于百分比） */
+        function calcLineLength(coords) {
+            let len = 0;
+            for (let i = 1; i < coords.length; i++) {
+                const dx = coords[i][0] - coords[i - 1][0];
+                const dy = coords[i][1] - coords[i - 1][1];
+                len += Math.sqrt(dx * dx + dy * dy);
+            }
+            return len;
+        }
+
+        function fitRouteToViewport(routeCoords) {
+            if (!routeCoords || routeCoords.length === 0) return;
+
+            let minLng = routeCoords[0][0];
+            let maxLng = routeCoords[0][0];
+            let minLat = routeCoords[0][1];
+            let maxLat = routeCoords[0][1];
+
+            routeCoords.forEach(coord => {
+                minLng = Math.min(minLng, coord[0]);
+                maxLng = Math.max(maxLng, coord[0]);
+                minLat = Math.min(minLat, coord[1]);
+                maxLat = Math.max(maxLat, coord[1]);
+            });
+
+            let lngPadding = Math.max((maxLng - minLng) * 0.1, 0.001);
+            let latPadding = Math.max((maxLat - minLat) * 0.1, 0.001);
+            let bounds = new T.LngLatBounds(
+                new T.LngLat(minLng - lngPadding, minLat - latPadding),
+                new T.LngLat(maxLng + lngPadding, maxLat + latPadding)
+            );
+            map.setViewport([bounds.getSouthWest(), bounds.getNorthEast()]);
+        }
+
+        function getRoute(e) {
+            let lng = e.lnglat.getLng();
+            let lat = e.lnglat.getLat();
+
+            fetch(`http://localhost:8085/get_geo_pg/geo/ya_river_route?lng=${lng}&lat=${lat}`)
+                .then(res => res.json())
+                .then(result => {
+                    if (result.code === 200 && result.data) {
+                        clearRouteOverlays();
+
+                        // ---- 解析每条河流的线段与名称 ----
+                        let rivers = []; // { name, flowRiv, curLen, lines: [ [ [lng,lat], ... ], ... ] }
+
+                        result.data.forEach((item, idx) => {
+                            let name = item.name || ('河段' + (idx + 1));
+                            let flowRiv = item.flowRiv || '';   // 该河汇入的目标河流名
+                            let curLen = item.curLen || '';     // 河流原始长度
+                            let lines = [];
+                            if (item.geometry) {
+                                let geo = JSON.parse(item.geometry);
+                                if (geo.type === 'MultiLineString') {
+                                    lines = geo.coordinates;
+                                } else if (geo.type === 'LineString') {
+                                    lines = [geo.coordinates];
+                                }
+                            }
+                            rivers.push({ name, flowRiv, curLen, lines });
+                        });
+
+                        // ---- 绘制折线 & 计算总路径长度 ----
+                        let allLines = [];
+                        let totalLength = 0;
+
+                        rivers.forEach(river => {
+                            river.lines.forEach(line => {
+                                let points = line.map(coord => new T.LngLat(coord[0], coord[1]));
+                                let polyline = new T.Polyline(points, {
+                                    color: "red",
+                                    weight: 5,
+                                    opacity: 1.0,
+                                });
+                                map.addOverLay(polyline);
+                                routeOverlays.push(polyline);
+                                allLines.push(line);
+                                totalLength += calcLineLength(line);
+                            });
+                        });
+
+                        if (allLines.length === 0 || totalLength === 0) return;
+
+                        let cumLength = 0;
+                        let routeInfoItems = [];
+                        let routeCodeIndex = 1;
+                        let routePointCircles = [];
+
+                        // ---- 1. 起点编号 ----
+                        let startCoord = allLines[0][0];
+                        routePointCircles.push({
+                            coord: startCoord,
+                            color: '#28a745',
+                            fillColor: '#d4edda'
+                        });
+                        let startCode = 'R' + routeCodeIndex++;
+                        routeInfoPoints[startCode] = { lng: startCoord[0], lat: startCoord[1] };
+                        addRouteCodeLabel(startCode, startCoord, '#d4edda', '#28a745', '#155724');
+                        routeInfoItems.push({
+                            code: startCode,
+                            desc: `📍起点 ${rivers[0].name}`,
+                            bgColor: '#d4edda',
+                            borderColor: '#28a745',
+                            textColor: '#155724'
+                        });
+
+                        // ---- 2. 汇合点编号 ----
+                        for (let i = 1; i < rivers.length; i++) {
+                            let prevRiver = rivers[i - 1];
+                            let curRiver = rivers[i];
+
+                            let prevLastLine = prevRiver.lines[prevRiver.lines.length - 1];
+                            cumLength += calcLineLength(prevLastLine);
+
+                            let juncCoord = prevLastLine[prevLastLine.length - 1];
+                            routePointCircles.push({
+                                coord: juncCoord,
+                                color: '#ffc107',
+                                fillColor: '#fff3cd'
+                            });
+                            let pct = (cumLength / totalLength * 100).toFixed(1);
+                            let juncCode = 'R' + routeCodeIndex++;
+                            routeInfoPoints[juncCode] = { lng: juncCoord[0], lat: juncCoord[1] };
+                            addRouteCodeLabel(juncCode, juncCoord, '#fff3cd', '#ffc107', '#856404');
+                            routeInfoItems.push({
+                                code: juncCode,
+                                desc: `🔀${pct}% ${prevRiver.name}汇入${curRiver.name}`,
+                                bgColor: '#fff3cd',
+                                borderColor: '#ffc107',
+                                textColor: '#856404'
+                            });
+                        }
+
+                        // ---- 3. 终点编号 ----
+                        let lastLine = allLines[allLines.length - 1];
+                        let endCoord = lastLine[lastLine.length - 1];
+                        routePointCircles.push({
+                            coord: endCoord,
+                            color: '#dc3545',
+                            fillColor: '#f8d7da'
+                        });
+                        let lastRiver = rivers[rivers.length - 1];
+                        let endFlowInfo = lastRiver.flowRiv ? ` →${lastRiver.flowRiv}` : '';
+                        let endCode = 'R' + routeCodeIndex++;
+                        routeInfoPoints[endCode] = { lng: endCoord[0], lat: endCoord[1] };
+                        addRouteCodeLabel(endCode, endCoord, '#f8d7da', '#dc3545', '#721c24');
+                        routeInfoItems.push({
+                            code: endCode,
+                            desc: `🏁终点 ${lastRiver.name}${endFlowInfo}`,
+                            bgColor: '#f8d7da',
+                            borderColor: '#dc3545',
+                            textColor: '#721c24'
+                        });
+
+                        renderRouteInfoPanel(routeInfoItems);
+
+                        // ---- 4. 动画圆点：沿路径从起点移动到终点 ----
+                        let routeCoords = [];
+                        allLines.forEach(line => {
+                            line.forEach(coord => routeCoords.push(coord));
+                        });
+                        fitRouteToViewport(routeCoords);
+
+                        if (routeCoords.length >= 2) {
+                            let segDists = [0];
+                            for (let i = 1; i < routeCoords.length; i++) {
+                                const dx = routeCoords[i][0] - routeCoords[i - 1][0];
+                                const dy = routeCoords[i][1] - routeCoords[i - 1][1];
+                                segDists.push(segDists[i - 1] + Math.sqrt(dx * dx + dy * dy));
+                            }
+
+                            let totalDist = segDists[segDists.length - 1];
+
+                            // 预计算 zoom 3~18 下 10px 直径圆对应的米制半径
+                            let dotPixelDiameter = 10;
+                            let dotPixelRadius = dotPixelDiameter / 2;
+                            let routeLat = routeCoords[0][1];
+                            let metersPerPixelAtEquator = 156543.03392804097;
+                            let animDotRadiusByZoom = {};
+                            for (let z = 3; z <= 18; z++) {
+                                let metersPerPixel = metersPerPixelAtEquator * Math.cos(routeLat * Math.PI / 180) / Math.pow(2, z);
+                                animDotRadiusByZoom[z] = dotPixelRadius * metersPerPixel;
+                            }
+                            let initZoom = Math.round(map.getZoom());
+                            initZoom = Math.max(3, Math.min(18, initZoom));
+                            let routeStaticCircles = [];
+                            routePointCircles.forEach(item => {
+                                let circle = new T.Circle(
+                                    new T.LngLat(item.coord[0], item.coord[1]),
+                                    animDotRadiusByZoom[initZoom],
+                                    {
+                                        color: item.color,
+                                        weight: 1,
+                                        opacity: 1,
+                                        fillColor: item.fillColor,
+                                        fillOpacity: 1
+                                    }
+                                );
+                                map.addOverLay(circle);
+                                routeOverlays.push(circle);
+                                routeStaticCircles.push(circle);
+                            });
+
+                            let animDot = new T.Circle(
+                                new T.LngLat(routeCoords[0][0], routeCoords[0][1]),
+                                animDotRadiusByZoom[initZoom],
+                                {
+                                    color: '#0052ff',
+                                    weight: 1,
+                                    opacity: 1,
+                                    fillColor: '#00aaff',
+                                    fillOpacity: 1
+                                }
+                            );
+                            map.addOverLay(animDot);
+                            routeOverlays.push(animDot);
+
+                            function updateAnimDotRadius() {
+                                let zoom = Math.round(map.getZoom());
+                                zoom = Math.max(3, Math.min(18, zoom));
+                                let radius = animDotRadiusByZoom[zoom];
+                                animDot.setRadius(radius);
+                                routeStaticCircles.forEach(circle => circle.setRadius(radius));
+                            }
+                            animZoomHandler = updateAnimDotRadius;
+                            map.addEventListener("zoomend", animZoomHandler);
+
+                            let duration = 16000;
+                            let startTime = null;
+
+                            function animateRouteDot(timestamp) {
+                                if (!startTime) startTime = timestamp;
+                                let progress = ((timestamp - startTime) % duration) / duration;
+                                let targetDist = progress * totalDist;
+
+                                let lo = 0;
+                                let hi = segDists.length - 1;
+                                while (lo < hi - 1) {
+                                    let mid = (lo + hi) >> 1;
+                                    if (segDists[mid] <= targetDist) {
+                                        lo = mid;
+                                    } else {
+                                        hi = mid;
+                                    }
+                                }
+
+                                let segLen = segDists[hi] - segDists[lo];
+                                let t = segLen > 0 ? (targetDist - segDists[lo]) / segLen : 0;
+                                let lng = routeCoords[lo][0] + t * (routeCoords[hi][0] - routeCoords[lo][0]);
+                                let lat = routeCoords[lo][1] + t * (routeCoords[hi][1] - routeCoords[lo][1]);
+
+                                animDot.setCenter(new T.LngLat(lng, lat));
+                                animFrameId = requestAnimationFrame(animateRouteDot);
+                            }
+
+                            animFrameId = requestAnimationFrame(animateRouteDot);
+                        }
+
+                    } else {
+                        alert("获取路径失败或没有下游路径");
+                    }
+                })
+                .catch(err => console.error(err));
+        }
+
+
+    </script>
 </body>
 
 </html>

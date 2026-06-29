@@ -56,7 +56,7 @@ const handleLogin = async () => {
   errorMessage.value = ''
 
   try {
-    const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/get_geo_pg/user/login`, {
+    const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || ''}/get_geo_pg/user/login`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'

@@ -98,7 +98,7 @@
 <script setup>
 import { onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { removeToken } from '@/utils/request.js'
+import { removeToken, api } from '@/utils/request.js'
 
 const router = useRouter()
 let mapInstance = null
@@ -140,15 +140,9 @@ const handleSubmitUpload = async () => {
   console.log('即将上传到 MySQL 的数据:', payload)
 
   try {
-    const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/get_geo_pg/api/dmaa/upload`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(payload)
-    });
-
-    const resData = await response.json();
+    const payloadUrl = `${import.meta.env.VITE_API_BASE_URL || ''}/get_geo_pg/api/dmaa/upload`;
+    const resData = await api.post(payloadUrl, payload);
+    
     if (resData.code === 200) {
       alert('上传成功！');
       // 成功后关闭弹窗并重置表单
@@ -376,14 +370,13 @@ const fetchAndRenderDmaa = async () => {
   const manageScope = localStorage.getItem('manageScope')
 
   // if not admin and no manageScope, maybe don't fetch or fetch empty
-  let url = `${import.meta.env.VITE_API_BASE_URL}/get_geo_pg/api/dmaa/listByScope?manageScope=${manageScope || ''}`
+  let url = `${import.meta.env.VITE_API_BASE_URL || ''}/get_geo_pg/api/dmaa/listByScope?manageScope=${manageScope || ''}`
   if (authority === 'admin') {
-    url = `${import.meta.env.VITE_API_BASE_URL}/get_geo_pg/api/dmaa/listAll`
+    url = `${import.meta.env.VITE_API_BASE_URL || ''}/get_geo_pg/api/dmaa/listAll`
   }
 
   try {
-    const response = await fetch(url)
-    const resData = await response.json()
+    const resData = await api.get(url)
     if (resData.code === 200 && resData.data) {
       console.log(resData.data)
       renderPolygons(resData.data)
@@ -395,8 +388,7 @@ const fetchAndRenderDmaa = async () => {
 
 const fetchDictData = async () => {
   try {
-    const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/get_geo_pg/api/dmaaDict/listAll`);
-    const resData = await res.json();
+    const resData = await api.get(`${import.meta.env.VITE_API_BASE_URL || ''}/get_geo_pg/api/dmaaDict/listAll`);
     if (resData.code === 200 && resData.data) {
       if (resData.data.company) dictData.value.company = resData.data.company;
       if (resData.data.duty) dictData.value.duty = resData.data.duty;

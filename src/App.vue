@@ -84,6 +84,10 @@
                   <div class="sub-dot"></div>
                   <span class="menu-text">数据库河流</span>
                 </router-link>
+                <router-link to="/tianditu/river-route-calc" class="menu-item sub" active-class="active">
+                  <div class="sub-dot"></div>
+                  <span class="menu-text">河流路径计算</span>
+                </router-link>
                 <router-link to="/tianditu/download" class="menu-item sub" active-class="active">
                   <div class="sub-dot"></div>
                   <span class="menu-text">下载WMTS影像</span>
@@ -164,7 +168,7 @@
     <!-- 右侧主体 -->
     <main class="main-content">
       <!-- 视图区域 -->
-      <div class="router-view-container">
+      <div class="router-view-container" v-if="isReady">
         <router-view />
       </div>
     </main>
@@ -172,8 +176,9 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
+import { setToken } from '@/utils/request.js'
 import IconLogo from './components/icons/IconLogo.vue'
 import IconChevronLeft from './components/icons/IconChevronLeft.vue'
 import IconHome from './components/icons/IconHome.vue'
@@ -184,7 +189,6 @@ import IconThree from './components/icons/IconThree.vue'
 import IconWrench from './components/icons/IconWrench.vue'
 import IconGear from './components/icons/IconGear.vue'
 
-
 const route = useRoute()
 const isHhglPage = computed(() => route.path.startsWith('/hhgl'))
 const isSidebarCollapsed = ref(false)
@@ -192,6 +196,31 @@ const isCesiumMenuExpanded = ref(route.path.startsWith('/cesium'))
 const isRiverMenuExpanded = ref(route.path.startsWith('/river'))
 const isBaiduMenuExpanded = ref(route.path.startsWith('/baidu'))
 const isThreeMenuExpanded = ref(route.path === '/three' || route.path.startsWith('/three/'))
+const isReady = ref(false)
+
+onMounted(async () => {
+  try {
+    const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || ''}/get_geo_pg/fungis_user/login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        username: 'fch',
+        password: 'testpw'
+      })
+    })
+    const data = await response.json()
+    if (response.ok && data.data && data.data.token) {
+      setToken(data.data.token)
+      console.log('自动获取 fungis_user token 成功')
+    }
+  } catch (error) {
+    console.error('Auto login failed:', error)
+  } finally {
+    isReady.value = true
+  }
+})
 
 const toggleSidebar = () => {
   isSidebarCollapsed.value = !isSidebarCollapsed.value
@@ -232,6 +261,7 @@ const currentRouteName = computed(() => {
     'RiverWMTS': 'WMTS河流',
     'DownloadWMTS': '下载WMTS影像',
     'DatabaseRiver': '数据库河流',
+    'RiverRouteCalc': '河流路径计算',
     'Baidu': '百度地图',
     'BaiduTopicMap': '百度坐标转换',
     'BaiduTileSlice': '百度坐标系切片',

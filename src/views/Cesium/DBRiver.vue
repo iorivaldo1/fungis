@@ -55,6 +55,7 @@ import { onMounted, onUnmounted, ref } from 'vue';
 import * as Cesium from 'cesium';
 import 'cesium/Build/Cesium/Widgets/widgets.css';
 import IconChevronDown from '../../components/icons/IconChevronDown.vue';
+import { api } from '@/utils/request.js';
 
 
 const showPageInfo = ref(true);
@@ -290,8 +291,7 @@ onMounted(async () => {
 
         try {
             const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || ''
-            const response = await fetch(`${apiBaseUrl}/get_geo_pg/geo/ya_rivers_bbox?minLng=${minLng}&minLat=${minLat}&maxLng=${maxLng}&maxLat=${maxLat}`)
-            const result = await response.json()
+            const result = await api.get(`${apiBaseUrl}/get_geo_pg/geo/ya_rivers_bbox?minLng=${minLng}&minLat=${minLat}&maxLng=${maxLng}&maxLat=${maxLat}`)
             if (fetchId !== currentFetchId) return;
 
             const rivers = result.data || []

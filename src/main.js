@@ -80,6 +80,11 @@ const router = createRouter({
           path: 'database',
           name: 'DatabaseRiver',
           component: () => import('./views/TianDiTu/DatabaseRiver.vue')
+        },
+        {
+          path: 'river-route-calc',
+          name: 'RiverRouteCalc',
+          component: () => import('./views/TianDiTu/RiverRouteCalc.vue')
         }
       ]
     },
