@@ -65,21 +65,6 @@ function baiduTileToWmts (xb, yb, zb) {
  */
 function createWmtsLayer (layerName, zIndex = 1) {
   const layer = new BMap.TileLayer({ isTransparentPng: true, zIndex })
-  // 重写 initialize，捕获 BMap 内部创建的瓦片容器 DOM 元素
-  const origInitialize = layer.initialize.bind(layer)
-  layer.initialize = function (bmap) {
-    const mapEl = bmap.getContainer()
-    const before = new Set(mapEl.querySelectorAll('div *'))
-    const result = origInitialize(bmap)
-    const after = mapEl.querySelectorAll('div *')
-    for (const el of after) {
-      if (!before.has(el)) {
-        layer._tileContainer = el
-        break
-      }
-    }
-    return result
-  }
   layer.getTilesUrl = function (tileCoord, zoom) {
     const { TILECOL, TILEROW } = baiduTileToWmts(tileCoord.x, tileCoord.y, zoom)
     const params = new URLSearchParams({
@@ -97,6 +82,23 @@ function createWmtsLayer (layerName, zIndex = 1) {
     return `${WMTS_URL}?${params}`
   }
   return layer
+}
+
+/**
+ * 在 addTileLayer 前后对比 DOM，捕获新创建的瓦片容器元素
+ */
+function addTileLayerAndCapture (layer) {
+  if (!map) return
+  const mapEl = map.getContainer()
+  const before = new Set(mapEl.querySelectorAll('*'))
+  map.addTileLayer(layer)
+  const after = mapEl.querySelectorAll('*')
+  for (const el of after) {
+    if (!before.has(el) && el.tagName === 'DIV') {
+      layer._tileContainer = el
+      break
+    }
+  }
 }
 
 // 图层配置
@@ -126,7 +128,11 @@ function toggleLayer (idx) {
     if (!layerCfg.instance) {
       layerCfg.instance = createWmtsLayer(layerCfg.layerName, layerCfg.zIndex)
     }
-    map.addTileLayer(layerCfg.instance)
+    addTileLayerAndCapture(layerCfg.instance)
+    // 重新应用当前透明度
+    if (layerCfg.instance._tileContainer) {
+      layerCfg.instance._tileContainer.style.opacity = layerCfg.opacity
+    }
   } else {
     if (layerCfg.instance) {
       map.removeTileLayer(layerCfg.instance)
@@ -219,10 +225,10 @@ onMounted(async () => {
       ]
     })
 
-    // 添加 WMTS 图层
+    // 添加 WMTS 图层（逐个添加并捕获容器 DOM）
     wmtsLayers.forEach(layerCfg => {
       layerCfg.instance = createWmtsLayer(layerCfg.layerName, layerCfg.zIndex)
-      map.addTileLayer(layerCfg.instance)
+      addTileLayerAndCapture(layerCfg.instance)
     })
 
     map.addEventListener('zoomend', updateMapInfo)
