@@ -56,8 +56,9 @@ function baiduTileToWmts(xb, yb, zb) {
 /**
  * 工厂函数：创建 WMTS 瓦片图层
  */
-function createWmtsLayer(layerName, zIndex = 1) {
-  const layer = new BMap.TileLayer({ isTransparentPng: true, zIndex })
+function createWmtsLayer(layerName, zIndex = 1, format = 'image/png') {
+  // 注意：如果是 jpeg 不支持透明，且 baidu map 的 isTransparentPng 可能有影响，但这里保留
+  const layer = new BMap.TileLayer({ isTransparentPng: format === 'image/png', zIndex })
   layer.getTilesUrl = function (tileCoord, zoom) {
     const { TILECOL, TILEROW } = baiduTileToWmts(tileCoord.x, tileCoord.y, zoom)
     const params = new URLSearchParams({
@@ -66,7 +67,7 @@ function createWmtsLayer(layerName, zIndex = 1) {
       VERSION: '1.0.0',
       LAYER: layerName,
       STYLE: '',
-      FORMAT: 'image/png',
+      FORMAT: format,
       TILEMATRIXSET,
       TILEMATRIX: `EPSG:99001:${zoom}`,
       TILEROW,
@@ -99,6 +100,7 @@ const wmtsLayers = reactive([
   {
     name: '河流 (hydro:ya_river_bd09mc)',
     layerName: 'hydro:ya_river_bd09mc',
+    format: 'image/png',
     zIndex: 2,
     visible: true,
     opacity: 1,
@@ -107,6 +109,7 @@ const wmtsLayers = reactive([
   {
     name: '影像 (ya_yuchenqu_dom_l17)',
     layerName: 'imagery:ya_yuchenqu_dom_l17_bd09mc',
+    format: 'image/jpeg',
     zIndex: 1,
     visible: true,
     opacity: 1,
@@ -119,7 +122,7 @@ function toggleLayer(idx) {
   if (!map) return
   if (layerCfg.visible) {
     if (!layerCfg.instance) {
-      layerCfg.instance = createWmtsLayer(layerCfg.layerName, layerCfg.zIndex)
+      layerCfg.instance = createWmtsLayer(layerCfg.layerName, layerCfg.zIndex, layerCfg.format || 'image/png')
     }
     addTileLayerAndCapture(layerCfg.instance)
     // 重新应用当前透明度
@@ -220,7 +223,7 @@ onMounted(async () => {
 
     // 添加 WMTS 图层（逐个添加并捕获容器 DOM）
     wmtsLayers.forEach(layerCfg => {
-      layerCfg.instance = createWmtsLayer(layerCfg.layerName, layerCfg.zIndex)
+      layerCfg.instance = createWmtsLayer(layerCfg.layerName, layerCfg.zIndex, layerCfg.format || 'image/png')
       addTileLayerAndCapture(layerCfg.instance)
     })
 
