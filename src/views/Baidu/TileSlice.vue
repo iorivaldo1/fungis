@@ -109,7 +109,7 @@ const wmtsLayers = reactive([
   {
     name: '影像 (ya_yuchenqu_dom_l17)',
     layerName: 'imagery:ya_yuchenqu_dom_l17_bd09mc',
-    format: 'image/jpeg',
+    format: 'image/png', // JPEG不支持透明，会导致边缘无数据区域变成白色背景，因此改回 PNG
     zIndex: 1,
     visible: true,
     opacity: 1,
