@@ -51,6 +51,15 @@ const cards = shallowRef([
     badge: "✦ 推荐",
   },
   {
+    title: "河流拟真",
+    path: "/three/river",
+    icon: IconRiver,
+    tags: ["GLSL", "河流", "拟真"],
+    bg: "url('/images/river_simulation.webp') center/cover no-repeat",
+    featured: true,
+    badge: "NEW",
+  },
+  {
     title: "百度矢量转换",
     path: "/baidu/topic-map",
     icon: IconRiver,

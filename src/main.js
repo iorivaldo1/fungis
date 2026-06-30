@@ -121,6 +121,11 @@ const router = createRouter({
           path: 'fluid',
           name: 'FluidSimulation',
           component: () => import('./views/ThreeJS/FluidSimulation.vue')
+        },
+        {
+          path: 'river',
+          name: 'RiverSimulation',
+          component: () => import('./views/ThreeJS/RiverSimulation.vue')
         }
       ]
     },

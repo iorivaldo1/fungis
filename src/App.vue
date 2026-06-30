@@ -57,11 +57,15 @@
               <div v-show="isThreeMenuExpanded" class="sub-menu">
                 <router-link to="/three/particle1" class="menu-item sub" active-class="active">
                   <div class="sub-dot"></div>
-                  <span class="menu-text">粒子模拟AA</span>
+                  <span class="menu-text">粒子模拟</span>
                 </router-link>
                 <router-link to="/three/fluid" class="menu-item sub" active-class="active">
                   <div class="sub-dot"></div>
                   <span class="menu-text">流体模拟</span>
+                </router-link>
+                <router-link to="/three/river" class="menu-item sub" active-class="active">
+                  <div class="sub-dot"></div>
+                  <span class="menu-text">河流模拟</span>
                 </router-link>
               </div>
             </transition>
@@ -266,8 +270,9 @@ const currentRouteName = computed(() => {
     'BaiduTopicMap': '百度坐标转换',
     'BaiduTileSlice': '百度坐标系切片',
     'Three': 'Three.js',
-    'ParticleSim1': '粒子模拟AA',
+    'ParticleSim1': '粒子模拟',
     'FluidSimulation': '流体模拟',
+    'RiverSimulation': '河流模拟',
     'ThreeTianDitu': 'Three+TianDitu',
     'LiveSlicedTerrain': '现切地形',
     'ServerAdminLogin': '服务器监控登录',

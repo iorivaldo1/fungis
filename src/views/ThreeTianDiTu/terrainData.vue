@@ -121,7 +121,7 @@ import { api } from '@/utils/request.js'
 
 import { clearOverLays, lngLatToTile, c_dom_img_cia_lv, setDEMUrl, setSourceBounds, getBbox, cal_riv_intersects } from './utills_tianditu.js'
 import { c_mesh_dem, c_polyline_riv_animate, createScene, c_bridge, deleteGroup, calFontSizeByGeoBBox } from './utils_three.js'
-import { dash_line_flow_vs2, dash_line_flow_fs2, ring_wave_vs2, ring_wave_fs2 } from '../../utils/riverShaders.js'
+import { dash_line_flow_vs2, dash_line_flow_fs2, ring_wave_vs2, ring_wave_fs2 } from '../../utils/three_scene_shaders.js'
 
 const riverShaderVS1 = `
             attribute float lineProgress;
@@ -858,7 +858,7 @@ onMounted(async () => {
                     const geom = JSON.parse(riv.geometry)
                     const coord_json = geom.coordinates
                     const riv_name = riv.name
-                    
+
                     let lines = [];
                     if (geom.type === 'MultiLineString') {
                         lines = coord_json;
