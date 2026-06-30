@@ -27,8 +27,8 @@ import { loadBaiduMapScript } from '@/utils/baiduUtils'
 
 const BAIDU_AK = 'MUBHlQKKLvig0Ia3QEAOzio46qq6foiT'
 
-// ---- WMTS 配置（与 GeoServer 中 BD09MC 网格集严格一致） ----
-const WMTS_URL = 'http://127.0.0.1:8080/geoserver/gwc/service/wmts'
+const API_BASE = import.meta.env.VITE_API_BASE_URL || ''
+const WMTS_URL = `${API_BASE}/geoserver/gwc/service/wmts`
 const TILEMATRIXSET = 'BD09MC'
 const GRIDSET_MIN_X = -33554432 // -2^25
 const GRIDSET_MIN_Y = -16777216 // -2^24
