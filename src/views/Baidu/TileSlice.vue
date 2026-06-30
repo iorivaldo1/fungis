@@ -109,7 +109,8 @@ const wmtsLayers = reactive([
   {
     name: '影像 (ya_yuchenqu_dom_l17)',
     layerName: 'imagery:ya_yuchenqu_dom_l17_bd09mc',
-    format: 'image/jpeg', // JPEG不支持透明，会导致边缘无数据区域变成白色背景，因此改回 PNG
+    // format: 'image/jpeg', // jpeg体积小，但是有白边，13.2kb
+    format: 'image/png', //png有alpha通道，可以透明处理，避免底图露出，但体积大
     zIndex: 1,
     visible: true,
     opacity: 1,
