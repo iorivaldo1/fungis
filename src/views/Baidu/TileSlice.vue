@@ -111,7 +111,7 @@ const wmtsLayers = reactive([
     layerName: 'imagery:ya_yuchenqu_dom_l17_bd09mc',
     // format: 'image/jpeg', // jpeg体积小，但是有白边，13.2kb
     // format: 'image/png', //png有alpha通道，可以透明处理，避免底图露出，但体积大 200kb
-    format: 'image/png8', //通过算法强制缩减到只有 256 种颜色的调色板,同时保留了 1 位的全透明色
+    format: 'image/png8', //通过算法强制缩减到只有 256 种颜色的调色板,同时保留了 1 位的全透明色 49.9kb
     zIndex: 1,
     visible: true,
     opacity: 1,

@@ -325,7 +325,7 @@ onMounted(async () => {
                     text: rivName,
                     font: "16px sans-serif",
                     showBackground: true,
-                    backgroundColor: new Cesium.Color.fromBytes(0, 70, 24),
+                    backgroundColor: Cesium.Color.fromBytes(0, 70, 24),
                     heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
                     disableDepthTestDistance: Number.POSITIVE_INFINITY, // Ensure visibility
                     distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 500000), // Increase distance
