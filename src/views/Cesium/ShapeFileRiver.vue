@@ -134,7 +134,7 @@ const setRiverWidth = (level) => {
 };
 
 const setRiverBillboardImgUrl = (level) => {
-    return "/Public/icon1.svg"; // Returning a default icon found in public folder
+    return "/icon1.svg"; // Returning a default icon found in public folder
 };
 
 const regClickPrimitive = (viewer) => {
