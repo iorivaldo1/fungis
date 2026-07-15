@@ -46,6 +46,29 @@
         </transition>
       </div>
 
+      <div class="layer-control" :class="{ collapsed: isLayerCollapsed }">
+        <div class="info-title" @click="toggleLayerCollapse">
+          <span>图层控制</span>
+          <IconChevronDown class="collapse-icon" :class="{ rotated: isLayerCollapsed }" width="20" height="20" />
+        </div>
+        <transition name="slide-fade">
+          <div v-show="!isLayerCollapsed" class="info-content layer-content">
+            <div class="layer-item">
+              <label class="layer-label">
+                <input type="checkbox" v-model="showYaRiver" @change="toggleYaRiver">
+                雅安河流
+              </label>
+            </div>
+            <div class="layer-item">
+              <label class="layer-label">
+                <input type="checkbox" v-model="showScPeak" @change="toggleScPeak">
+                四川山峰
+              </label>
+            </div>
+          </div>
+        </transition>
+      </div>
+
       <!-- 页面说明 -->
       <div class="page-info" :class="{ 'info-collapsed': !showPageInfo }">
         <div class="info-container" v-if="showPageInfo">
@@ -100,9 +123,14 @@ const clickInfo = ref({
 const isCollapsed = ref(true)
 
 const isClickCollapsed = ref(true)
+const isLayerCollapsed = ref(false)
+const showYaRiver = ref(false)
+const showScPeak = ref(false)
 const showPageInfo = ref(true)
 
 let viewer = null
+let yaRiverLayer = null
+let scPeakLayer = null
 let photosData = {}
 let currentPhotoId = null
 let handler = null
@@ -117,6 +145,60 @@ const toggleCollapse = () => {
 
 const toggleClickCollapse = () => {
   isClickCollapsed.value = !isClickCollapsed.value
+}
+
+const toggleLayerCollapse = () => {
+  isLayerCollapsed.value = !isLayerCollapsed.value
+}
+
+const toggleYaRiver = () => {
+  if (showYaRiver.value) {
+    if (!yaRiverLayer) {
+      const wmtsProvider = new Cesium.WebMapTileServiceImageryProvider({
+        url: `${import.meta.env.VITE_API_BASE_URL}/geoserver/gwc/service/wmts`,
+        layer: "hydro:ya_river",
+        style: "",
+        format: "image/png",
+        tileMatrixSetID: "EPSG:900913",
+        tileMatrixLabels: ["EPSG:900913:0", "EPSG:900913:1", "EPSG:900913:2", "EPSG:900913:3", "EPSG:900913:4", "EPSG:900913:5", "EPSG:900913:6",
+            "EPSG:900913:7", "EPSG:900913:8", "EPSG:900913:9", "EPSG:900913:10", "EPSG:900913:11", "EPSG:900913:12", "EPSG:900913:13", "EPSG:900913:14",
+            "EPSG:900913:15", "EPSG:900913:16", "EPSG:900913:17"],
+        maximumLevel: 18,
+      });
+      yaRiverLayer = viewer.imageryLayers.addImageryProvider(wmtsProvider);
+    } else {
+      yaRiverLayer.show = true;
+    }
+  } else {
+    if (yaRiverLayer) {
+      yaRiverLayer.show = false;
+    }
+  }
+}
+
+const toggleScPeak = () => {
+  if (showScPeak.value) {
+    if (!scPeakLayer) {
+      const wmtsProvider = new Cesium.WebMapTileServiceImageryProvider({
+        url: `${import.meta.env.VITE_API_BASE_URL}/geoserver/gwc/service/wmts`,
+        layer: "basemap:sc_peak",
+        style: "",
+        format: "image/png",
+        tileMatrixSetID: "EPSG:900913",
+        tileMatrixLabels: ["EPSG:900913:0", "EPSG:900913:1", "EPSG:900913:2", "EPSG:900913:3", "EPSG:900913:4", "EPSG:900913:5", "EPSG:900913:6",
+            "EPSG:900913:7", "EPSG:900913:8", "EPSG:900913:9", "EPSG:900913:10", "EPSG:900913:11", "EPSG:900913:12", "EPSG:900913:13", "EPSG:900913:14",
+            "EPSG:900913:15", "EPSG:900913:16", "EPSG:900913:17"],
+        maximumLevel: 18,
+      });
+      scPeakLayer = viewer.imageryLayers.addImageryProvider(wmtsProvider);
+    } else {
+      scPeakLayer.show = true;
+    }
+  } else {
+    if (scPeakLayer) {
+      scPeakLayer.show = false;
+    }
+  }
 }
 
 const triggerFileInput = () => {
@@ -628,8 +710,28 @@ onUnmounted(() => {
   transition: all 0.3s ease;
 }
 
+.layer-control {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  top: 10px;
+  left: 450px;
+  z-index: 450;
+  background: linear-gradient(135deg, rgba(20, 20, 20, 0.95) 0%, rgba(50, 50, 50, 0.92) 100%);
+  padding: 0;
+  border-radius: 12px;
+  backdrop-filter: blur(15px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+  min-width: 200px;
+  transition: all 0.3s ease;
+}
+
 .camera-info.collapsed,
-.click-info.collapsed {
+.click-info.collapsed,
+.layer-control.collapsed {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
 }
 
@@ -681,6 +783,36 @@ onUnmounted(() => {
 
 .info-item:hover {
   background-color: rgba(255, 255, 255, 0.08);
+}
+
+.layer-content {
+  padding: 10px 0;
+}
+
+.layer-item {
+  padding: 8px 16px;
+  transition: background-color 0.2s ease;
+}
+
+.layer-item:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+.layer-label {
+  color: rgba(255, 255, 255, 0.95);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.layer-label input[type="checkbox"] {
+  cursor: pointer;
+  width: 16px;
+  height: 16px;
+  accent-color: #3085d6;
 }
 
 /* 过渡动画 */
