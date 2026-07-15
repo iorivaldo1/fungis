@@ -123,7 +123,7 @@ const clickInfo = ref({
 const isCollapsed = ref(true)
 
 const isClickCollapsed = ref(true)
-const isLayerCollapsed = ref(false)
+const isLayerCollapsed = ref(true)
 const showYaRiver = ref(false)
 const showScPeak = ref(false)
 const showPageInfo = ref(true)
@@ -154,6 +154,11 @@ const toggleLayerCollapse = () => {
 const toggleYaRiver = () => {
   if (showYaRiver.value) {
     if (!yaRiverLayer) {
+      const west = Cesium.Math.toRadians(101.9642680901);
+      const south = Cesium.Math.toRadians(28.862478591599995);
+      const east = Cesium.Math.toRadians(103.4113808093);
+      const north = Cesium.Math.toRadians(30.922261509850014);
+
       const wmtsProvider = new Cesium.WebMapTileServiceImageryProvider({
         url: `${import.meta.env.VITE_API_BASE_URL}/geoserver/gwc/service/wmts`,
         layer: "hydro:ya_river",
@@ -161,8 +166,9 @@ const toggleYaRiver = () => {
         format: "image/png",
         tileMatrixSetID: "EPSG:900913",
         tileMatrixLabels: ["EPSG:900913:0", "EPSG:900913:1", "EPSG:900913:2", "EPSG:900913:3", "EPSG:900913:4", "EPSG:900913:5", "EPSG:900913:6",
-            "EPSG:900913:7", "EPSG:900913:8", "EPSG:900913:9", "EPSG:900913:10", "EPSG:900913:11", "EPSG:900913:12", "EPSG:900913:13", "EPSG:900913:14",
-            "EPSG:900913:15", "EPSG:900913:16", "EPSG:900913:17"],
+          "EPSG:900913:7", "EPSG:900913:8", "EPSG:900913:9", "EPSG:900913:10", "EPSG:900913:11", "EPSG:900913:12", "EPSG:900913:13", "EPSG:900913:14",
+          "EPSG:900913:15", "EPSG:900913:16", "EPSG:900913:17"],
+        rectangle: new Cesium.Rectangle(west, south, east, north),
         maximumLevel: 18,
       });
       yaRiverLayer = viewer.imageryLayers.addImageryProvider(wmtsProvider);
@@ -179,6 +185,11 @@ const toggleYaRiver = () => {
 const toggleScPeak = () => {
   if (showScPeak.value) {
     if (!scPeakLayer) {
+      const west = Cesium.Math.toRadians(97.7523584);
+      const south = Cesium.Math.toRadians(26.404817);
+      const east = Cesium.Math.toRadians(108.1851447);
+      const north = Cesium.Math.toRadians(34.0369559);
+
       const wmtsProvider = new Cesium.WebMapTileServiceImageryProvider({
         url: `${import.meta.env.VITE_API_BASE_URL}/geoserver/gwc/service/wmts`,
         layer: "basemap:sc_peak",
@@ -186,8 +197,9 @@ const toggleScPeak = () => {
         format: "image/png",
         tileMatrixSetID: "EPSG:900913",
         tileMatrixLabels: ["EPSG:900913:0", "EPSG:900913:1", "EPSG:900913:2", "EPSG:900913:3", "EPSG:900913:4", "EPSG:900913:5", "EPSG:900913:6",
-            "EPSG:900913:7", "EPSG:900913:8", "EPSG:900913:9", "EPSG:900913:10", "EPSG:900913:11", "EPSG:900913:12", "EPSG:900913:13", "EPSG:900913:14",
-            "EPSG:900913:15", "EPSG:900913:16", "EPSG:900913:17"],
+          "EPSG:900913:7", "EPSG:900913:8", "EPSG:900913:9", "EPSG:900913:10", "EPSG:900913:11", "EPSG:900913:12", "EPSG:900913:13", "EPSG:900913:14",
+          "EPSG:900913:15", "EPSG:900913:16", "EPSG:900913:17"],
+        rectangle: new Cesium.Rectangle(west, south, east, north),
         maximumLevel: 18,
       });
       scPeakLayer = viewer.imageryLayers.addImageryProvider(wmtsProvider);
@@ -222,6 +234,16 @@ const initCesium = () => {
     timeline: false,
     fullscreenButton: false,
     skyAtmosphere: false,
+  })
+
+  // 设置初始视角
+  viewer.camera.setView({
+    destination: Cesium.Cartesian3.fromDegrees(112.99, 29.81, 10124311.76),
+    orientation: {
+      heading: Cesium.Math.toRadians(360.00),
+      pitch: Cesium.Math.toRadians(-89.90),
+      roll: 0.0
+    }
   })
 
   // 更新相机信息的函数
