@@ -69,6 +69,65 @@
         </transition>
       </div>
 
+      <div class="locate-control" :class="{ collapsed: isLocateCollapsed }">
+        <div class="info-title" @click="toggleLocateCollapse">
+          <span>坐标定位</span>
+          <IconChevronDown class="collapse-icon" :class="{ rotated: isLocateCollapsed }" width="20" height="20" />
+        </div>
+        <transition name="slide-fade">
+          <div v-show="!isLocateCollapsed" class="info-content locate-content">
+            <div class="locate-item">
+              <label>坐标系:</label>
+              <select v-model="locateForm.type" class="locate-select">
+                <option value="WGS84">WGS84 (经纬度)</option>
+                <option value="CGCS2000">CGCS2000 投影</option>
+              </select>
+            </div>
+            <div class="locate-item" v-if="locateForm.type === 'WGS84'">
+              <label>格 式:</label>
+              <select v-model="locateForm.format" class="locate-select">
+                <option value="degree">度 (DD)</option>
+                <option value="dms">度分秒 (DMS)</option>
+              </select>
+            </div>
+            <div class="locate-item" v-if="locateForm.type === 'CGCS2000'">
+              <label>分带号:</label>
+              <select v-model="locateForm.zone" class="locate-select">
+                <option v-for="z in 21" :key="z+24" :value="z+24">{{ z+24 }}带 (中央经线{{ (z+24)*3 }}°)</option>
+              </select>
+            </div>
+            <div class="locate-item" v-if="locateForm.type !== 'WGS84' || locateForm.format === 'degree'">
+              <label>{{ locateForm.type === 'CGCS2000' ? 'X:' : '经度:' }}</label>
+              <input type="number" v-model="locateForm.x" class="locate-input" :placeholder="locateForm.type === 'CGCS2000' ? '输入X坐标' : '输入经度'">
+            </div>
+            <div class="locate-item" v-if="locateForm.type !== 'WGS84' || locateForm.format === 'degree'">
+              <label>{{ locateForm.type === 'CGCS2000' ? 'Y:' : '纬度:' }}</label>
+              <input type="number" v-model="locateForm.y" class="locate-input" :placeholder="locateForm.type === 'CGCS2000' ? '输入Y坐标' : '输入纬度'">
+            </div>
+            <div class="locate-item dms-item" v-if="locateForm.type === 'WGS84' && locateForm.format === 'dms'">
+              <label>经度:</label>
+              <div class="dms-inputs">
+                <input type="number" v-model="locateForm.dms.x_deg" class="dms-input" placeholder="度">°
+                <input type="number" v-model="locateForm.dms.x_min" class="dms-input" placeholder="分">'
+                <input type="number" v-model="locateForm.dms.x_sec" class="dms-input" placeholder="秒" step="0.01">"
+              </div>
+            </div>
+            <div class="locate-item dms-item" v-if="locateForm.type === 'WGS84' && locateForm.format === 'dms'">
+              <label>纬度:</label>
+              <div class="dms-inputs">
+                <input type="number" v-model="locateForm.dms.y_deg" class="dms-input" placeholder="度">°
+                <input type="number" v-model="locateForm.dms.y_min" class="dms-input" placeholder="分">'
+                <input type="number" v-model="locateForm.dms.y_sec" class="dms-input" placeholder="秒" step="0.01">"
+              </div>
+            </div>
+            <div class="locate-actions">
+              <button class="locate-btn" @click="flyToInputPoint">定位</button>
+              <button class="locate-btn clear-btn" @click="clearInputPoints">清除</button>
+            </div>
+          </div>
+        </transition>
+      </div>
+
       <!-- 页面说明 -->
       <div class="page-info" :class="{ 'info-collapsed': !showPageInfo }">
         <div class="info-container" v-if="showPageInfo">
@@ -93,6 +152,7 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import * as Cesium from 'cesium'
+import proj4 from 'proj4'
 import exifr from 'exifr'
 import 'cesium/Build/Cesium/Widgets/widgets.css'
 import IconChevronDown from '../../components/icons/IconChevronDown.vue'
@@ -124,6 +184,21 @@ const isCollapsed = ref(true)
 
 const isClickCollapsed = ref(true)
 const isLayerCollapsed = ref(true)
+const isLocateCollapsed = ref(true)
+
+const locateForm = ref({
+  type: 'WGS84',
+  format: 'degree',
+  x: '',
+  y: '',
+  zone: 34,
+  dms: {
+    x_deg: '', x_min: '', x_sec: '',
+    y_deg: '', y_min: '', y_sec: ''
+  }
+})
+const inputPointIds = ref([])
+
 const showYaRiver = ref(false)
 const showScPeak = ref(false)
 const showPageInfo = ref(true)
@@ -149,6 +224,139 @@ const toggleClickCollapse = () => {
 
 const toggleLayerCollapse = () => {
   isLayerCollapsed.value = !isLayerCollapsed.value
+}
+
+const toggleLocateCollapse = () => {
+  isLocateCollapsed.value = !isLocateCollapsed.value
+}
+
+const flyToInputPoint = () => {
+  let x, y
+  
+  if (locateForm.value.type === 'WGS84' && locateForm.value.format === 'dms') {
+    const parseDMS = (deg, min, sec) => {
+      const d = parseFloat(deg || 0)
+      const m = Math.abs(parseFloat(min || 0))
+      const s = Math.abs(parseFloat(sec || 0))
+      const sign = d < 0 || Object.is(d, -0) ? -1 : 1
+      return sign * (Math.abs(d) + m/60 + s/3600)
+    }
+    x = parseDMS(locateForm.value.dms.x_deg, locateForm.value.dms.x_min, locateForm.value.dms.x_sec)
+    y = parseDMS(locateForm.value.dms.y_deg, locateForm.value.dms.y_min, locateForm.value.dms.y_sec)
+  } else {
+    x = parseFloat(locateForm.value.x)
+    y = parseFloat(locateForm.value.y)
+  }
+
+  if (isNaN(x) || isNaN(y)) {
+    alert('请输入有效的坐标数值')
+    return
+  }
+
+  let longitude, latitude
+
+  if (locateForm.value.type === 'WGS84') {
+    longitude = x
+    latitude = y
+  } else if (locateForm.value.type === 'CGCS2000') {
+    const zone = locateForm.value.zone
+    const centralMeridian = zone * 3
+    const cgcs2000Str = `+proj=tmerc +lat_0=0 +lon_0=${centralMeridian} +k=1 +x_0=500000 +y_0=0 +ellps=GRS80 +units=m +no_defs`
+    const wgs84Str = `+proj=longlat +datum=WGS84 +no_defs`
+    
+    let actualX = x
+    // 如果输入的 x 包含了带号 (例如 34xxxxxx)，则去除带号
+    if (x > 10000000) {
+      actualX = x % 1000000
+    }
+    
+    try {
+      const [lng, lat] = proj4(cgcs2000Str, wgs84Str, [actualX, y])
+      longitude = lng
+      latitude = lat
+    } catch (e) {
+      alert('坐标转换失败，请检查输入')
+      return
+    }
+  }
+
+  if (longitude < -180 || longitude > 180 || latitude < -90 || latitude > 90) {
+    alert('坐标转换或输入有误，经纬度超出范围')
+    return
+  }
+
+  const positions = [Cesium.Cartographic.fromDegrees(longitude, latitude)]
+  Cesium.sampleTerrainMostDetailed(viewer.terrainProvider, positions)
+    .then(updated => {
+      const h = updated[0].height ?? 0
+      
+      const pointId = `input_point_${Date.now()}`
+
+      viewer.entities.add({
+        id: pointId,
+        position: Cesium.Cartesian3.fromDegrees(longitude, latitude, h),
+        point: {
+          color: Cesium.Color.YELLOW,
+          pixelSize: 12,
+          outlineColor: Cesium.Color.BLACK,
+          outlineWidth: 2,
+          disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        },
+        label: {
+          text: `定位点 (${x.toFixed(2)}, ${y.toFixed(2)})`,
+          font: '14px sans-serif',
+          fillColor: Cesium.Color.WHITE,
+          style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+          outlineWidth: 2,
+          verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+          pixelOffset: new Cesium.Cartesian2(0, -20),
+          disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        }
+      })
+
+      inputPointIds.value.push(pointId)
+
+      viewer.camera.flyTo({
+        destination: Cesium.Cartesian3.fromDegrees(longitude, latitude, h + 5000),
+        duration: 1.5,
+      })
+    })
+    .catch(() => {
+      const pointId = `input_point_${Date.now()}`
+      viewer.entities.add({
+        id: pointId,
+        position: Cesium.Cartesian3.fromDegrees(longitude, latitude),
+        point: {
+          color: Cesium.Color.YELLOW,
+          pixelSize: 12,
+          outlineColor: Cesium.Color.BLACK,
+          outlineWidth: 2,
+          disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        },
+        label: {
+          text: `定位点 (${x.toFixed(2)}, ${y.toFixed(2)})`,
+          font: '14px sans-serif',
+          fillColor: Cesium.Color.WHITE,
+          style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+          outlineWidth: 2,
+          verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+          pixelOffset: new Cesium.Cartesian2(0, -20),
+          disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        }
+      })
+      inputPointIds.value.push(pointId)
+      viewer.camera.flyTo({
+        destination: Cesium.Cartesian3.fromDegrees(longitude, latitude, 5000),
+        duration: 1.5,
+      })
+    })
+}
+
+const clearInputPoints = () => {
+  inputPointIds.value.forEach(id => {
+    viewer.entities.removeById(id)
+  })
+  inputPointIds.value = []
 }
 
 const toggleYaRiver = () => {
@@ -751,9 +959,29 @@ onUnmounted(() => {
   transition: all 0.3s ease;
 }
 
+.locate-control {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  top: 10px;
+  left: 670px;
+  z-index: 450;
+  background: linear-gradient(135deg, rgba(20, 20, 20, 0.95) 0%, rgba(50, 50, 50, 0.92) 100%);
+  padding: 0;
+  border-radius: 12px;
+  backdrop-filter: blur(15px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+  min-width: 240px;
+  transition: all 0.3s ease;
+}
+
 .camera-info.collapsed,
 .click-info.collapsed,
-.layer-control.collapsed {
+.layer-control.collapsed,
+.locate-control.collapsed {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
 }
 
@@ -835,6 +1063,106 @@ onUnmounted(() => {
   width: 16px;
   height: 16px;
   accent-color: #3085d6;
+}
+
+.locate-content {
+  padding: 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.locate-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.locate-item label {
+  color: rgba(255, 255, 255, 0.95);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.locate-select,
+.locate-input {
+  width: 145px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: white;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 13px;
+  outline: none;
+}
+
+.locate-select option {
+  background: #333;
+}
+
+.dms-inputs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  color: white;
+  font-size: 13px;
+}
+
+.dms-input {
+  width: 36px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: white;
+  padding: 4px;
+  border-radius: 4px;
+  font-size: 13px;
+  outline: none;
+  text-align: center;
+}
+
+.dms-input[placeholder="秒"] {
+  width: 48px;
+}
+
+.dms-input::-webkit-outer-spin-button,
+.dms-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.dms-input[type=number] {
+  -moz-appearance: textfield;
+}
+
+.locate-actions {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 5px;
+  gap: 10px;
+}
+
+.locate-btn {
+  flex: 1;
+  background: #3085d6;
+  color: white;
+  border: none;
+  padding: 6px 0;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: background 0.2s;
+}
+
+.locate-btn:hover {
+  background: #256bb1;
+}
+
+.clear-btn {
+  background: #d33;
+}
+
+.clear-btn:hover {
+  background: #b32a2a;
 }
 
 /* 过渡动画 */
