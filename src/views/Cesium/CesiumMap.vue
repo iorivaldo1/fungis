@@ -17,7 +17,8 @@
     </button>
 
     <div id="cesiumContainer">
-      <div class="camera-info" :class="{ collapsed: isCollapsed }">
+      <div class="top-panels-container">
+        <div class="camera-info" :class="{ collapsed: isCollapsed }">
         <div class="info-title" @click="toggleCollapse">
           <span>镜头信息</span>
           <IconChevronDown class="collapse-icon" :class="{ rotated: isCollapsed }" width="20" height="20" />
@@ -144,6 +145,7 @@
             <div v-if="dmalResults.length === 0" class="layer-item" style="color:#aaa;">暂无数据</div>
           </div>
         </transition>
+      </div>
       </div>
 
       <div v-show="dmalToolVisible" class="dmal-tool-popup" :style="{ left: dmalToolPos.x + 'px', top: dmalToolPos.y + 'px' }">
@@ -1024,13 +1026,27 @@ onUnmounted(() => {
   left: 0;
 }
 
-.camera-info {
+.top-panels-container {
   position: absolute;
+  top: 10px;
+  left: 10px;
+  right: 10px;
+  z-index: 450;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 15px;
+  align-items: flex-start;
+  pointer-events: none;
+}
+
+.top-panels-container > * {
+  pointer-events: auto;
+}
+
+.camera-info {
   display: flex;
   flex-direction: column;
   gap: 0;
-  top: 10px;
-  left: 10px;
   z-index: 450;
   background: linear-gradient(135deg, rgba(20, 20, 20, 0.95) 0%, rgba(50, 50, 50, 0.92) 100%);
   padding: 0;
@@ -1044,12 +1060,9 @@ onUnmounted(() => {
 }
 
 .click-info {
-  position: absolute;
   display: flex;
   flex-direction: column;
   gap: 0;
-  top: 10px;
-  left: 230px;
   z-index: 450;
   background: linear-gradient(135deg, rgba(20, 20, 20, 0.95) 0%, rgba(50, 50, 50, 0.92) 100%);
   padding: 0;
@@ -1063,12 +1076,9 @@ onUnmounted(() => {
 }
 
 .layer-control {
-  position: absolute;
   display: flex;
   flex-direction: column;
   gap: 0;
-  top: 10px;
-  left: 450px;
   z-index: 450;
   background: linear-gradient(135deg, rgba(20, 20, 20, 0.95) 0%, rgba(50, 50, 50, 0.92) 100%);
   padding: 0;
@@ -1082,12 +1092,9 @@ onUnmounted(() => {
 }
 
 .locate-control {
-  position: absolute;
   display: flex;
   flex-direction: column;
   gap: 0;
-  top: 10px;
-  left: 670px;
   z-index: 450;
   background: linear-gradient(135deg, rgba(20, 20, 20, 0.95) 0%, rgba(50, 50, 50, 0.92) 100%);
   padding: 0;
@@ -1446,12 +1453,7 @@ onUnmounted(() => {
   color: #333;
 }
 
-.dmal-result-panel {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  left: auto;
-}
+
 
 .dmal-tool-popup {
   position: absolute;
