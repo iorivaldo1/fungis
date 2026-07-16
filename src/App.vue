@@ -122,8 +122,26 @@
           </div>
 
 
+          <!-- 空间算法 多级菜单 -->
+          <div class="menu-group" :class="{ expanded: isAlgorithmMenuExpanded }">
+            <div class="menu-item parent" @click="toggleAlgorithmMenu"
+              :class="{ active: route.path.startsWith('/algorithm') }">
+              <IconWrench />
+              <span class="menu-text">空间算法</span>
+              <IconArrow class="arrow-icon" :class="{ rotated: isAlgorithmMenuExpanded }" width="16" height="16" />
+            </div>
+            <transition name="menu-slide">
+              <div v-show="isAlgorithmMenuExpanded" class="sub-menu">
+                <a href="https://www.fungis.site/algorithm-board/" target="_blank" class="menu-item sub">
+                  <div class="sub-dot"></div>
+                  <span class="menu-text">数据结构</span>
+                </a>
+              </div>
+            </transition>
+          </div>
+
           <!-- Cesium 多级菜单 -->
-          <div class="menu-group" :class="{ expanded: isCesiumMenuExpanded }">
+          <div class="menu-group" :class="{ expanded: isCesiumMenuExpanded }" >
             <div class="menu-item parent" @click="toggleCesiumMenu"
               :class="{ active: route.path.startsWith('/cesium') }">
               <IconCesium />
@@ -200,6 +218,7 @@ const isCesiumMenuExpanded = ref(route.path.startsWith('/cesium'))
 const isRiverMenuExpanded = ref(route.path.startsWith('/river'))
 const isBaiduMenuExpanded = ref(route.path.startsWith('/baidu'))
 const isThreeMenuExpanded = ref(route.path === '/three' || route.path.startsWith('/three/'))
+const isAlgorithmMenuExpanded = ref(route.path.startsWith('/algorithm'))
 const isReady = ref(false)
 
 onMounted(async () => {
@@ -244,6 +263,10 @@ const toggleBaiduMenu = () => {
 
 const toggleThreeMenu = () => {
   isThreeMenuExpanded.value = !isThreeMenuExpanded.value
+}
+
+const toggleAlgorithmMenu = () => {
+  isAlgorithmMenuExpanded.value = !isAlgorithmMenuExpanded.value
 }
 
 // Ensure unique state for each menu
