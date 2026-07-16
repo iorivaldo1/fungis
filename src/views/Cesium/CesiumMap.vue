@@ -128,32 +128,52 @@
         </transition>
       </div>
 
-      <!-- 页面说明 -->
-      <div class="page-info" :class="{ 'info-collapsed': !showPageInfo }">
-        <div class="info-container" v-if="showPageInfo">
-          <div class="info-header">
-            <div class="info-title">📌 页面说明</div>
-            <div class="close-btn" @click="showPageInfo = false" title="收起">×</div>
-          </div>
-          <div class="info-item">1. 点击右下图标打开带有GPS信息的照片，在地图上展示拍摄位置</div>
-          <div class="info-item">2. 支持定位当前位置（GPS或IP定位）</div>
-          <div class="info-item">3. 显示相机参数（Heading, Pitch, Height等）和点击位置经纬度</div>
-          <div class="info-item">4. 点击照片图标可预览照片详情</div>
+      <div class="layer-control dmal-result-panel" v-show="dmalResultVisible" :class="{ collapsed: isDmalResultCollapsed }">
+        <div class="info-title" @click="isDmalResultCollapsed = !isDmalResultCollapsed">
+          <span>查询结果</span>
+          <IconChevronDown class="collapse-icon" :class="{ rotated: isDmalResultCollapsed }" width="20" height="20" />
         </div>
-        <div class="info-collapsed-icon" v-else @click="showPageInfo = true" title="展开说明">
-          <span>📌</span>
+        <transition name="slide-fade">
+          <div v-show="!isDmalResultCollapsed" class="info-content layer-content" style="max-height: 400px; overflow-y: auto;">
+            <div v-for="item in dmalResults" :key="item.id" class="layer-item">
+              <label class="layer-label">
+                <input type="checkbox" v-model="item.show" @change="toggleDmalEntity(item)">
+                {{ item.name }}
+              </label>
+            </div>
+            <div v-if="dmalResults.length === 0" class="layer-item" style="color:#aaa;">暂无数据</div>
+          </div>
+        </transition>
+      </div>
+
+      <div v-show="dmalToolVisible" class="dmal-tool-popup" :style="{ left: dmalToolPos.x + 'px', top: dmalToolPos.y + 'px' }">
+        <div class="dmal-tool-header">
+          <span>查询附近管理范围线</span>
+          <div class="close-btn" @click="dmalToolVisible = false">×</div>
+        </div>
+        <div class="dmal-tool-body">
+          <div class="locate-item">
+            <label>范围(km): </label>
+            <input type="number" v-model="dmalQueryDistance" min="1" max="50" class="locate-input" style="width:80px;" />
+          </div>
+          <button class="locate-btn" style="width:100%; margin-top:10px;" @click="queryDmal" :disabled="isDmalLoading">
+            {{ isDmalLoading ? '查询中...' : '查询' }}
+          </button>
         </div>
       </div>
+
+
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import * as Cesium from 'cesium'
 import proj4 from 'proj4'
 import exifr from 'exifr'
+import { api } from '@/utils/request.js'
 import 'cesium/Build/Cesium/Widgets/widgets.css'
 import IconChevronDown from '../../components/icons/IconChevronDown.vue'
 import IconPhoto from '../../components/icons/IconPhoto.vue'
@@ -199,9 +219,17 @@ const locateForm = ref({
 })
 const inputPointIds = ref([])
 
+const dmalToolVisible = ref(false)
+const dmalToolPos = reactive({ x: 0, y: 0 })
+const dmalQueryDistance = ref(5)
+const dmalResultVisible = ref(false)
+const isDmalResultCollapsed = ref(false)
+const dmalResults = ref([])
+let lastInputCartesian = null
+const isDmalLoading = ref(false)
+
 const showYaRiver = ref(false)
 const showScPeak = ref(false)
-const showPageInfo = ref(true)
 
 let viewer = null
 let yaRiverLayer = null
@@ -292,9 +320,11 @@ const flyToInputPoint = () => {
       
       const pointId = `input_point_${Date.now()}`
 
+      lastInputCartesian = Cesium.Cartesian3.fromDegrees(longitude, latitude, h)
+
       viewer.entities.add({
         id: pointId,
-        position: Cesium.Cartesian3.fromDegrees(longitude, latitude, h),
+        position: lastInputCartesian,
         point: {
           color: Cesium.Color.YELLOW,
           pixelSize: 12,
@@ -319,13 +349,18 @@ const flyToInputPoint = () => {
       viewer.camera.flyTo({
         destination: Cesium.Cartesian3.fromDegrees(longitude, latitude, h + 5000),
         duration: 1.5,
+        complete: () => {
+          dmalToolVisible.value = true
+        }
       })
     })
     .catch(() => {
       const pointId = `input_point_${Date.now()}`
+      lastInputCartesian = Cesium.Cartesian3.fromDegrees(longitude, latitude)
+
       viewer.entities.add({
         id: pointId,
-        position: Cesium.Cartesian3.fromDegrees(longitude, latitude),
+        position: lastInputCartesian,
         point: {
           color: Cesium.Color.YELLOW,
           pixelSize: 12,
@@ -348,6 +383,9 @@ const flyToInputPoint = () => {
       viewer.camera.flyTo({
         destination: Cesium.Cartesian3.fromDegrees(longitude, latitude, 5000),
         duration: 1.5,
+        complete: () => {
+          dmalToolVisible.value = true
+        }
       })
     })
 }
@@ -357,6 +395,80 @@ const clearInputPoints = () => {
     viewer.entities.removeById(id)
   })
   inputPointIds.value = []
+
+  dmalToolVisible.value = false
+  dmalResultVisible.value = false
+  dmalResults.value.forEach(item => {
+    if (item.dataSource) {
+      viewer.dataSources.remove(item.dataSource)
+    }
+  })
+  dmalResults.value = []
+  lastInputCartesian = null
+}
+
+const queryDmal = async () => {
+  if (!lastInputCartesian) return
+  
+  const cartographic = Cesium.Cartographic.fromCartesian(lastInputCartesian)
+  const lng = Cesium.Math.toDegrees(cartographic.longitude)
+  const lat = Cesium.Math.toDegrees(cartographic.latitude)
+  const distance = Math.min(Math.max(parseInt(dmalQueryDistance.value) || 5, 1), 50)
+  
+  isDmalLoading.value = true
+  try {
+    const res = await api.get(`/get_geo_pg/DmalController/nearest_dmal?lng=${lng}&lat=${lat}&distance=${distance}`)
+    if (res.code === 200) {
+      dmalResults.value.forEach(item => {
+        if (item.dataSource) viewer.dataSources.remove(item.dataSource)
+      })
+      
+      dmalResults.value = (res.data || []).map(item => ({
+        ...item,
+        show: false,
+        dataSource: null
+      }))
+      dmalResultVisible.value = true
+      isDmalResultCollapsed.value = false
+    } else {
+      alert('查询失败: ' + res.msg)
+    }
+  } catch (err) {
+    alert('查询出错: ' + err.message)
+  } finally {
+    isDmalLoading.value = false
+  }
+}
+
+const toggleDmalEntity = (item) => {
+  if (item.show) {
+    if (!item.geometry) return
+    let geoJson;
+    try {
+      geoJson = JSON.parse(item.geometry)
+    } catch(e) { return }
+    
+    const feature = {
+      type: "Feature",
+      properties: { name: item.name },
+      geometry: geoJson
+    }
+    
+    Cesium.GeoJsonDataSource.load(feature, {
+        stroke: Cesium.Color.CYAN,
+        fill: Cesium.Color.CYAN.withAlpha(0.3),
+        strokeWidth: 4,
+        clampToGround: true
+    }).then(ds => {
+        viewer.dataSources.add(ds)
+        item.dataSource = ds
+    })
+  } else {
+    if (item.dataSource) {
+      viewer.dataSources.remove(item.dataSource)
+      item.dataSource = null
+    }
+  }
 }
 
 const toggleYaRiver = () => {
@@ -475,6 +587,16 @@ const initCesium = () => {
   // 添加天地图
   addTiandituLayer()
   addToomapLayer()
+
+  viewer.scene.preRender.addEventListener(() => {
+    if (dmalToolVisible.value && lastInputCartesian) {
+      const canvasPos = Cesium.SceneTransforms.worldToWindowCoordinates(viewer.scene, lastInputCartesian)
+      if (canvasPos) {
+        dmalToolPos.x = canvasPos.x + 20
+        dmalToolPos.y = canvasPos.y - 20
+      }
+    }
+  })
 
   // 处理点击事件
   handler = new Cesium.ScreenSpaceEventHandler(viewer.canvas)
@@ -1309,58 +1431,7 @@ onUnmounted(() => {
   }
 }
 
-/* 页面说明样式 */
-.page-info {
-  position: absolute;
-  top: 80px;
-  right: 20px;
-  z-index: 450;
-  background: rgba(255, 255, 255, 0.95);
-  border-radius: 12px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-  padding: 15px 20px;
-  min-width: 250px;
-  backdrop-filter: blur(10px);
-  user-select: none;
-  pointer-events: auto;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
 
-.page-info.info-collapsed {
-  width: 40px;
-  height: 40px;
-  padding: 0;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  overflow: hidden;
-  min-width: 0;
-}
-
-.info-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 10px;
-  border-bottom: 2px solid #5ECE90;
-  padding-bottom: 8px;
-}
-
-.page-info .info-title {
-  font-size: 16px;
-  font-weight: 600;
-  color: #333;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  background: none;
-  border-bottom: none;
-  padding: 0;
-  text-shadow: none;
-  margin-bottom: 0;
-}
 
 .close-btn {
   cursor: pointer;
@@ -1375,30 +1446,37 @@ onUnmounted(() => {
   color: #333;
 }
 
-.info-collapsed-icon {
-  width: 100%;
-  height: 100%;
+.dmal-result-panel {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  left: auto;
+}
+
+.dmal-tool-popup {
+  position: absolute;
+  z-index: 500;
+  background: rgba(30, 30, 30, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  padding: 10px;
+  color: white;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+  backdrop-filter: blur(10px);
+}
+
+.dmal-tool-header {
   display: flex;
+  justify-content: space-between;
   align-items: center;
-  justify-content: center;
-  font-size: 20px;
-  cursor: pointer;
+  font-size: 14px;
+  font-weight: bold;
+  margin-bottom: 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding-bottom: 5px;
 }
 
-.info-collapsed-icon:hover {
-  background-color: rgba(0, 0, 0, 0.05);
-}
-
-.page-info .info-item {
+.dmal-tool-body {
   font-size: 13px;
-  color: #555;
-  line-height: 1.8;
-  padding-left: 8px;
-  text-shadow: none;
-  user-select: none;
-}
-
-.page-info .info-item:hover {
-  background-color: transparent;
 }
 </style>
