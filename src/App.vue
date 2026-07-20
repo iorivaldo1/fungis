@@ -132,6 +132,10 @@
             </div>
             <transition name="menu-slide">
               <div v-show="isAlgorithmMenuExpanded" class="sub-menu">
+                <router-link to="/algorithm/quadtree" class="menu-item sub" active-class="active">
+                  <div class="sub-dot"></div>
+                  <span class="menu-text">四叉树查询</span>
+                </router-link>
                 <a href="https://www.fungis.site/algorithm-board/" target="_blank" class="menu-item sub">
                   <div class="sub-dot"></div>
                   <span class="menu-text">数据结构</span>
@@ -299,7 +303,9 @@ const currentRouteName = computed(() => {
     'ThreeTianDitu': 'Three+TianDitu',
     'LiveSlicedTerrain': '现切地形',
     'ServerAdminLogin': '服务器监控登录',
-    'ServerAdminStatus': '服务器监控状态'
+    'ServerAdminStatus': '服务器监控状态',
+    'Algorithm': '空间算法',
+    'QuadTree': '四叉树查询'
   }
   return nameMap[route.name] || route.name || '未知'
 })

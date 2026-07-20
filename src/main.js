@@ -149,6 +149,19 @@ const router = createRouter({
       ]
     },
     {
+      path: '/algorithm',
+      name: 'Algorithm',
+      component: RouterView,
+      redirect: '/algorithm/quadtree',
+      children: [
+        {
+          path: 'quadtree',
+          name: 'QuadTree',
+          component: () => import('./views/Algorithm/QuadTree.vue')
+        }
+      ]
+    },
+    {
       path: '/server-admin/login',
       name: 'ServerAdminLogin',
       component: () => import('./views/ServerAdmin/Login.vue')

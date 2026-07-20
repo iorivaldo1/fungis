@@ -32,7 +32,7 @@ jobs:
         uses: easingthemes/ssh-deploy@main
         env:
           SSH_PRIVATE_KEY: ${{ secrets.SERVER_SSH_KEY }}
-          ARGS: "-avz --delete" # --delete 表示把服务器上多余的旧碎片文件删掉
+          ARGS: "-avz --delete --exclude 'shp/'" # 排除 shp 文件夹，避免部署时被覆盖删除
           SOURCE: "fungis/" # 【注意】如果你打包出来的是 dist 文件夹，这里就写 dist/
           REMOTE_HOST: ${{ secrets.SERVER_HOST }}
           REMOTE_USER: ${{ secrets.SERVER_USER }}

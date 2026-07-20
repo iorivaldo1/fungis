@@ -1,4 +1,4 @@
-# Dependencies
+﻿# Dependencies
 node_modules/
 package-lock.json
 yarn.lock
@@ -8,7 +8,6 @@ pnpm-lock.yaml
 dist/
 dist-ssr/
 *.local
-
 # Editor directories and files
 .vscode/
 .idea/
@@ -18,13 +17,11 @@ dist-ssr/
 *.sln
 *.sw?
 .DS_Store
-
 # Environment files
 .env
 .env.local
 .env.*.local
 nginx.conf
-
 # Logs
 logs/
 *.log
@@ -32,16 +29,13 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
-
 # Cache
 .cache/
 .temp/
 .tmp/
-
 #libs
 Lib/
-
 fungis/
-
 shaderPros/
-
+public/shp/
+QGIS绱㈠紩瑙ｆ瀽_china_river/shp/
