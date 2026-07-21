@@ -77,7 +77,6 @@ let lay = null
 let bboxLayer = null
 
 let qixRoot = null
-let shxDataView = null
 
 let stepCount = 0
 let pMarker = null
@@ -157,25 +156,11 @@ const distToSegment = (px, py, x1, y1, x2, y2) => {
 }
 
 const fetchShapeChunk = async (shapeId) => {
-  if (!shxDataView) return null
-  const shxOffsetByte = 100 + shapeId * 8
-  if (shxOffsetByte >= shxDataView.byteLength) return null
-
-  const shpOffsetWord = shxDataView.getInt32(shxOffsetByte, false)
-  const shpContentLengthWord = shxDataView.getInt32(shxOffsetByte + 4, false)
-
-  const startByte = shpOffsetWord * 2
-  const lengthByte = 8 + shpContentLengthWord * 2
-  const endByte = startByte + lengthByte - 1
-
   try {
-    const response = await fetch("/shp/ya_river.shp", {
-      headers: {
-        'Range': `bytes=${startByte}-${endByte}`
-      }
-    })
-    if (!response.ok && response.status !== 206) {
-      console.warn('Range request failed or not supported:', response.status)
+    const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8085'
+    const response = await fetch(`${baseUrl}/get_geo_pg/shp_record/${shapeId}`)
+    if (!response.ok) {
+      console.warn('Failed to fetch shape chunk from backend:', response.status)
       return null
     }
     const buffer = await response.arrayBuffer()
@@ -405,15 +390,11 @@ const handleStart = () => {
     loading.value = true
     startBtnText.value = "加载大文件中..."
 
-    Promise.all([
-      fetch("/shp/ya_river.qix").then(r => r.arrayBuffer()),
-      fetch("/shp/ya_river.shx").then(r => r.arrayBuffer())
-    ]).then(([qixBuf, shxBuf]) => {
+    fetch("/shp/ya_river.qix").then(r => r.arrayBuffer()).then(qixBuf => {
       if (parseQix) {
         const result = parseQix(new Uint8Array(qixBuf))
         qixRoot = result.root_node
       }
-      shxDataView = new DataView(shxBuf)
 
       startBtnText.value = "开始分析"
       loading.value = false
