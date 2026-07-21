@@ -112,7 +112,7 @@ const initMap = () => {
     'Request=GetTile' +
     '&Service=WMTS' +
     '&Version=1.0.0' +
-    '&LAYER=hydro%3Achina_river_osm' +
+    '&LAYER=hydro%3Aya_river' +
     '&STYLE=' +
     '&Format=image%2Fpng' +
     '&TILEMATRIXSET=EPSG%3A900913' +
@@ -169,7 +169,7 @@ const fetchShapeChunk = async (shapeId) => {
   const endByte = startByte + lengthByte - 1
 
   try {
-    const response = await fetch("/shp/china_river.shp", {
+    const response = await fetch("/shp/ya_river.shp", {
       headers: {
         'Range': `bytes=${startByte}-${endByte}`
       }
@@ -406,8 +406,8 @@ const handleStart = () => {
     startBtnText.value = "加载大文件中..."
 
     Promise.all([
-      fetch("/shp/china_river.qix").then(r => r.arrayBuffer()),
-      fetch("/shp/china_river.shx").then(r => r.arrayBuffer())
+      fetch("/shp/ya_river.qix").then(r => r.arrayBuffer()),
+      fetch("/shp/ya_river.shx").then(r => r.arrayBuffer())
     ]).then(([qixBuf, shxBuf]) => {
       if (parseQix) {
         const result = parseQix(new Uint8Array(qixBuf))
