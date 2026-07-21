@@ -78,7 +78,6 @@ let bboxLayer = null
 
 let qixRoot = null
 let shxDataView = null
-let shpDataView = null
 
 let stepCount = 0
 let pMarker = null
@@ -157,31 +156,58 @@ const distToSegment = (px, py, x1, y1, x2, y2) => {
   return Math.sqrt((px - projX) ** 2 + (py - projY) ** 2)
 }
 
-const getShapeExactDistance = (shapeId, px, py) => {
-  if (!shxDataView || !shpDataView) return null
+const fetchShapeChunk = async (shapeId) => {
+  if (!shxDataView) return null
   const shxOffsetByte = 100 + shapeId * 8
   if (shxOffsetByte >= shxDataView.byteLength) return null
 
   const shpOffsetWord = shxDataView.getInt32(shxOffsetByte, false)
-  const shpOffsetByte = shpOffsetWord * 2
-  const shapeType = shpDataView.getInt32(shpOffsetByte + 8, true)
+  const shpContentLengthWord = shxDataView.getInt32(shxOffsetByte + 4, false)
+
+  const startByte = shpOffsetWord * 2
+  const lengthByte = 8 + shpContentLengthWord * 2
+  const endByte = startByte + lengthByte - 1
+
+  try {
+    const response = await fetch("/shp/china_river.shp", {
+      headers: {
+        'Range': `bytes=${startByte}-${endByte}`
+      }
+    })
+    if (!response.ok && response.status !== 206) {
+      console.warn('Range request failed or not supported:', response.status)
+      return null
+    }
+    const buffer = await response.arrayBuffer()
+    return new DataView(buffer)
+  } catch (err) {
+    console.error('Failed to fetch shape chunk:', err)
+    return null
+  }
+}
+
+const getShapeExactDistanceAsync = async (shapeId, px, py) => {
+  const chunkDataView = await fetchShapeChunk(shapeId)
+  if (!chunkDataView) return null
+
+  const shapeType = chunkDataView.getInt32(8, true)
 
   if (shapeType === 3 || shapeType === 5) {
-    const numParts = shpDataView.getInt32(shpOffsetByte + 44, true)
-    const numPoints = shpDataView.getInt32(shpOffsetByte + 48, true)
-    const partsOffset = shpOffsetByte + 52
+    const numParts = chunkDataView.getInt32(44, true)
+    const numPoints = chunkDataView.getInt32(48, true)
+    const partsOffset = 52
     const pointsOffset = partsOffset + numParts * 4
     let minDist = Infinity
 
     for (let i = 0; i < numParts; i++) {
-      const startIdx = shpDataView.getInt32(partsOffset + i * 4, true)
-      const endIdx = (i === numParts - 1) ? numPoints : shpDataView.getInt32(partsOffset + (i + 1) * 4, true)
+      const startIdx = chunkDataView.getInt32(partsOffset + i * 4, true)
+      const endIdx = (i === numParts - 1) ? numPoints : chunkDataView.getInt32(partsOffset + (i + 1) * 4, true)
 
       for (let j = startIdx; j < endIdx - 1; j++) {
-        const x1 = shpDataView.getFloat64(pointsOffset + j * 16, true)
-        const y1 = shpDataView.getFloat64(pointsOffset + j * 16 + 8, true)
-        const x2 = shpDataView.getFloat64(pointsOffset + (j + 1) * 16, true)
-        const y2 = shpDataView.getFloat64(pointsOffset + (j + 1) * 16 + 8, true)
+        const x1 = chunkDataView.getFloat64(pointsOffset + j * 16, true)
+        const y1 = chunkDataView.getFloat64(pointsOffset + j * 16 + 8, true)
+        const x2 = chunkDataView.getFloat64(pointsOffset + (j + 1) * 16, true)
+        const y2 = chunkDataView.getFloat64(pointsOffset + (j + 1) * 16 + 8, true)
         const d = distToSegment(px, py, x1, y1, x2, y2)
         if (d < minDist) minDist = d
       }
@@ -191,30 +217,27 @@ const getShapeExactDistance = (shapeId, px, py) => {
   return null
 }
 
-const getShapeCoordinates = (shapeId) => {
-  if (!shxDataView || !shpDataView) return null
-  const shxOffsetByte = 100 + shapeId * 8
-  if (shxOffsetByte >= shxDataView.byteLength) return null
+const getShapeCoordinatesAsync = async (shapeId) => {
+  const chunkDataView = await fetchShapeChunk(shapeId)
+  if (!chunkDataView) return null
 
-  const shpOffsetWord = shxDataView.getInt32(shxOffsetByte, false)
-  const shpOffsetByte = shpOffsetWord * 2
-  const shapeType = shpDataView.getInt32(shpOffsetByte + 8, true)
+  const shapeType = chunkDataView.getInt32(8, true)
 
   if (shapeType === 3 || shapeType === 5) {
-    const numParts = shpDataView.getInt32(shpOffsetByte + 44, true)
-    const numPoints = shpDataView.getInt32(shpOffsetByte + 48, true)
-    const partsOffset = shpOffsetByte + 52
+    const numParts = chunkDataView.getInt32(44, true)
+    const numPoints = chunkDataView.getInt32(48, true)
+    const partsOffset = 52
     const pointsOffset = partsOffset + numParts * 4
 
     let parts = []
     for (let i = 0; i < numParts; i++) {
-      const startIdx = shpDataView.getInt32(partsOffset + i * 4, true)
-      const endIdx = (i === numParts - 1) ? numPoints : shpDataView.getInt32(partsOffset + (i + 1) * 4, true)
+      const startIdx = chunkDataView.getInt32(partsOffset + i * 4, true)
+      const endIdx = (i === numParts - 1) ? numPoints : chunkDataView.getInt32(partsOffset + (i + 1) * 4, true)
 
       let part = []
       for (let j = startIdx; j < endIdx; j++) {
-        const x = shpDataView.getFloat64(pointsOffset + j * 16, true)
-        const y = shpDataView.getFloat64(pointsOffset + j * 16 + 8, true)
+        const x = chunkDataView.getFloat64(pointsOffset + j * 16, true)
+        const y = chunkDataView.getFloat64(pointsOffset + j * 16 + 8, true)
         part.push(new window.T.LngLat(x, y))
       }
       parts.push(part)
@@ -280,12 +303,12 @@ const highlightPolyline = (parts) => {
   }
 }
 
-const handleQueueItemClick = (item) => {
+const handleQueueItemClick = async (item) => {
   if (item.isMore) return
   if (item.type === 'node') {
     highlightBBox(item.node.bbox_xmin, item.node.bbox_ymin, item.node.bbox_xmax, item.node.bbox_ymax)
   } else if (item.type === 'shape') {
-    const parts = getShapeCoordinates(item.shapeId)
+    const parts = await getShapeCoordinatesAsync(item.shapeId)
     if (parts) highlightPolyline(parts)
   }
 }
@@ -384,15 +407,13 @@ const handleStart = () => {
 
     Promise.all([
       fetch("/shp/china_river.qix").then(r => r.arrayBuffer()),
-      fetch("/shp/china_river.shx").then(r => r.arrayBuffer()),
-      fetch("/shp/china_river.shp").then(r => r.arrayBuffer())
-    ]).then(([qixBuf, shxBuf, shpBuf]) => {
+      fetch("/shp/china_river.shx").then(r => r.arrayBuffer())
+    ]).then(([qixBuf, shxBuf]) => {
       if (parseQix) {
         const result = parseQix(new Uint8Array(qixBuf))
         qixRoot = result.root_node
       }
       shxDataView = new DataView(shxBuf)
-      shpDataView = new DataView(shpBuf)
 
       startBtnText.value = "开始分析"
       loading.value = false
@@ -460,12 +481,15 @@ const handlePrev = () => {
   if (historyStates.length === 0) canPrev.value = false
 }
 
-const handleStep = () => {
+const handleStep = async () => {
   if (pq.value.length === 0) {
     logMsg("结束", "队列已空", ["未找到更多要素"])
     canStep.value = false
     return
   }
+
+  canStep.value = false
+  canPrev.value = false
 
   clearHighlight()
 
@@ -476,7 +500,7 @@ const handleStep = () => {
     permanentShapesLen: permanentShapes.length,
     logs: logs.value.map(i => ({ ...i }))
   })
-  canPrev.value = true
+  // canPrev will be enabled at the end of the async function
 
   currentBBoxes.forEach(item => {
     if (bboxLayer && bboxLayer.removeLayer) bboxLayer.removeLayer(item.p)
@@ -501,11 +525,12 @@ const handleStep = () => {
     ])
     canStep.value = false
 
-    const parts = getShapeCoordinates(topItem.shapeId)
+    const parts = await getShapeCoordinatesAsync(topItem.shapeId)
     if (parts) highlightPolyline(parts)
 
     topItem.isFinal = true
     pq.value.unshift(topItem)
+    canPrev.value = true
     return
   }
 
@@ -524,13 +549,13 @@ const handleStep = () => {
     actions.push(`子节点 ${idx} 入队, MinDist=${d.toFixed(4)}`)
   })
 
-  node.shape_ids.forEach(sid => {
-    const realDist = getShapeExactDistance(sid, px, py)
+  for (const sid of node.shape_ids) {
+    const realDist = await getShapeExactDistanceAsync(sid, px, py)
     if (realDist !== null) {
       pq.value.push({ type: 'shape', shapeId: sid, minDist: realDist })
       actions.push(`要素 Shape_${sid} 入队, 精确距离=${realDist.toFixed(4)}`)
 
-      const parts = getShapeCoordinates(sid)
+      const parts = await getShapeCoordinatesAsync(sid)
       if (parts) {
         parts.forEach(part => {
           const options = { color: "#00bcd4", weight: 3, opacity: 0.8, lineStyle: "dashed" }
@@ -545,7 +570,7 @@ const handleStep = () => {
     } else {
       actions.push(`要素 Shape_${sid} 读取失败`)
     }
-  })
+  }
 
   pq.value.sort((a, b) => a.minDist - b.minDist)
 
@@ -553,6 +578,9 @@ const handleStep = () => {
   actions.push(`<b>队列前5名:</b> ${top5Str}`)
 
   logMsg(stepCount, "分支展开 (Branch Expansion)", actions)
+
+  canStep.value = true
+  canPrev.value = true
 }
 
 onMounted(async () => {
