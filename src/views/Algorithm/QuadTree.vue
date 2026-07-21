@@ -120,8 +120,8 @@ const initMap = () => {
     '&TILEROW={y}' +
     '&TILECOL={x}'
 
-  const southWest = new window.T.LngLat(73.3599065, 15.784338)
-  const northEast = new window.T.LngLat(135.6776013, 54.0115689)
+  const southWest = new window.T.LngLat(101.9642680901, 28.862478591599995)
+  const northEast = new window.T.LngLat(103.4113808093, 30.922261509850014)
   const f_bounds = new window.T.LngLatBounds(southWest, northEast)
 
   lay = new window.T.TileLayer(imageURL, { minZoom: 1, maxZoom: 18, bounds: f_bounds })
