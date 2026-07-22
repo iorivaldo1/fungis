@@ -28,7 +28,7 @@
 
 <script setup>
 import { onMounted, onUnmounted, ref } from 'vue';
-import { RiverRouteTool } from '/public/js/river_route.js';
+import { RiverRouteTool } from '../../../public/js/river_route.js';
 
 const showPageInfo = ref(true);
 let map = null;

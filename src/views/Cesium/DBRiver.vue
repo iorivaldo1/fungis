@@ -134,7 +134,7 @@ const setRiverWidth = (level) => {
 };
 
 const setRiverBillboardImgUrl = (level) => {
-    return "/Public/icon1.svg";
+    return "/icon1.svg";
 };
 
 const regClickPrimitive = (viewer) => {

@@ -390,9 +390,18 @@ const handleStart = () => {
     loading.value = true
     startBtnText.value = "加载大文件中..."
 
-    fetch("/public/qix/ya_river.qix").then(r => r.arrayBuffer()).then(qixBuf => {
+    const qixUrl = `${import.meta.env.BASE_URL || '/'}qix/ya_river.qix`.replace(/\/+/g, '/')
+    fetch(qixUrl).then(r => {
+      if (!r.ok) {
+        throw new Error(`HTTP 请求失败, 状态码: ${r.status}`)
+      }
+      return r.arrayBuffer()
+    }).then(qixBuf => {
       if (parseQix) {
         const result = parseQix(new Uint8Array(qixBuf))
+        if (!result || !result.root_node) {
+          throw new Error('QIX 数据结构解析失败，文件可能无效或为空')
+        }
         qixRoot = result.root_node
       }
 
@@ -402,7 +411,7 @@ const handleStart = () => {
       initAlgorithm()
     }).catch(err => {
       console.error(err)
-      alert("加载文件失败，请确保 public/shp 目录下存在相关文件。")
+      alert(`加载文件失败，请确保 ${qixUrl} 文件存在且可访问。`)
       startBtnText.value = "开始分析"
       loading.value = false
     })
