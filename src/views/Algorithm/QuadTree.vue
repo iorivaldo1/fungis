@@ -390,7 +390,7 @@ const handleStart = () => {
     loading.value = true
     startBtnText.value = "加载大文件中..."
 
-    fetch("/shp/ya_river.qix").then(r => r.arrayBuffer()).then(qixBuf => {
+    fetch("/public/qix/ya_river.qix").then(r => r.arrayBuffer()).then(qixBuf => {
       if (parseQix) {
         const result = parseQix(new Uint8Array(qixBuf))
         qixRoot = result.root_node
