@@ -62,7 +62,10 @@
               <div class="progress-bar" :style="{ width: status.server.memory + '%' }"
                 :class="getCpuColor(status.server.memory)"></div>
             </div>
-            <span class="stat-value">{{ status.server.memory }}%</span>
+            <span class="stat-value" style="width: auto; min-width: 40px;">
+              {{ status.server.memory }}%
+              <small v-if="status.server.usedMemoryStr" style="color: #94a3b8; font-size: 12px; margin-left: 4px;">({{ status.server.usedMemoryStr }} / {{ status.server.totalMemoryStr }})</small>
+            </span>
           </div>
           <div class="stat-row mt">
             <span>运行时间</span>
