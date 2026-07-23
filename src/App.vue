@@ -145,7 +145,7 @@
           </div>
 
           <!-- Cesium 多级菜单 -->
-          <div class="menu-group" :class="{ expanded: isCesiumMenuExpanded }" >
+          <div class="menu-group" :class="{ expanded: isCesiumMenuExpanded }">
             <div class="menu-item parent" @click="toggleCesiumMenu"
               :class="{ active: route.path.startsWith('/cesium') }">
               <IconCesium />
@@ -233,8 +233,8 @@ onMounted(async () => {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        username: 'fch',
-        password: 'testpw'
+        username: 'default',
+        password: 'default'
       })
     })
     const data = await response.json()
