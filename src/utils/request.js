@@ -73,9 +73,10 @@ export const getToken = () => {
       return null
     }
 
-    // 2. 检查 aud 模块隔离（必须为 fungis 模块）
+    // 2. 检查 aud 模块隔离（必须为合法系统模块）
     const aud = getJwtAud(data.token)
-    if (aud && aud !== 'fungis') {
+    const allowedAuds = ['fungis', 'hhgl', 'serverAdmin']
+    if (aud && !allowedAuds.includes(aud)) {
       console.warn(`Token 模块不匹配 (aud=${aud})，已清除隔离 Token`)
       removeToken()
       return null
