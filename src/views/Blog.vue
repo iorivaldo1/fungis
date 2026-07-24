@@ -296,19 +296,19 @@ const matrixFS = `
 const handleResize = () => {
   if (!canvasContainer.value || !sidebarCanvasContainer.value) return;
   
-  let width = canvasContainer.value.clientWidth;
-  let height = canvasContainer.value.clientHeight;
+  let width = canvasContainer.value.clientWidth || window.innerWidth;
+  let height = canvasContainer.value.clientHeight || window.innerHeight;
   if(renderer && material) {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-    renderer.setSize(width, height);
+    renderer.setSize(width, height, false);
     material.uniforms.u_resolution.value.set(width, height);
   }
 
-  let sidebarWidth = sidebarCanvasContainer.value.clientWidth;
-  let sidebarHeight = sidebarCanvasContainer.value.clientHeight;
+  let sidebarWidth = sidebarCanvasContainer.value.clientWidth || 260;
+  let sidebarHeight = sidebarCanvasContainer.value.clientHeight || window.innerHeight;
   if(sidebarRenderer && sidebarMaterial) {
     sidebarRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-    sidebarRenderer.setSize(sidebarWidth, sidebarHeight);
+    sidebarRenderer.setSize(sidebarWidth, sidebarHeight, false);
     sidebarMaterial.uniforms.u_resolution.value.set(sidebarWidth, sidebarHeight);
   }
 };
@@ -316,8 +316,8 @@ const handleResize = () => {
 onMounted(() => {
   if (!canvasContainer.value || !sidebarCanvasContainer.value) return;
 
-  let width = canvasContainer.value.clientWidth;
-  let height = canvasContainer.value.clientHeight;
+  let width = canvasContainer.value.clientWidth || window.innerWidth;
+  let height = canvasContainer.value.clientHeight || window.innerHeight;
 
   scene = new THREE.Scene();
   camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
@@ -325,7 +325,7 @@ onMounted(() => {
 
   renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-  renderer.setSize(width, height);
+  renderer.setSize(width, height, false);
   canvasContainer.value.appendChild(renderer.domElement);
 
   const uniforms = {
@@ -343,8 +343,8 @@ onMounted(() => {
   const mesh = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material);
   scene.add(mesh);
 
-  let sidebarWidth = sidebarCanvasContainer.value.clientWidth;
-  let sidebarHeight = sidebarCanvasContainer.value.clientHeight;
+  let sidebarWidth = sidebarCanvasContainer.value.clientWidth || 260;
+  let sidebarHeight = sidebarCanvasContainer.value.clientHeight || window.innerHeight;
 
   sidebarScene = new THREE.Scene();
   sidebarCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
@@ -352,7 +352,7 @@ onMounted(() => {
 
   sidebarRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   sidebarRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-  sidebarRenderer.setSize(sidebarWidth, sidebarHeight);
+  sidebarRenderer.setSize(sidebarWidth, sidebarHeight, false);
   sidebarCanvasContainer.value.appendChild(sidebarRenderer.domElement);
 
   const sidebarUniforms = {
@@ -383,7 +383,6 @@ onMounted(() => {
   animate();
 
   window.addEventListener('resize', handleResize);
-  // initial call to make sure sizes are correct if rendered initially small
   setTimeout(handleResize, 100); 
 });
 
@@ -411,10 +410,12 @@ onUnmounted(() => {
 .blog-container {
   color: #fff;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-  width: 100%;
-  height: 100%;
+  width: 100vw;
+  height: 100vh;
   position: relative;
   overflow: hidden;
+  display: flex;
+  background-color: #011936;
 }
 
 .canvas-container {
@@ -429,13 +430,22 @@ onUnmounted(() => {
   overflow: hidden;
 }
 
+.canvas-container :deep(canvas),
+.sidebar-canvas-container :deep(canvas) {
+  width: 100% !important;
+  height: 100% !important;
+  display: block;
+}
+
 /* ---- Sidebar ---- */
 .blog-sidebar {
-  position: absolute;
-  top: 0;
-  left: 0;
+  position: relative;
+  flex-shrink: 0;
   width: 260px;
+  min-width: 260px;
+  max-width: 260px;
   height: 100%;
+  box-sizing: border-box;
   background: rgba(10, 14, 26, 0.88);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
@@ -444,6 +454,8 @@ onUnmounted(() => {
   overflow-y: auto;
   z-index: 100;
   transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  flex-direction: column;
 }
 
 .sidebar-canvas-container {
@@ -456,13 +468,13 @@ onUnmounted(() => {
   opacity: 0.6;
   pointer-events: none;
   overflow: hidden;
-  border-radius: 0;
 }
 
 .sidebar-header {
   padding: 0 20px 20px;
   border-bottom: 1px solid rgba(99, 132, 255, 0.15);
   margin-bottom: 12px;
+  flex-shrink: 0;
 }
 
 .sidebar-logo {
@@ -478,6 +490,7 @@ onUnmounted(() => {
   background: rgba(10, 14, 26, 0.65);
   padding: 6px 10px;
   border-radius: 6px;
+  white-space: nowrap;
 }
 
 .sidebar-title {
@@ -487,15 +500,17 @@ onUnmounted(() => {
   font-weight: 400;
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
   padding-left: 10px;
+  white-space: nowrap;
 }
 
 .nav-list {
   list-style: none;
-  padding: 0 8px;
+  padding: 0 12px;
+  flex: 1;
 }
 
 .nav-item {
-  margin-bottom: 4px;
+  margin-bottom: 6px;
 }
 
 .nav-link {
@@ -513,6 +528,7 @@ onUnmounted(() => {
   text-decoration: none;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  white-space: nowrap;
 }
 
 .nav-link:hover {
@@ -533,12 +549,14 @@ onUnmounted(() => {
   min-width: 22px;
   text-align: center;
   font-family: 'JetBrains Mono', monospace;
+  flex-shrink: 0;
 }
 
 .sidebar-footer {
   padding: 16px 20px;
   border-top: 1px solid rgba(99, 132, 255, 0.15);
-  margin-top: 12px;
+  margin-top: auto;
+  flex-shrink: 0;
 }
 
 .sidebar-footer a {
@@ -573,7 +591,7 @@ onUnmounted(() => {
 
 /* ---- Main Content ---- */
 .main-content {
-  margin-left: 260px;
+  flex: 1;
   height: 100%;
   overflow-y: auto;
   overflow-x: hidden;
@@ -581,18 +599,18 @@ onUnmounted(() => {
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
-  padding: 40px 40px 80px;
+  padding: 40px 40px 30px;
   z-index: 1;
   position: relative;
 }
 
 .hero {
   text-align: center;
-  margin-bottom: 48px;
+  margin-bottom: 40px;
   background: rgba(17, 24, 39, 0.75);
   border: 1px solid rgba(99, 132, 255, 0.15);
   border-radius: 16px;
-  padding: 40px 32px;
+  padding: 36px 32px;
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
@@ -626,7 +644,7 @@ onUnmounted(() => {
   gap: 20px;
   max-width: 900px;
   width: 100%;
-  margin-bottom: 48px;
+  margin-bottom: 40px;
 }
 
 .chapter-card {
@@ -639,6 +657,8 @@ onUnmounted(() => {
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .chapter-card::before {
@@ -695,13 +715,12 @@ onUnmounted(() => {
 
 /* ---- Footer ---- */
 .footer {
-  padding: 20px;
+  padding: 20px 0 10px;
   text-align: center;
   z-index: 10;
-  position: absolute; 
-  bottom: 0; 
-  left: 260px; 
-  width: calc(100% - 260px); 
+  width: 100%;
+  margin-top: auto;
+  flex-shrink: 0;
 }
 
 .footer a {
@@ -731,6 +750,7 @@ onUnmounted(() => {
   }
 
   .blog-sidebar {
+    position: fixed;
     transform: translateX(-100%);
   }
 
@@ -740,12 +760,8 @@ onUnmounted(() => {
 
   .main-content {
     margin-left: 0;
-    padding: 72px 20px 80px;
-  }
-
-  .footer {
-    left: 0;
     width: 100%;
+    padding: 72px 20px 30px;
   }
 
   .hero h1 {

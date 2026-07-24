@@ -11,15 +11,37 @@
       </div>
       <transition name="slide-fade">
         <div v-show="!isSidebarCollapsed" class="menu-items">
+
           <router-link to="/" class="menu-item" active-class="active">
             <IconHome />
             <span class="menu-text">首页</span>
           </router-link>
 
-          <a href="/blog.html" target="_blank" class="menu-item">
-            <IconLogo />
-            <span class="menu-text">我的博客</span>
+          <!-- 空间算法 多级菜单 -->
+          <div class="menu-group" :class="{ expanded: isAlgorithmMenuExpanded }">
+            <div class="menu-item parent" @click="toggleAlgorithmMenu"
+              :class="{ active: route.path.startsWith('/algorithm') }">
+              <IconWrench />
+              <span class="menu-text">空间算法</span>
+              <IconArrow class="arrow-icon" :class="{ rotated: isAlgorithmMenuExpanded }" width="16" height="16" />
+            </div>
+            <transition name="menu-slide">
+              <div v-show="isAlgorithmMenuExpanded" class="sub-menu">
+                <router-link to="/algorithm/quadtree" class="menu-item sub" active-class="active">
+                  <div class="sub-dot"></div>
+                  <span class="menu-text">四叉树查询</span>
+                </router-link>
+              </div>
+            </transition>
+          </div>
+
+          <!-- 数据结构 独立路由/链接 -->
+          <a href="https://www.fungis.site/algorithm-board/" target="_blank" class="menu-item">
+            <IconRoute />
+            <span class="menu-text">数据结构</span>
           </a>
+
+
 
           <!-- Three+TianDitu 多级菜单 -->
           <div class="menu-group" :class="{ expanded: isThreeTdtMenuExpanded }">
@@ -121,29 +143,6 @@
             </transition>
           </div>
 
-
-          <!-- 空间算法 多级菜单 -->
-          <div class="menu-group" :class="{ expanded: isAlgorithmMenuExpanded }">
-            <div class="menu-item parent" @click="toggleAlgorithmMenu"
-              :class="{ active: route.path.startsWith('/algorithm') }">
-              <IconWrench />
-              <span class="menu-text">空间算法</span>
-              <IconArrow class="arrow-icon" :class="{ rotated: isAlgorithmMenuExpanded }" width="16" height="16" />
-            </div>
-            <transition name="menu-slide">
-              <div v-show="isAlgorithmMenuExpanded" class="sub-menu">
-                <router-link to="/algorithm/quadtree" class="menu-item sub" active-class="active">
-                  <div class="sub-dot"></div>
-                  <span class="menu-text">四叉树查询</span>
-                </router-link>
-                <a href="https://www.fungis.site/algorithm-board/" target="_blank" class="menu-item sub">
-                  <div class="sub-dot"></div>
-                  <span class="menu-text">数据结构</span>
-                </a>
-              </div>
-            </transition>
-          </div>
-
           <!-- Cesium 多级菜单 -->
           <div class="menu-group" :class="{ expanded: isCesiumMenuExpanded }">
             <div class="menu-item parent" @click="toggleCesiumMenu"
@@ -177,6 +176,12 @@
               </div>
             </transition>
           </div>
+
+          <!-- 将原来的 /blog.html 修改为二级域名 -->
+          <a href="https://blog.fungis.site" target="_blank" class="menu-item">
+            <IconLogo />
+            <span class="menu-text">我的博客</span>
+          </a>
 
 
         </div>
@@ -213,6 +218,7 @@ import IconArrow from './components/icons/IconArrow.vue'
 import IconRiver from './components/icons/IconRiver.vue'
 import IconThree from './components/icons/IconThree.vue'
 import IconWrench from './components/icons/IconWrench.vue'
+import IconRoute from './components/icons/IconRoute.vue'
 import IconGear from './components/icons/IconGear.vue'
 
 const route = useRoute()
