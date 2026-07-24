@@ -224,7 +224,7 @@ router.beforeEach(async (to, from, next) => {
 
     // Role verification for server admin
     if (to.meta.requireRole === 'serverAdmin') {
-      const authority = localStorage.getItem('authority')
+      const authority = sessionStorage.getItem('authority')
       if (authority !== 'serverAdmin') {
         // 如果权限不足，给出提示并踢回登录页
         alert('权限不足，需要 serverAdmin 角色')

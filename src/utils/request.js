@@ -6,13 +6,56 @@
 
 // Token 缓存键名
 const TOKEN_KEY = 'fungis_user'
-// Token 有效期：1 小时 (毫秒)
-const TOKEN_EXPIRE_TIME = 60 * 60 * 1000
+
+/**
+ * 解析 JWT Token 的 Payload 声明
+ * @param {string} token 
+ * @returns {object|null}
+ */
+const parseJwtPayload = (token) => {
+  try {
+    const payloadBase64 = token.split('.')[1]
+    if (!payloadBase64) return null
+    // 处理 base64url 格式并解码 UTF-8
+    const base64 = payloadBase64.replace(/-/g, '+').replace(/_/g, '/')
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split('')
+        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    )
+    return JSON.parse(jsonPayload)
+  } catch (e) {
+    return null
+  }
+}
+
+/**
+ * 解析 JWT Token 中的 exp 过期时间
+ * @param {string} token 
+ * @returns {number|null} 毫秒级过期时间戳
+ */
+const getJwtExp = (token) => {
+  const payload = parseJwtPayload(token)
+  return payload && payload.exp ? payload.exp * 1000 : null
+}
+
+/**
+ * 解析 JWT Token 中的 aud 目标受众/模块
+ * @param {string} token 
+ * @returns {string|null}
+ */
+const getJwtAud = (token) => {
+  const payload = parseJwtPayload(token)
+  return payload ? payload.aud : null
+}
 
 export const setToken = (token) => {
+  // 优先解析 JWT 中的 exp，若解析失败则默认 1 小时兜底
+  const expireAt = getJwtExp(token) || (Date.now() + 1 * 60 * 60 * 1000)
   const data = {
     token,
-    expireAt: Date.now() + TOKEN_EXPIRE_TIME
+    expireAt
   }
   // 使用 sessionStorage，浏览器/标签页关闭后自动失效
   sessionStorage.setItem(TOKEN_KEY, JSON.stringify(data))
@@ -24,11 +67,20 @@ export const getToken = () => {
 
   try {
     const data = JSON.parse(tokenStr)
-    // 检查是否超过 1 小时
+    // 1. 检查是否超过过期时间
     if (Date.now() > data.expireAt) {
       removeToken()
       return null
     }
+
+    // 2. 检查 aud 模块隔离（必须为 fungis 模块）
+    const aud = getJwtAud(data.token)
+    if (aud && aud !== 'fungis') {
+      console.warn(`Token 模块不匹配 (aud=${aud})，已清除隔离 Token`)
+      removeToken()
+      return null
+    }
+
     return data.token
   } catch (e) {
     removeToken()
@@ -41,7 +93,7 @@ export const removeToken = () => {
 }
 
 export const request = async (url, options = {}) => {
-  // 从本地获取 token（内置了 1 小时过期检查）
+  // 从本地获取 token（内置了过期检查）
   const token = getToken()
 
   // 初始化 headers

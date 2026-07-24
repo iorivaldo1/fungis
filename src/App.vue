@@ -209,7 +209,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { setToken } from '@/utils/request.js'
+import { setToken, getToken } from '@/utils/request.js'
 import IconLogo from './components/icons/IconLogo.vue'
 import IconChevronLeft from './components/icons/IconChevronLeft.vue'
 import IconHome from './components/icons/IconHome.vue'
@@ -233,20 +233,25 @@ const isReady = ref(false)
 
 onMounted(async () => {
   try {
-    const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || ''}/get_geo_pg/fungis_user/login`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        username: 'default',
-        password: 'default'
+    // 仅在当前未登录/无有效 Token 时才去自动拉取 default 游客 Token，避免覆盖 serverAdmin 等真实登录态
+    if (!getToken()) {
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || ''}/get_geo_pg/fungis_user/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          username: 'default',
+          password: 'default'
+        })
       })
-    })
-    const data = await response.json()
-    if (response.ok && data.data && data.data.token) {
-      setToken(data.data.token)
-      console.log('自动获取 fungis_user token 成功')
+      const data = await response.json()
+      if (response.ok && data.data && data.data.token) {
+        setToken(data.data.token)
+        console.log('自动获取 fungis_user 默认 Token 成功')
+      }
+    } else {
+      console.log('检测到已有有效 Token，跳过默认 Token 自动获取')
     }
   } catch (error) {
     console.error('Auto login failed:', error)

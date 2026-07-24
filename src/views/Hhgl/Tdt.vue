@@ -366,8 +366,8 @@ const initMap = () => {
 }
 
 const fetchAndRenderDmaa = async () => {
-  const authority = localStorage.getItem('authority')
-  const manageScope = localStorage.getItem('manageScope')
+  const authority = sessionStorage.getItem('authority')
+  const manageScope = sessionStorage.getItem('manageScope')
 
   // if not admin and no manageScope, maybe don't fetch or fetch empty
   let url = `${import.meta.env.VITE_API_BASE_URL || ''}/get_geo_pg/api/dmaa/listByScope?manageScope=${manageScope || ''}`

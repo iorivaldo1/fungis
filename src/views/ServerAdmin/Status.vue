@@ -246,7 +246,7 @@ const getCpuColor = (value) => {
 
 const handleLogout = () => {
   setToken('')
-  localStorage.removeItem('authority')
+  sessionStorage.removeItem('authority')
   router.push('/')
 }
 

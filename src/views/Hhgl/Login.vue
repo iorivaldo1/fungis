@@ -78,8 +78,8 @@ const handleLogin = async () => {
       if (actualToken) {
         setToken(actualToken)
         if (data.data) {
-          localStorage.setItem('manageScope', data.data.manageScope || '')
-          localStorage.setItem('authority', data.data.authority || '')
+          sessionStorage.setItem('manageScope', data.data.manageScope || '')
+          sessionStorage.setItem('authority', data.data.authority || '')
         }
       } else {
         // 防止后端没有返回 token，但通过 cookie 鉴权，我们给一个默认标识，保证能通过前端路由守卫
