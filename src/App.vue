@@ -36,7 +36,7 @@
           </div>
 
           <!-- 数据结构 独立路由/链接 -->
-          <a href="https://www.fungis.site/algorithm-board/" target="_blank" class="menu-item">
+          <a href="https://excalidraw.fungis.site" target="_blank" class="menu-item">
             <IconRoute />
             <span class="menu-text">数据结构</span>
           </a>
