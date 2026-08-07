@@ -29,7 +29,11 @@
               <div v-show="isAlgorithmMenuExpanded" class="sub-menu">
                 <router-link to="/algorithm/quadtree" class="menu-item sub" active-class="active">
                   <div class="sub-dot"></div>
-                  <span class="menu-text">四叉树查询</span>
+                  <span class="menu-text">QGIS QIX 索引查询</span>
+                </router-link>
+                <router-link to="/algorithm/sbn-quadtree" class="menu-item sub" active-class="active">
+                  <div class="sub-dot"></div>
+                  <span class="menu-text">ESRI SBN 索引查询</span>
                 </router-link>
               </div>
             </transition>
@@ -316,7 +320,8 @@ const currentRouteName = computed(() => {
     'ServerAdminLogin': '服务器监控登录',
     'ServerAdminStatus': '服务器监控状态',
     'Algorithm': '空间算法',
-    'QuadTree': '四叉树查询'
+    'QuadTree': 'QGIS QIX 索引查询',
+    'EsriSbnQuadTree': 'ESRI SBN 索引查询'
   }
   return nameMap[route.name] || route.name || '未知'
 })

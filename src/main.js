@@ -158,6 +158,11 @@ const router = createRouter({
           path: 'quadtree',
           name: 'QuadTree',
           component: () => import('./views/Algorithm/QuadTree.vue')
+        },
+        {
+          path: 'sbn-quadtree',
+          name: 'EsriSbnQuadTree',
+          component: () => import('./views/Algorithm/EsriSbnQuadTree.vue')
         }
       ]
     },
