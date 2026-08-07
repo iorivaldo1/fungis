@@ -1,13 +1,12 @@
-// 存储覆盖物图层容器
-let bbox_layer;
+let bbox_layer = null;
 
 export function initBBoxLayer(map) {
-    if (!bbox_layer) {
-        // 为了兼容原生天地图没有 T.LayerGroup 的情况，做了数组降级处理
+    if (map && (!bbox_layer || bbox_layer._map !== map)) {
         bbox_layer = typeof T.LayerGroup !== "undefined" ? new T.LayerGroup() : [];
         if (typeof T.LayerGroup !== "undefined") {
             map.addOverLay(bbox_layer);
         }
+        bbox_layer._map = map;
     }
     return bbox_layer;
 }

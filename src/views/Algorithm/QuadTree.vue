@@ -385,6 +385,9 @@ const initAlgorithm = () => {
   const d = distToBBox(px, py, qixRoot.bbox_xmin, qixRoot.bbox_ymin, qixRoot.bbox_xmax, qixRoot.bbox_ymax)
   pq.value.push({ type: 'node', node: qixRoot, minDist: d, path: 'Root' })
 
+  // 绘制根节点包围盒 MBR
+  drawBBox(qixRoot.bbox_xmin, qixRoot.bbox_ymin, qixRoot.bbox_xmax, qixRoot.bbox_ymax, '#2196F3', 2)
+
   logMsg(0, "初始化", [
     `设定目标点 P(${px}, ${py})`,
     `根节点入队，MinDist = ${d.toFixed(4)}`

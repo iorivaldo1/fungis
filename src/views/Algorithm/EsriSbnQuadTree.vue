@@ -410,6 +410,9 @@ const initAlgorithm = () => {
   const d = distToBBox(px, py, bounds.xmin, bounds.ymin, bounds.xmax, bounds.ymax)
   pq.value.push({ type: 'node', node: sbnTreeRoot, minDist: d, path: 'Slot_0 (Root)' })
 
+  // 绘制根节点包围盒 MBR
+  drawBBox(bounds.xmin, bounds.ymin, bounds.xmax, bounds.ymax, '#2196F3', 2)
+
   logMsg(0, "SBN 空间网格初始化", [
     `目标点 P(${px}, ${py})`,
     `SBN 映射全局包围盒 X:[${bounds.xmin.toFixed(2)}, ${bounds.xmax.toFixed(2)}], Y:[${bounds.ymin.toFixed(2)}, ${bounds.ymax.toFixed(2)}]`,
