@@ -387,8 +387,8 @@ const initAlgorithm = () => {
 
   logMsg(0, "PostgreSQL GiST KNN 搜索初始化", [
     `<b>执行 KNN 搜索 SQL:</b><br><code style="background:#f5f5f5; color:#c62828; padding:2px 4px;">SELECT name, geom &lt;-&gt; ST_SetSRID(ST_Point(${px}, ${py}), 4326) AS dist FROM ya_data.rivers ORDER BY dist LIMIT 1;</code>`,
-    `<b>动态检索索引物理路径 SQL:</b><br><code style="background:#f5f5f5; color:#1565c6; padding:2px 4px;">SELECT current_setting('data_directory'), pg_relation_filepath('ya_data.idx_ya_river_geom');</code>`,
-    `PostgreSQL 数据目录下的索引物理文件: <b>${relFilePath || 'base/16384/24578'}</b> (总计 13 个 8KB 物理页)`,
+    `<b>动态读取实时 GiST 索引二进制流 SQL:</b><br><code style="background:#f5f5f5; color:#1565c6; padding:2px 4px;">SELECT pg_read_binary_file(pg_relation_filepath(i.indexrelid)) FROM pg_index i JOIN pg_class c ON c.oid = i.indrelid WHERE c.relname = 'rivers';</code>`,
+    `PostgreSQL 数据库内核中定位物理索引文件: <b>${relFilePath || 'PostgreSQL 动态索引流'}</b>`,
     `<b>压入根节点:</b> 物理页 Page 0 压入优先队列 (MinDist = 0.0000)`
   ])
 
@@ -420,7 +420,7 @@ const handleStart = () => {
       if (!r.ok) {
         throw new Error(`HTTP 请求失败, 状态码: ${r.status}`)
       }
-      relFilePath = r.headers.get("X-PG-Index-RelPath") || 'ya_river_pg_index'
+      relFilePath = r.headers.get("X-PG-Index-RelPath") || ''
       return r.arrayBuffer()
     }).then(buf => {
       const parsedPages = parseGist(new Uint8Array(buf))
