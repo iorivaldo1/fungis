@@ -416,11 +416,16 @@ const handleStart = () => {
     if (token) {
       headers['Authorization'] = `Bearer ${token}`
     }
-    fetch(`${baseUrl}/get_geo_pg/geo/gist_index`, { headers }).then(r => {
-      if (!r.ok) {
-        throw new Error(`HTTP 请求失败, 状态码: ${r.status}`)
-      }
+    fetch(`${baseUrl}/get_geo_pg/geo/gist_index`, { headers }).then(async r => {
       relFilePath = r.headers.get("X-PG-Index-RelPath") || ''
+      if (!r.ok) {
+        let errorMsg = `HTTP 请求失败, 状态码: ${r.status}`
+        try {
+          const errJson = await r.json()
+          if (errJson && errJson.msg) errorMsg = errJson.msg
+        } catch (e) {}
+        throw new Error(errorMsg)
+      }
       return r.arrayBuffer()
     }).then(buf => {
       const parsedPages = parseGist(new Uint8Array(buf))
