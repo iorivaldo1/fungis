@@ -35,6 +35,10 @@
                   <div class="sub-dot"></div>
                   <span class="menu-text">ESRI SBN 索引查询</span>
                 </router-link>
+                <router-link to="/algorithm/postgis-rtree" class="menu-item sub" active-class="active">
+                  <div class="sub-dot"></div>
+                  <span class="menu-text">PostGIS GiST (R树) 索引查询</span>
+                </router-link>
               </div>
             </transition>
           </div>
@@ -321,7 +325,8 @@ const currentRouteName = computed(() => {
     'ServerAdminStatus': '服务器监控状态',
     'Algorithm': '空间算法',
     'QuadTree': 'QGIS QIX 索引查询',
-    'EsriSbnQuadTree': 'ESRI SBN 索引查询'
+    'EsriSbnQuadTree': 'ESRI SBN 索引查询',
+    'PostGisRTree': 'PostGIS GiST (R树) 索引查询'
   }
   return nameMap[route.name] || route.name || '未知'
 })
