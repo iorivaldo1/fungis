@@ -13,7 +13,7 @@
     <div id="queuePanel" v-show="pq.length > 0">
       <strong style="margin-right:10px; color:#1976d2; font-size: 14px;">SBN 优先队列<br>(升序)</strong>
       <div v-for="(item, idx) in displayQueue" :key="idx" class="queue-item"
-        :class="[item.type, { 'final-result': item.isFinal, 'null-node': item.isNull }]" title="点击在地图上高亮该范围"
+        :class="[item.type, { 'final-result': item.isFinal || item.isFetched, 'null-node': item.isNull }]" title="点击在地图上高亮该范围"
         @click="handleQueueItemClick(item)">
         <span v-if="item.isMore">... 其它 {{ pq.length - 10 }} 项</span>
         <template v-else>
@@ -22,7 +22,7 @@
               {{ n }}
             </div>
           </div>
-          <span v-else>{{ '要素: Shape_' + item.shapeId }}</span>
+          <span v-else>{{ item.isFinal || item.isFetched ? '要素: Shape_' + item.shapeId : '包围盒: Shape_' + item.shapeId }}</span>
           <span class="dist">MinDist: {{ item.minDist === Infinity ? '∞' : item.minDist.toFixed(4) }}</span>
         </template>
       </div>
@@ -100,6 +100,9 @@ let bboxLayer = null
 
 let sbnParsedData = null
 let sbnTreeRoot = null
+
+let bestDist = Infinity
+let bestItem = null
 
 let stepCount = 0
 let pMarker = null
@@ -333,8 +336,15 @@ const handleQueueItemClick = async (item) => {
     const b = item.node.nodeBBox
     highlightBBox(b.xmin, b.ymin, b.xmax, b.ymax)
   } else if (item.type === 'shape') {
-    const parts = await getShapeCoordinatesAsync(item.shapeId, item.entryRealBBox)
-    if (parts) highlightPolyline(parts)
+    if ((item.isFinal || item.isFetched) && item.parts) {
+      highlightPolyline(item.parts)
+    } else if (item.entryRealBBox) {
+      const b = item.entryRealBBox
+      highlightBBox(b.xmin, b.ymin, b.xmax, b.ymax)
+    } else {
+      const parts = await getShapeCoordinatesAsync(item.shapeId, item.entryRealBBox)
+      if (parts) highlightPolyline(parts)
+    }
   }
 }
 
@@ -403,6 +413,8 @@ const logMsg = (step, title, actions) => {
 const initAlgorithm = () => {
   stepCount = 0
   pq.value = []
+  bestDist = Infinity
+  bestItem = null
 
   const bounds = sbnParsedData.header.bounds
   const cx = (bounds.xmin + bounds.xmax) / 2
@@ -478,6 +490,8 @@ const handlePrev = () => {
 
   pq.value = state.pq.map(i => ({ ...i }))
   stepCount = state.stepCount
+  bestDist = state.bestDist !== undefined ? state.bestDist : Infinity
+  bestItem = state.bestItem ? { ...state.bestItem } : null
 
   clearHighlight()
 
@@ -527,6 +541,7 @@ const handleStep = async () => {
   if (pq.value.length === 0) {
     logMsg("结束", "队列已空", ["未找到更多要素"])
     canStep.value = false
+    canPrev.value = historyStates.length > 0
     return
   }
 
@@ -537,6 +552,8 @@ const handleStep = async () => {
 
   historyStates.push({
     stepCount: stepCount,
+    bestDist: bestDist,
+    bestItem: bestItem ? { ...bestItem } : null,
     pq: pq.value.map(i => ({ ...i })),
     currBoxes: currentBBoxes.map(i => i.params),
     permanentShapesLen: permanentShapes.length,
@@ -558,19 +575,85 @@ const handleStep = async () => {
   stepCount++
   const topItem = pq.value.shift()
 
-  if (topItem.type === 'shape') {
+  if (topItem.type === 'shape' && topItem.isFetched) {
     logMsg(stepCount, `<span class="log-highlight" style="color: #d32f2f; font-weight: bold;">🎉 触底！找到最近河流要素</span>`, [
       `出队要素: <b>Shape ID = ${topItem.shapeId}</b>`,
-      `目标要素精确几何距离 = ${topItem.minDist.toFixed(4)}`,
-      `<span style="color:#d32f2f;">基于 ESRI SBN 256×256 网格归一化 + 二叉堆短路剪枝找到最近结果。</span>`
+      `该要素真实精确几何距离 = <b>${topItem.minDist.toFixed(4)}</b>`,
+      `<span style="color:#d32f2f;">基于优先队列升序单调性，堆中剩余所有节点/BBox 的最近可能距离 (>= ${topItem.minDist.toFixed(4)}) 绝对无法超越此要素的真实几何距离。寻找成功！</span>`
     ])
     canStep.value = false
 
-    const parts = await getShapeCoordinatesAsync(topItem.shapeId, topItem.entryRealBBox)
-    if (parts) highlightPolyline(parts)
+    if (topItem.parts) highlightPolyline(topItem.parts)
 
     topItem.isFinal = true
     pq.value.unshift(topItem)
+    canPrev.value = true
+    return
+  }
+
+  if (topItem.type === 'shape') {
+    if (topItem.minDist > bestDist) {
+      logMsg(stepCount, `<span style="color:#d32f2f; font-weight:bold;">🎉 触发数学完备早停剪枝！寻找成功！</span>`, [
+        `堆顶包围盒: <b>Shape_${topItem.shapeId}</b> (BBox 下界距离 = ${topItem.minDist.toFixed(4)})`,
+        `当前最优真实几何要素: <b>Shape_${bestItem.shapeId}</b>, 真实距离 = <b>${bestDist.toFixed(4)}</b>`,
+        `<span style="color:#d32f2f; font-weight:bold;">基于小顶堆单调性，堆中剩余所有节点/BBox的最近可能距离 (>= ${topItem.minDist.toFixed(4)}) 绝对无法超越 ${bestDist.toFixed(4)}。提前结束！</span>`
+      ])
+      canStep.value = false
+      canPrev.value = true
+      if (bestItem && bestItem.parts) highlightPolyline(bestItem.parts)
+      pq.value.unshift(topItem)
+      if (bestItem) {
+        pq.value.unshift({ ...bestItem, isFinal: true })
+      }
+      return
+    }
+
+    const realDist = await getShapeExactDistanceAsync(topItem.shapeId, topItem.entryRealBBox, px, py)
+    const parts = await getShapeCoordinatesAsync(topItem.shapeId, topItem.entryRealBBox)
+
+    let actions = [
+      `<b>解算 Shape_${topItem.shapeId} 坐标折线精确几何距离:</b> ${realDist !== null ? realDist.toFixed(4) : 'N/A'}`
+    ]
+
+    const fetchedFeature = {
+      type: 'shape',
+      shapeId: topItem.shapeId,
+      entryRealBBox: topItem.entryRealBBox,
+      minDist: realDist !== null ? realDist : topItem.minDist,
+      isFetched: true,
+      parts: parts
+    }
+
+    if (realDist !== null && realDist < bestDist) {
+      bestDist = realDist
+      bestItem = fetchedFeature
+      actions.push(`<span style="color:#4caf50; font-weight:bold;">刷新最佳候选记录! 当前 Best_Dist = ${bestDist.toFixed(4)}</span>`)
+    } else {
+      actions.push(`真实距离 (${realDist !== null ? realDist.toFixed(4) : 'N/A'}) 大于当前最佳值 (${bestDist.toFixed(4)}), 淘汰此项。`)
+    }
+
+    if (parts) {
+      parts.forEach(part => {
+        const options = { color: "#00bcd4", weight: 3, opacity: 0.8, lineStyle: "dashed" }
+        const polyline = new window.T.Polyline(part, options)
+        addOverlayToBBoxLayer(polyline)
+        permanentShapes.push({
+          p: polyline,
+          params: { type: 'polyline', part: part, options: options }
+        })
+      })
+      highlightPolyline(parts)
+    }
+
+    pq.value.push(fetchedFeature)
+    pq.value.sort((a, b) => a.minDist - b.minDist)
+
+    const top5Str = pq.value.slice(0, 5).map(i => (i.type === 'node' ? (i.isNull ? 'NullSlot' : 'Node_' + i.node.targetNodeIndex) : (i.isFetched ? `要素_${i.shapeId}` : `包围盒_${i.shapeId}`))).join(', ') + (pq.value.length > 5 ? ' ...' : '')
+    actions.push(`<b>Shape_${topItem.shapeId} 精确解算完成，重新入堆按距离升序排列，队列前 5 名:</b> ${top5Str}`)
+
+    logMsg(stepCount, `要素精确距离解算 (Shape Fetch)`, actions)
+
+    canStep.value = true
     canPrev.value = true
     return
   }
@@ -603,36 +686,26 @@ const handleStep = async () => {
     } else {
       const b = child.nodeBBox
       const d = distToBBox(px, py, b.xmin, b.ymin, b.xmax, b.ymax)
-  const childName = 'node' + child.targetNodeIndex
-  const childStack = topItem.nodeStack ? [...topItem.nodeStack, childName] : [childName]
-  pq.value.push({ type: 'node', node: child, minDist: d, path: `${topItem.path} -> Slot_${child.slotIdx}`, nodeStack: childStack })
-  drawBBox(b.xmin, b.ymin, b.xmax, b.ymax, '#2196F3', 1)
-  actions.push(`子节点 Slot_${child.slotIdx} (Node #${child.targetNodeIndex}) 入队, MinDist=${d.toFixed(4)}`)
+      const childName = 'node' + child.targetNodeIndex
+      const childStack = topItem.nodeStack ? [...topItem.nodeStack, childName] : [childName]
+      pq.value.push({ type: 'node', node: child, minDist: d, path: `${topItem.path} -> Slot_${child.slotIdx}`, nodeStack: childStack })
+      drawBBox(b.xmin, b.ymin, b.xmax, b.ymax, '#2196F3', 1)
+      actions.push(`子节点 Slot_${child.slotIdx} (Node #${child.targetNodeIndex}) 入队, MinDist=${d.toFixed(4)}`)
     }
   })
 
   for (const entry of node.entries) {
     const sid = entry.featureId
-    const realDist = await getShapeExactDistanceAsync(sid, entry.realBBox, px, py)
-    if (realDist !== null) {
-      pq.value.push({ type: 'shape', shapeId: sid, entryRealBBox: entry.realBBox, minDist: realDist })
-      actions.push(`要素 Shape_${sid} (BinBBox: [${entry.binBBox.xmin}, ${entry.binBBox.ymin}, ${entry.binBBox.xmax}, ${entry.binBBox.ymax}]) 入队, 距离=${realDist.toFixed(4)}`)
-
-      const parts = await getShapeCoordinatesAsync(sid, entry.realBBox)
-      if (parts) {
-        parts.forEach(part => {
-          const options = { color: "#00bcd4", weight: 3, opacity: 0.8, lineStyle: "dashed" }
-          const polyline = new window.T.Polyline(part, options)
-          addOverlayToBBoxLayer(polyline)
-          permanentShapes.push({
-            p: polyline,
-            params: { type: 'polyline', part: part, options: options }
-          })
-        })
-      }
-    } else {
-      actions.push(`要素 Shape_${sid} 离线度量失败`)
-    }
+    const d = distToBBox(px, py, entry.realBBox.xmin, entry.realBBox.ymin, entry.realBBox.xmax, entry.realBBox.ymax)
+    pq.value.push({
+      type: 'shape',
+      shapeId: sid,
+      entryRealBBox: entry.realBBox,
+      minDist: d,
+      isFetched: false
+    })
+    drawBBox(entry.realBBox.xmin, entry.realBBox.ymin, entry.realBBox.xmax, entry.realBBox.ymax, '#ff9800', 1)
+    actions.push(`包围盒 Shape_${sid} (BinBBox: [${entry.binBBox.xmin}, ${entry.binBBox.ymin}, ${entry.binBBox.xmax}, ${entry.binBBox.ymax}]) 入队, BBox 下界距离=${d.toFixed(4)}`)
   }
 
   pq.value.sort((a, b) => a.minDist - b.minDist)
