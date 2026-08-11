@@ -126,6 +126,11 @@ export const request = async (url, options = {}) => {
       return Promise.reject(new Error('Unauthorized'))
     }
 
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => '')
+      throw new Error(`HTTP ${response.status}: ${response.statusText || 'Request failed'}${errorText ? ' - ' + errorText : ''}`)
+    }
+
     // 假设后端接口统一返回 JSON
     const data = await response.json()
     return data

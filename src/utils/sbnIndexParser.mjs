@@ -157,29 +157,28 @@ export function parseSbn(buffer) {
             const spatialNode = spatialNodeMap.get(desc.targetNodeIndex);
 
             // 计算该节点所代表的空间切分区域 (Spatial Partition Bounds)
-            let leftBounds = { ...nodeSpatialBounds };
-            let rightBounds = { ...nodeSpatialBounds };
+            let child1Bounds = { ...nodeSpatialBounds };
+            let child2Bounds = { ...nodeSpatialBounds };
             const xMid = (nodeSpatialBounds.xmin + nodeSpatialBounds.xmax) / 2;
             const yMid = (nodeSpatialBounds.ymin + nodeSpatialBounds.ymax) / 2;
 
             const depth = Math.floor(Math.log2(slotIdx + 1));
             if (depth % 2 === 0) {
                 // 偶数深度 (Level 0, Level 2, Level 4...): 沿 X 轴中线二分
-                if (slotIdx === 0) {
-                    rightBounds = { xmin: xMid, ymin: nodeSpatialBounds.ymin, xmax: nodeSpatialBounds.xmax, ymax: nodeSpatialBounds.ymax }; // Slot 1 右
-                    leftBounds = { xmin: nodeSpatialBounds.xmin, ymin: nodeSpatialBounds.ymin, xmax: xMid, ymax: nodeSpatialBounds.ymax };   // Slot 2 左
-                } else {
-                    leftBounds = { xmin: nodeSpatialBounds.xmin, ymin: nodeSpatialBounds.ymin, xmax: xMid, ymax: nodeSpatialBounds.ymax };  // 左/西半区
-                    rightBounds = { xmin: xMid, ymin: nodeSpatialBounds.ymin, xmax: nodeSpatialBounds.xmax, ymax: nodeSpatialBounds.ymax }; // 右/东半区
-                }
+                // Slot 2k+1 (Child 1): 东/右半区 (xmin = xMid)
+                // Slot 2k+2 (Child 2): 西/左半区 (xmax = xMid)
+                child1Bounds = { xmin: xMid, ymin: nodeSpatialBounds.ymin, xmax: nodeSpatialBounds.xmax, ymax: nodeSpatialBounds.ymax };
+                child2Bounds = { xmin: nodeSpatialBounds.xmin, ymin: nodeSpatialBounds.ymin, xmax: xMid, ymax: nodeSpatialBounds.ymax };
             } else {
                 // 奇数深度 (Level 1, Level 3, Level 5...): 沿 Y 轴中线二分
-                leftBounds = { xmin: nodeSpatialBounds.xmin, ymin: yMid, xmax: nodeSpatialBounds.xmax, ymax: nodeSpatialBounds.ymax };  // 上/北半区
-                rightBounds = { xmin: nodeSpatialBounds.xmin, ymin: nodeSpatialBounds.ymin, xmax: nodeSpatialBounds.xmax, ymax: yMid }; // 下/南半区
+                // Slot 2k+1 (Child 1): 北/上半区 (ymin = yMid)
+                // Slot 2k+2 (Child 2): 南/下半区 (ymax = yMid)
+                child1Bounds = { xmin: nodeSpatialBounds.xmin, ymin: yMid, xmax: nodeSpatialBounds.xmax, ymax: nodeSpatialBounds.ymax };
+                child2Bounds = { xmin: nodeSpatialBounds.xmin, ymin: nodeSpatialBounds.ymin, xmax: nodeSpatialBounds.xmax, ymax: yMid };
             }
 
-            const leftChild = buildTreeFromSlots(2 * slotIdx + 1, pathStr + '.L', leftBounds);
-            const rightChild = buildTreeFromSlots(2 * slotIdx + 2, pathStr + '.R', rightBounds);
+            const leftChild = buildTreeFromSlots(2 * slotIdx + 1, pathStr + '.Child1', child1Bounds);
+            const rightChild = buildTreeFromSlots(2 * slotIdx + 2, pathStr + '.Child2', child2Bounds);
 
             const children = [];
             if (leftChild) children.push(leftChild);

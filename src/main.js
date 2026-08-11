@@ -160,9 +160,10 @@ const router = createRouter({
           component: () => import('./views/Algorithm/QuadTree.vue')
         },
         {
-          path: 'sbn-quadtree',
-          name: 'EsriSbnQuadTree',
-          component: () => import('./views/Algorithm/EsriSbnQuadTree.vue')
+          path: 'sbn-kdtree',
+          name: 'EsriSbnKDTree',
+          component: () => import('./views/Algorithm/EsriSbnKDTree.vue'),
+          alias: 'sbn-quadtree'
         },
         {
           path: 'postgis-rtree',

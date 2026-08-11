@@ -67,6 +67,12 @@ const handleLogin = async () => {
       })
     })
 
+    if (!response.ok) {
+      errorMessage.value = `服务器响应异常 (HTTP ${response.status})，请检查后端服务`
+      isLoading.value = false
+      return
+    }
+
     const data = await response.json()
     console.log('Login Response:', data)
 

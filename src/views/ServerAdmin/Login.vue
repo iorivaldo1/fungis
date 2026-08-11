@@ -70,6 +70,12 @@ const handleLogin = async () => {
       })
     })
 
+    if (!response.ok) {
+      errorMessage.value = `服务器响应异常 (HTTP ${response.status})，请检查后端服务`
+      isLoading.value = false
+      return
+    }
+
     const data = await response.json()
 
     // 从不同可能的字段里提取 token（适配多种后端返回结构）

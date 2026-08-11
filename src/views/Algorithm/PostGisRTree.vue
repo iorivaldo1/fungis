@@ -13,12 +13,21 @@
     <div id="queuePanel" v-show="pq.length > 0">
       <strong style="margin-right:10px; color:#1976d2; font-size: 14px;">GiST 优先队列<br>(升序小顶堆)</strong>
       <div v-for="(item, idx) in displayQueue" :key="idx" class="queue-item"
-        :class="[item.type, { 'final-result': item.isFinal }]" title="点击在地图上高亮该范围"
+        :class="[item.type, { 'final-result': item.isFinal || item.isFetched }]" title="点击在地图上高亮该范围/要素"
         @click="handleQueueItemClick(item)">
         <span v-if="item.isMore">... 其它 {{ pq.length - 10 }} 项</span>
         <template v-else>
-          <span>{{ item.type === 'node' ? '索引页: Page ' + item.pageIndex : '要素: CTID(' + item.op_blkid + ',' + item.ip_posid + ')' }}</span>
+          <span>
+            {{
+              item.isFinal || item.isFetched
+                ? '要素: CTID(' + item.op_blkid + ',' + item.ip_posid + ')'
+                : item.type === 'node'
+                  ? '索引页: Page ' + item.pageIndex
+                  : '包围盒: CTID(' + item.op_blkid + ',' + item.ip_posid + ')'
+            }}
+          </span>
           <span class="dist">MinDist: {{ item.minDist === Infinity ? '∞' : item.minDist.toFixed(6) }}</span>
+          <span v-if="item.pageIndex !== undefined && item.type === 'tuple'" class="page-tag">Page {{ item.pageIndex }}</span>
         </template>
       </div>
       <span v-if="pq.length === 0" style="color:#999; font-size: 13px;">(空)</span>
@@ -297,9 +306,15 @@ const handleQueueItemClick = async (item) => {
   if (item.type === 'node' && item.bbox) {
     highlightBBox(item.bbox.xmin, item.bbox.ymin, item.bbox.xmax, item.bbox.ymax)
   } else if (item.type === 'tuple') {
-    const res = await getTupleExactDistanceAsync(item.op_blkid, item.ip_posid, item.bbox, px, py)
-    if (res && res.parts) highlightPolyline(res.parts)
-    else if (item.bbox) highlightBBox(item.bbox.xmin, item.bbox.ymin, item.bbox.xmax, item.bbox.ymax)
+    if ((item.isFinal || item.isFetched) && item.parts) {
+      highlightPolyline(item.parts)
+    } else if (item.bbox) {
+      highlightBBox(item.bbox.xmin, item.bbox.ymin, item.bbox.xmax, item.bbox.ymax)
+    } else {
+      const res = await getTupleExactDistanceAsync(item.op_blkid, item.ip_posid, item.bbox, px, py)
+      if (res && res.parts) highlightPolyline(res.parts)
+      else if (item.bbox) highlightBBox(item.bbox.xmin, item.bbox.ymin, item.bbox.xmax, item.bbox.ymax)
+    }
   }
 }
 
@@ -500,13 +515,14 @@ const handlePrev = () => {
   logs.value = state.logs.map(i => ({ ...i }))
 
   canStep.value = true
-  if (historyStates.length === 0) canPrev.value = false
+  canPrev.value = historyStates.length > 0
 }
 
 const handleStep = async () => {
   if (pq.value.length === 0) {
     logMsg("结束", "队列已空", ["已完成全图 GiST 索引搜寻"])
     canStep.value = false
+    canPrev.value = historyStates.length > 0
     return
   }
 
@@ -539,7 +555,22 @@ const handleStep = async () => {
   stepCount++
   const topItem = pq.value.shift()
 
-  // 1. 如果出队的是物理要素 Tuple
+  // 1. 如果出队的是已经完成 CTID 回表的物理要素 (isFetched === true)
+  if (topItem.type === 'tuple' && topItem.isFetched) {
+    logMsg(stepCount, `<span style="color:#d32f2f; font-weight:bold;">🎉 触发数学完备早停剪枝！寻找成功！</span>`, [
+      `堆顶已回表要素: <b>CTID(${topItem.op_blkid}, ${topItem.ip_posid})</b> (精确折线距离 = <b>${topItem.minDist.toFixed(6)}</b>)`,
+      `数据表中记录名: <b>${topItem.riverName}</b>`,
+      `<span style="color:#d32f2f; font-weight:bold;">基于小顶堆单调性，堆中剩余所有节点/BBox的最近可能距离 (>= ${topItem.minDist.toFixed(6)}) 绝对无法超越此要素的真实距离。SQL 引擎触发 Early Stopping 完美剪枝提前结束！</span>`
+    ])
+    topItem.isFinal = true
+    pq.value.unshift(topItem)
+    canStep.value = false
+    canPrev.value = true
+    if (topItem.parts) highlightPolyline(topItem.parts)
+    return
+  }
+
+  // 2. 如果出队的是未回表的 CTID 包围盒 (isFetched === false / undefined)
   if (topItem.type === 'tuple') {
     const blkid = topItem.op_blkid
     const posid = topItem.ip_posid
@@ -552,7 +583,24 @@ const handleStep = async () => {
         `<span style="color:#d32f2f; font-weight:bold;">基于小顶堆单调性，堆中剩余所有节点/BBox的最近可能距离 (>= ${topItem.minDist.toFixed(6)}) 绝对无法超越 ${bestDist.toFixed(6)}。SQL 引擎触发 Early Stopping 完美剪枝提前结束！</span>`
       ])
       canStep.value = false
-      if (bestItem && bestItem.parts) highlightPolyline(bestItem.parts)
+      canPrev.value = true
+      if (bestItem) {
+        if (bestItem.parts) highlightPolyline(bestItem.parts)
+        pq.value.unshift(topItem)
+        const finalItem = {
+          type: 'tuple',
+          op_blkid: bestItem.op_blkid,
+          ip_posid: bestItem.ip_posid,
+          minDist: bestDist,
+          isFetched: true,
+          isFinal: true,
+          parts: bestItem.parts,
+          bbox: bestItem.bbox,
+          pageIndex: bestItem.pageIndex,
+          riverName: bestItem.riverName
+        }
+        pq.value.unshift(finalItem)
+      }
       return
     }
 
@@ -567,9 +615,21 @@ const handleStep = async () => {
       `<b>PostGIS ST_Distance 精确折线距离算数:</b> ${exactDist !== null ? exactDist.toFixed(6) : 'N/A'}`
     ]
 
+    const fetchedFeature = {
+      type: 'tuple',
+      op_blkid: blkid,
+      ip_posid: posid,
+      bbox: topItem.bbox,
+      minDist: exactDist !== null ? exactDist : topItem.minDist,
+      pageIndex: topItem.pageIndex,
+      isFetched: true,
+      riverName,
+      parts: res.parts
+    }
+
     if (exactDist !== null && exactDist < bestDist) {
       bestDist = exactDist
-      bestItem = { op_blkid: blkid, ip_posid: posid, riverName, exactDist, parts: res.parts }
+      bestItem = fetchedFeature
       actions.push(`<span style="color:#4caf50; font-weight:bold;">刷新最佳候选记录! 当前 Best_Dist = ${bestDist.toFixed(6)}</span>`)
     } else {
       actions.push(`真实距离 (${exactDist !== null ? exactDist.toFixed(6) : 'N/A'}) 大于当前最佳值 (${bestDist.toFixed(6)}), 淘汰此项。`)
@@ -588,8 +648,12 @@ const handleStep = async () => {
       highlightPolyline(res.parts)
     }
 
-    const top5Str = pq.value.slice(0, 5).map(i => (i.type === 'node' ? 'Page_' + i.pageIndex : `CTID(${i.op_blkid},${i.ip_posid})`)).join(', ') + (pq.value.length > 5 ? ' ...' : '')
-    actions.push(`<b>优先队列前 5 名:</b> ${top5Str}`)
+    // 将回表查出精确几何距离的要素重新按 exactDist 插入优先队列并严格升序排序
+    pq.value.push(fetchedFeature)
+    pq.value.sort((a, b) => a.minDist - b.minDist)
+
+    const top5Str = pq.value.slice(0, 5).map(i => (i.type === 'node' ? 'Page_' + i.pageIndex : (i.isFetched ? `要素(${i.op_blkid},${i.ip_posid})` : `包围盒(${i.op_blkid},${i.ip_posid})`))).join(', ') + (pq.value.length > 5 ? ' ...' : '')
+    actions.push(`<b>CTID 回表完成，重新入堆按距离升序排列，队列前 5 名:</b> ${top5Str}`)
 
     logMsg(stepCount, `CTID 回表重核 (Heap Fetch)`, actions)
 
@@ -617,7 +681,7 @@ const handleStep = async () => {
 
     let actions = [
       `<b>进入底层叶子物理页:</b> Page ${pageIdx} (包含 <code>F_LEAF = 0x0001</code> 标志位)`,
-      `页内保存 <b>${currPage.tuples.length}</b> 个指向数据表 Heap 的 Tuple 物理行指针 (CTID)`
+      `页内保存 <b>${currPage.tuples.length}</b> 个指向数据表 Heap 的 CTID 物理行指针与其 16 字节 Index BBox`
     ]
 
     currPage.tuples.forEach(tuple => {
@@ -628,7 +692,8 @@ const handleStep = async () => {
         op_blkid: tuple.target_block,
         ip_posid: tuple.data.ip_posid,
         bbox: b,
-        minDist: d
+        minDist: d,
+        pageIndex: pageIdx
       })
       drawBBox(b.xmin, b.ymin, b.xmax, b.ymax, '#ff9800', 1)
     })
@@ -636,7 +701,7 @@ const handleStep = async () => {
     pq.value.sort((a, b) => a.minDist - b.minDist)
 
     const top5Str = pq.value.slice(0, 5).map(i => (i.type === 'node' ? 'Page_' + i.pageIndex : `CTID(${i.op_blkid},${i.ip_posid})`)).join(', ') + (pq.value.length > 5 ? ' ...' : '')
-    actions.push(`<b>全页面 Tuples 入堆后优先队列前 5 名:</b> ${top5Str}`)
+    actions.push(`<b>全页面 CTID 行指针 BBox 入堆后优先队列前 5 名:</b> ${top5Str}`)
 
     logMsg(stepCount, `叶子物理页展开 (Leaf Page ${pageIdx})`, actions)
   } else {
@@ -803,6 +868,13 @@ onUnmounted(() => {
   color: #555;
 }
 
+.queue-item .page-tag {
+  font-size: 11px;
+  color: #e65100;
+  font-weight: bold;
+  margin-top: 1px;
+}
+
 .queue-item.final-result {
   background: #4caf50;
   color: white;
@@ -812,6 +884,10 @@ onUnmounted(() => {
 }
 
 .queue-item.final-result .dist {
+  color: #e8f5e9;
+}
+
+.queue-item.final-result .page-tag {
   color: #e8f5e9;
 }
 

@@ -17,7 +17,12 @@
         @click="handleQueueItemClick(item)">
         <span v-if="item.isMore">... 其它 {{ pq.length - 10 }} 项</span>
         <template v-else>
-          <span>{{ item.type === 'node' ? '节点: ' + item.path : '要素: Shape_' + item.shapeId }}</span>
+          <div v-if="item.type === 'node'" class="node-stack">
+            <div v-for="(n, nIdx) in (item.nodeStack ? item.nodeStack.slice().reverse() : ['node0'])" :key="nIdx" class="node-line">
+              {{ n }}
+            </div>
+          </div>
+          <span v-else>{{ '要素: Shape_' + item.shapeId }}</span>
           <span class="dist">MinDist: {{ item.minDist === Infinity ? '∞' : item.minDist.toFixed(4) }}</span>
         </template>
       </div>
@@ -408,7 +413,7 @@ const initAlgorithm = () => {
   const binY = coordToBin(py, bounds.ymin, bounds.ymax)
 
   const d = distToBBox(px, py, bounds.xmin, bounds.ymin, bounds.xmax, bounds.ymax)
-  pq.value.push({ type: 'node', node: sbnTreeRoot, minDist: d, path: 'Slot_0 (Root)' })
+  pq.value.push({ type: 'node', node: sbnTreeRoot, minDist: d, path: 'Slot_0 (Root)', nodeStack: ['node' + (sbnTreeRoot.targetNodeIndex || 1)] })
 
   // 绘制根节点包围盒 MBR
   drawBBox(bounds.xmin, bounds.ymin, bounds.xmax, bounds.ymax, '#2196F3', 2)
@@ -417,7 +422,7 @@ const initAlgorithm = () => {
     `目标点 P(${px}, ${py})`,
     `SBN 映射全局包围盒 X:[${bounds.xmin.toFixed(2)}, ${bounds.xmax.toFixed(2)}], Y:[${bounds.ymin.toFixed(2)}, ${bounds.ymax.toFixed(2)}]`,
     `<b>256×256 归一化网格坐标:</b> Bin(${binX}, ${binY})`,
-    `根节点 Slot 0 (DirectoryNode #1) 入队，MinDist = ${d.toFixed(4)}`
+    `根节点 Slot 0 (Node #${sbnTreeRoot.targetNodeIndex || 1}) 入队，MinDist = ${d.toFixed(4)}`
   ])
 
   canStep.value = true
@@ -598,9 +603,11 @@ const handleStep = async () => {
     } else {
       const b = child.nodeBBox
       const d = distToBBox(px, py, b.xmin, b.ymin, b.xmax, b.ymax)
-      pq.value.push({ type: 'node', node: child, minDist: d, path: `${topItem.path} -> Slot_${child.slotIdx}` })
-      drawBBox(b.xmin, b.ymin, b.xmax, b.ymax, '#2196F3', 1)
-      actions.push(`子节点 Slot_${child.slotIdx} (Node #${child.targetNodeIndex}) 入队, MinDist=${d.toFixed(4)}`)
+  const childName = 'node' + child.targetNodeIndex
+  const childStack = topItem.nodeStack ? [...topItem.nodeStack, childName] : [childName]
+  pq.value.push({ type: 'node', node: child, minDist: d, path: `${topItem.path} -> Slot_${child.slotIdx}`, nodeStack: childStack })
+  drawBBox(b.xmin, b.ymin, b.xmax, b.ymax, '#2196F3', 1)
+  actions.push(`子节点 Slot_${child.slotIdx} (Node #${child.targetNodeIndex}) 入队, MinDist=${d.toFixed(4)}`)
     }
   })
 
@@ -779,6 +786,20 @@ onUnmounted(() => {
 .queue-item .dist {
   font-size: 11px;
   color: #555;
+  margin-top: 2px;
+}
+
+.node-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.25;
+}
+
+.node-line {
+  font-size: 13px;
+  font-weight: 500;
+  color: #1565c0;
 }
 
 .queue-item.final-result {

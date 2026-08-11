@@ -29,15 +29,15 @@
               <div v-show="isAlgorithmMenuExpanded" class="sub-menu">
                 <router-link to="/algorithm/quadtree" class="menu-item sub" active-class="active">
                   <div class="sub-dot"></div>
-                  <span class="menu-text">QGIS QIX 索引查询</span>
+                  <span class="menu-text">QGIS QIX KNN 查询(四叉树)</span>
                 </router-link>
-                <router-link to="/algorithm/sbn-quadtree" class="menu-item sub" active-class="active">
+                <router-link to="/algorithm/sbn-kdtree" class="menu-item sub" active-class="active">
                   <div class="sub-dot"></div>
-                  <span class="menu-text">ESRI SBN 索引查询</span>
+                  <span class="menu-text">ESRI SBN KNN 查询(KD树)</span>
                 </router-link>
                 <router-link to="/algorithm/postgis-rtree" class="menu-item sub" active-class="active">
                   <div class="sub-dot"></div>
-                  <span class="menu-text">PostGIS GiST (R树) 索引查询</span>
+                  <span class="menu-text">PG GIST KNN 查询(R树)</span>
                 </router-link>
               </div>
             </transition>
@@ -253,10 +253,14 @@ onMounted(async () => {
           password: 'default'
         })
       })
-      const data = await response.json()
-      if (response.ok && data.data && data.data.token) {
-        setToken(data.data.token)
-        console.log('自动获取 fungis_user 默认 Token 成功')
+      if (response.ok) {
+        const data = await response.json()
+        if (data.data && data.data.token) {
+          setToken(data.data.token)
+          console.log('自动获取 fungis_user 默认 Token 成功')
+        }
+      } else {
+        console.warn(`自动获取默认 Token 失败: 后端服务未就绪或未启动 (HTTP ${response.status})`)
       }
     } else {
       console.log('检测到已有有效 Token，跳过默认 Token 自动获取')
@@ -324,9 +328,9 @@ const currentRouteName = computed(() => {
     'ServerAdminLogin': '服务器监控登录',
     'ServerAdminStatus': '服务器监控状态',
     'Algorithm': '空间算法',
-    'QuadTree': 'QGIS QIX 索引查询',
-    'EsriSbnQuadTree': 'ESRI SBN 索引查询',
-    'PostGisRTree': 'PostGIS GiST (R树) 索引查询'
+    'QuadTree': 'QGIS QIX KNN 查询(四叉树)',
+    'EsriSbnKDTree': 'ESRI SBN KNN 查询(KD树)',
+    'PostGisRTree': 'PG GIST KNN 查询(R树)'
   }
   return nameMap[route.name] || route.name || '未知'
 })
@@ -338,7 +342,7 @@ const currentRouteName = computed(() => {
 :root {
   --bg-dark: #00392E;
   --bg-grey: #004D40;
-  --sidebar-width: 240px;
+  --sidebar-width: 260px;
   --header-height: 50px;
   --text-main: #DBF6DE;
   --text-muted: #42B59A;
@@ -471,6 +475,7 @@ body,
   font-weight: 500;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
   line-height: 1.4;
+  white-space: nowrap;
 }
 
 .sidebar-footer {
@@ -533,9 +538,17 @@ body,
 }
 
 .menu-item.sub {
-  padding-left: 52px;
+  padding-left: 36px;
+  padding-right: 12px;
   font-size: 13px;
   height: 40px;
+  white-space: nowrap;
+}
+
+.menu-item.sub .menu-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .sub-dot {
