@@ -88,18 +88,25 @@ export const switchTiandituToken = async (newToken) => {
  */
 export const loadTiandituScript = async () => {
   // 先异步拉取最新的 Token
-  await getTiandituToken()
+  const token = await getTiandituToken()
+
+  if (window.T && window.T.Map) {
+    if (window.T.setAuthKey) {
+      window.T.setAuthKey(token)
+    }
+    return Promise.resolve()
+  }
 
   return new Promise((resolve, reject) => {
-    if (window.T && window.T.Map) {
-      resolve()
-      return
-    }
-
     // 检查是否已有脚本标签正在加载
     const existingScript = document.querySelector('script[src="/tianditu.api.js"]')
     if (existingScript) {
-      existingScript.addEventListener('load', () => resolve())
+      existingScript.addEventListener('load', () => {
+        if (window.T?.setAuthKey && window.TMAP_AUTHKEY) {
+          window.T.setAuthKey(window.TMAP_AUTHKEY)
+        }
+        resolve()
+      })
       existingScript.addEventListener('error', (err) => reject(err))
       return
     }

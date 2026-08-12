@@ -56,6 +56,7 @@ import * as Cesium from 'cesium';
 import 'cesium/Build/Cesium/Widgets/widgets.css';
 import IconChevronDown from '../../components/icons/IconChevronDown.vue';
 import { api } from '@/utils/request.js';
+import { getTiandituToken } from '@/utils/tiandituToken.js';
 
 
 const showPageInfo = ref(true);
@@ -157,15 +158,17 @@ const regClickPrimitive = (viewer) => {
     return handler;
 };
 
-const addTiandituLayer = () => {
+const addTiandituLayer = async () => {
+    const token = window.TMAP_AUTHKEY || await getTiandituToken()
     const tiandituModel = new Cesium.ProviderViewModel({
         name: "天地图影像",
         tooltip: "天地图影像及中文标注数据",
         iconUrl: '/tdtLOGO.png',
         creationFunction: function () {
+            const tk = window.TMAP_AUTHKEY || token || '73a87062ca36baaed0feebe7989f453a'
             const mapsources = []
             const yx = new Cesium.WebMapTileServiceImageryProvider({
-                url: "https://t0.tianditu.gov.cn/img_w/wmts?service=wmts&request=GetTile&version=1.0.0&LAYER=img&tileMatrixSet=w&TileMatrix={TileMatrix}&TileRow={TileRow}&TileCol={TileCol}&style=default&format=tiles&tk=68873c0b0fe4dfa4ecedd009b6483e13",
+                url: `https://t0.tianditu.gov.cn/img_w/wmts?service=wmts&request=GetTile&version=1.0.0&LAYER=img&tileMatrixSet=w&TileMatrix={TileMatrix}&TileRow={TileRow}&TileCol={TileCol}&style=default&format=tiles&tk=${tk}`,
                 layer: "tdtBasicLayer",
                 style: "default",
                 format: "image/jpeg",
@@ -173,7 +176,7 @@ const addTiandituLayer = () => {
                 show: false
             })
             const zj = new Cesium.WebMapTileServiceImageryProvider({
-                url: "https://t0.tianditu.gov.cn/cia_w/wmts?service=wmts&request=GetTile&version=1.0.0&LAYER=cia&tileMatrixSet=w&TileMatrix={TileMatrix}&TileRow={TileRow}&TileCol={TileCol}&style=default&format=tiles&tk=68873c0b0fe4dfa4ecedd009b6483e13",
+                url: `https://t0.tianditu.gov.cn/cia_w/wmts?service=wmts&request=GetTile&version=1.0.0&LAYER=cia&tileMatrixSet=w&TileMatrix={TileMatrix}&TileRow={TileRow}&TileCol={TileCol}&style=default&format=tiles&tk=${tk}`,
                 layer: "tiandituImgMarker",
                 style: "default",
                 format: "image/jpeg",

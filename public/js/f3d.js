@@ -75,7 +75,7 @@ function getTileWMTSUrlIMG(tileCol, tileRow, zoom) {
         '&STYLE=default' +
         '&TILEMATRIXSET=w' +
         '&FORMAT=image%2Fpng' +
-        '&tk=be50c7492442ecf4e61ca7bd578d6b8b' +
+        '&tk=' + (window.TMAP_AUTHKEY || '73a87062ca36baaed0feebe7989f453a') +
         '&TILECOL=' +
         tileCol +
         '&TILEROW=' +
@@ -99,7 +99,7 @@ function getTileWMTSUrlCIA(tileCol, tileRow, zoom) {
         '&STYLE=default' +
         '&TILEMATRIXSET=w' +
         '&FORMAT=image%2Fpng' +
-        '&tk=be50c7492442ecf4e61ca7bd578d6b8b' +
+        '&tk=' + (window.TMAP_AUTHKEY || '73a87062ca36baaed0feebe7989f453a') +
         '&TILECOL=' +
         tileCol +
         '&TILEROW=' +
@@ -123,7 +123,7 @@ function getTileWMTSUrlCVA(tileCol, tileRow, zoom) {
         '&STYLE=default' +
         '&TILEMATRIXSET=w' +
         '&FORMAT=image%2Fpng' +
-        '&tk=be50c7492442ecf4e61ca7bd578d6b8b' +
+        '&tk=' + (window.TMAP_AUTHKEY || '73a87062ca36baaed0feebe7989f453a') +
         '&TILECOL=' +
         tileCol +
         '&TILEROW=' +
@@ -146,7 +146,7 @@ function getTileWMTSUrlVEC(tileCol, tileRow, zoom) {
         '&STYLE=default' +
         '&TILEMATRIXSET=w' +
         '&FORMAT=image%2Fpng' +
-        '&tk=be50c7492442ecf4e61ca7bd578d6b8b' +
+        '&tk=' + (window.TMAP_AUTHKEY || '73a87062ca36baaed0feebe7989f453a') +
         '&TILECOL=' + tileCol +
         '&TILEROW=' + tileRow +
         '&TILEMATRIX=' + zoom

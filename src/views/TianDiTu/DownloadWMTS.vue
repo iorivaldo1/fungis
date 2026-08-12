@@ -100,6 +100,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
 import * as GeoTIFF from 'geotiff'
+import { loadTiandituScript } from '@/utils/tiandituToken.js'
 
 // 状态变量
 const showCanvas = ref(false)
@@ -275,7 +276,7 @@ function getTileWMTSUrlCIA(tileCol, tileRow, zoom, token) {
 }
 
 function getCurrentToken() {
-  return savedSettings.token || DEFAULT_TOKEN
+  return savedSettings.token || window.TMAP_AUTHKEY || '73a87062ca36baaed0feebe7989f453a'
 }
 
 // 主要功能函数
@@ -633,7 +634,7 @@ const initMap = () => {
 
 onMounted(async () => {
   try {
-    await loadScripts()
+    await loadTiandituScript()
     initMap()
   } catch (error) {
     console.error('加载资源失败:', error)

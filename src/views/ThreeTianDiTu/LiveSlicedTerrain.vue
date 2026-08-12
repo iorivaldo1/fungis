@@ -86,6 +86,7 @@ import { ref, onMounted, onUnmounted } from 'vue'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import * as GeoTIFF from 'geotiff'
+import { loadTiandituScript } from '@/utils/tiandituToken.js'
 
 // State
 const showCoord = ref(false)
@@ -141,12 +142,14 @@ const tileToLngLat = (tileCol, tileRow, zoom) => {
 
 const getTileWMTSUrlIMG = (tileCol, tileRow, zoom) => {
     const serviceNum = Math.floor(Math.random() * 8)
-    return `https://t${serviceNum}.tianditu.gov.cn/img_w/wmts?REQUEST=GetTile&SERVICE=WMTS&VERSION=1.0.0&LAYER=img&STYLE=default&TILEMATRIXSET=w&FORMAT=image%2Fpng&tk=be50c7492442ecf4e61ca7bd578d6b8b&TILECOL=${tileCol}&TILEROW=${tileRow}&TILEMATRIX=${zoom}`
+    const key = window.TMAP_AUTHKEY || '73a87062ca36baaed0feebe7989f453a'
+    return `https://t${serviceNum}.tianditu.gov.cn/img_w/wmts?REQUEST=GetTile&SERVICE=WMTS&VERSION=1.0.0&LAYER=img&STYLE=default&TILEMATRIXSET=w&FORMAT=image%2Fpng&tk=${key}&TILECOL=${tileCol}&TILEROW=${tileRow}&TILEMATRIX=${zoom}`
 }
 
 const getTileWMTSUrlCIA = (tileCol, tileRow, zoom) => {
     const serviceNum = Math.floor(Math.random() * 8)
-    return `https://t${serviceNum}.tianditu.gov.cn/cia_w/wmts?REQUEST=GetTile&SERVICE=WMTS&VERSION=1.0.0&LAYER=cia&STYLE=default&TILEMATRIXSET=w&FORMAT=image%2Fpng&tk=be50c7492442ecf4e61ca7bd578d6b8b&TILECOL=${tileCol}&TILEROW=${tileRow}&TILEMATRIX=${zoom}`
+    const key = window.TMAP_AUTHKEY || '73a87062ca36baaed0feebe7989f453a'
+    return `https://t${serviceNum}.tianditu.gov.cn/cia_w/wmts?REQUEST=GetTile&SERVICE=WMTS&VERSION=1.0.0&LAYER=cia&STYLE=default&TILEMATRIXSET=w&FORMAT=image%2Fpng&tk=${key}&TILECOL=${tileCol}&TILEROW=${tileRow}&TILEMATRIX=${zoom}`
 }
 
 const calculateBounds = (tiles) => {
@@ -729,7 +732,7 @@ const animate = () => {
 }
 
 onMounted(async () => {
-    await loadTianditu()
+    await loadTiandituScript()
 
     // Init Map
     map = new window.T.Map('map')

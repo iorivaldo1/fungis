@@ -6,6 +6,9 @@ window.T.setAuthKey = function (token) {
     if (window.T.w) {
         window.T.w.TMAP_AUTHKEY = window.TMAP_AUTHKEY;
     }
+    if (window.T.lR && window.T.lR.bR && window.T.w && window.T.w.E) {
+        window.T.lR.bR(window.T.w.E + "/qv?tk=" + window.TMAP_AUTHKEY + "&t=" + Math.random() + "&callback=T.qv");
+    }
 };
 (function () {
     function each(t, i) {
