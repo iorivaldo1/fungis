@@ -1,5 +1,12 @@
-window.TMAP_AUTHKEY = "587ba40989e7b72371ca6c72b814b6dc";
+window.TMAP_AUTHKEY = window.TMAP_AUTHKEY || "";
 window.T = window.T || {};
+window.T.setAuthKey = function (token) {
+    window.TMAP_AUTHKEY = token || "";
+    window.T.tk = "tk=" + window.TMAP_AUTHKEY + "&";
+    if (window.T.w) {
+        window.T.w.TMAP_AUTHKEY = window.TMAP_AUTHKEY;
+    }
+};
 (function () {
     function each(t, i) {
         for (var n in t) t.hasOwnProperty(n) && i(t[n], n, t)

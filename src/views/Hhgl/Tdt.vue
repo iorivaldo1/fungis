@@ -99,6 +99,7 @@
 import { onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { removeToken, api } from '@/utils/request.js'
+import { loadTiandituScript } from '@/utils/tiandituToken.js'
 
 const router = useRouter()
 let mapInstance = null
@@ -180,21 +181,6 @@ const lngLatsToWkt = (lngLats) => {
   }
 
   return `MULTIPOLYGON(((${coords.join(', ')})))`
-}
-
-const loadTiandituScript = () => {
-  return new Promise((resolve, reject) => {
-    if (window.T) {
-      resolve()
-      return
-    }
-
-    const script = document.createElement('script')
-    script.src = '/tianditu.api.js'
-    script.onload = resolve
-    script.onerror = reject
-    document.head.appendChild(script)
-  })
 }
 
 const initBlinkingDot = (map, lng, lat) => {

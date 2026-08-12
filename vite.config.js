@@ -2,6 +2,7 @@ import { defineConfig, loadEnv } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { resolve } from 'path'
 import cesium from 'vite-plugin-cesium'
+import fs from 'fs'
 
 /**
  * 自定义插件：完全移除 vite-plugin-cesium 注入的阻塞脚本标签
@@ -48,7 +49,6 @@ function removeCesiumInjectPlugin() {
     }
   }
 }
-
 
 export default defineConfig(({ mode }) => {
   // 加载环境变量，根据当前工作目录和 mode (例如 development)

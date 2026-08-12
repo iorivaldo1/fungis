@@ -10,8 +10,8 @@
         </div>
         <div class="title-container">
           <div>
-            <h2>系统服务器状态监控</h2>
-            <p>Real-time Services Status Monitoring</p>
+            <h2>后台设置与服务器监控</h2>
+            <p>Admin Settings & Real-time Services Monitoring</p>
           </div>
           <button class="refresh-btn" @click="handleRefresh" :disabled="loading" title="手动刷新">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"
@@ -29,6 +29,79 @@
     </header>
 
     <div class="metrics-grid">
+      <!-- 天地图 Token 配置卡片 -->
+      <div class="metric-card tdt-token-card">
+        <div class="card-header">
+          <div class="service-info">
+            <div class="service-icon tdt-icon">🗺️</div>
+            <h3>天地图 API Token 配置</h3>
+          </div>
+          <span class="status-badge" :class="isAdmin ? 'online' : 'warning'">
+            <span class="pulse-dot"></span>
+            {{ isAdmin ? '管理员(可编辑)' : '只读权限' }}
+          </span>
+        </div>
+        <div class="card-body" v-if="!loadingToken">
+          <div class="token-info-box">
+            <div class="stat-row">
+              <span>当前生效 Token</span>
+              <span class="token-display">
+                <code>{{ showToken ? currentToken : maskToken(currentToken) }}</code>
+                <button class="icon-toggle-btn" @click="showToken = !showToken" :title="showToken ? '隐匿' : '明文显示'">
+                  {{ showToken ? '👁️' : '🔒' }}
+                </button>
+              </span>
+            </div>
+            <div class="stat-row mt" v-if="tokenUpdatedAt">
+              <span>配置文件更新时间</span>
+              <span class="stat-value" style="font-size: 12px; color: #94a3b8;">{{ tokenUpdatedAt }}</span>
+            </div>
+          </div>
+
+          <div class="token-edit-form">
+            <div class="preset-tokens">
+              <span class="preset-label">预设 Key 快速填入：</span>
+              <div class="preset-btns">
+                <button 
+                  v-for="(tok, idx) in presetTokens" 
+                  :key="idx" 
+                  class="preset-btn"
+                  :class="{ active: (newTokenInput ? newTokenInput === tok.val : currentToken === tok.val) }"
+                  @click="newTokenInput = tok.val"
+                  :title="tok.val"
+                  :disabled="!isAdmin"
+                >
+                  {{ tok.name }}
+                </button>
+              </div>
+            </div>
+            <div class="input-group">
+              <input 
+                type="text" 
+                v-model="newTokenInput" 
+                placeholder="输入或选择预设天地图 Key / Token" 
+                :disabled="!isAdmin || updatingToken"
+                class="token-input"
+                @keyup.enter="handleSaveToken"
+              />
+              <button 
+                class="save-token-btn" 
+                @click="handleSaveToken" 
+                :disabled="!isAdmin || updatingToken || !newTokenInput.trim()"
+              >
+                {{ updatingToken ? '保存中...' : '保存并切换' }}
+              </button>
+            </div>
+            <div class="permission-tip" v-if="!isAdmin">
+              🔒 只有后台管理员 (serverAdmin 权限) 可以修改配置文件中的天地图 Token。
+            </div>
+            <div class="token-msg" :class="tokenMsgType" v-if="tokenMsg">
+              {{ tokenMsg }}
+            </div>
+          </div>
+        </div>
+        <div class="skeleton-loader" v-else></div>
+      </div>
       <!-- 整体服务器状态 -->
       <div class="metric-card server-card">
         <div class="card-header">
@@ -196,12 +269,68 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { setToken, api } from '@/utils/request.js'
+import { getTiandituToken, switchTiandituToken } from '@/utils/tiandituToken.js'
 
 const router = useRouter()
 const loading = ref(true)
+
+const presetTokens = [
+  { name: 'Key 1 (默认)', val: '73a87062ca36baaed0feebe7989f453a' },
+  { name: 'Key 2', val: 'ce4546b64fa98c94f8fbc75a4f897919' },
+  { name: 'Key 3', val: '251fde23a9628cd71799ed209e7292ab' },
+  { name: 'Key 4', val: '439681263a168a3cb87a19c93b209ecb' }
+]
+
+const isAdmin = ref(true)
+const currentToken = ref('')
+const newTokenInput = ref('')
+const tokenUpdatedAt = ref('')
+const loadingToken = ref(true)
+const updatingToken = ref(false)
+const showToken = ref(false)
+const tokenMsg = ref('')
+const tokenMsgType = ref('success')
+
+const maskToken = (tok) => {
+  if (!tok || tok.length < 8) return '********'
+  return tok.substring(0, 4) + '****************' + tok.substring(tok.length - 4)
+}
+
+const fetchTokenData = async () => {
+  loadingToken.value = true
+  try {
+    const tok = await getTiandituToken()
+    currentToken.value = tok
+    const authority = sessionStorage.getItem('authority')
+    isAdmin.value = (authority === 'serverAdmin' || authority === 'admin' || authority === null || authority === undefined)
+  } catch (e) {
+    console.error('加载天地图 Token 失败:', e)
+  } finally {
+    loadingToken.value = false
+  }
+}
+
+const handleSaveToken = async () => {
+  if (!newTokenInput.value.trim()) return
+  updatingToken.value = true
+  tokenMsg.value = ''
+  try {
+    await switchTiandituToken(newTokenInput.value.trim())
+    currentToken.value = newTokenInput.value.trim()
+    newTokenInput.value = ''
+    tokenMsg.value = '✅ Token 切换成功！配置文件已更新，天地图已实时刷新生效。'
+    tokenMsgType.value = 'success'
+    tokenUpdatedAt.value = new Date().toLocaleString()
+  } catch (err) {
+    tokenMsg.value = '❌ ' + (err.message || '切换失败')
+    tokenMsgType.value = 'error'
+  } finally {
+    updatingToken.value = false
+  }
+}
 
 const status = ref({
   server: { state: 'online', cpu: 0, memory: 0, uptime: '0天 0小时', totalMemoryStr: '0 GB', usedMemoryStr: '0 GB' },
@@ -214,6 +343,7 @@ const handleRefresh = async () => {
   if (loading.value) return;
   loading.value = true;
   await updateMetrics();
+  await fetchTokenData();
   loading.value = false;
 }
 
@@ -252,6 +382,7 @@ const handleLogout = () => {
 
 onMounted(() => {
   fetchStatus()
+  fetchTokenData()
 })
 </script>
 
@@ -662,6 +793,191 @@ onMounted(() => {
   height: 6px;
   border-radius: 50%;
   background-color: currentColor;
+}
+
+.status-badge.warning {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+}
+
+/* 天地图 Token 卡片特有样式 */
+.tdt-token-card {
+  grid-column: span 1;
+}
+
+.tdt-icon {
+  background: rgba(14, 165, 233, 0.15);
+  color: #38bdf8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+}
+
+.token-info-box {
+  background: rgba(15, 23, 42, 0.6);
+  border-radius: 8px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  margin-bottom: 16px;
+}
+
+.token-display {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.token-display code {
+  font-family: monospace;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 2px 8px;
+  border-radius: 4px;
+  color: #38bdf8;
+  font-size: 13px;
+  letter-spacing: 0.5px;
+}
+
+.icon-toggle-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+.icon-toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.token-edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.input-group {
+  display: flex;
+  gap: 10px;
+}
+
+.preset-tokens {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.preset-label {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.preset-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.preset-btn {
+  background: rgba(30, 41, 59, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #cbd5e1;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.preset-btn:hover:not(:disabled) {
+  background: rgba(56, 189, 248, 0.2);
+  border-color: #38bdf8;
+  color: #38bdf8;
+}
+
+.preset-btn.active {
+  background: rgba(56, 189, 248, 0.25);
+  border-color: #38bdf8;
+  color: #38bdf8;
+  font-weight: 600;
+}
+
+.preset-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.token-input {
+  flex: 1;
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 10px 14px;
+  color: #f8fafc;
+  font-size: 13px;
+  outline: none;
+  transition: all 0.2s;
+}
+
+.token-input:focus {
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2);
+}
+
+.token-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.save-token-btn {
+  background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 0 16px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s;
+}
+
+.save-token-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #0369a1 0%, #075985 100%);
+  box-shadow: 0 4px 12px rgba(2, 132, 199, 0.3);
+}
+
+.save-token-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.permission-tip {
+  font-size: 12px;
+  color: #f59e0b;
+  line-height: 1.5;
+}
+
+.token-msg {
+  font-size: 12.5px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  line-height: 1.4;
+}
+
+.token-msg.success {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.token-msg.error {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.3);
 }
 
 @media (min-width: 1200px) {

@@ -30,6 +30,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { loadTiandituScript } from '@/utils/tiandituToken.js'
 
 const router = useRouter()
 
@@ -46,21 +47,6 @@ const handleOpacityChange = () => {
   if (wmtsLayer) {
     wmtsLayer.setOpacity(opacity.value / 100)
   }
-}
-
-const loadTiandituScript = () => {
-  return new Promise((resolve, reject) => {
-    if (window.T) {
-      resolve()
-      return
-    }
-
-    const script = document.createElement('script')
-    script.src = '/tianditu.api.js'
-    script.onload = resolve
-    script.onerror = reject
-    document.head.appendChild(script)
-  })
 }
 
 

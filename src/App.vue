@@ -197,9 +197,9 @@
 
       <!-- 底部系统设置 -->
       <div class="sidebar-footer">
-        <router-link to="/server-admin/login" class="menu-item gear-item" active-class="active" title="系统服务器状态">
+        <router-link to="/server-admin/login" class="menu-item gear-item" active-class="active" title="后台设置">
           <IconGear />
-          <span class="menu-text" v-show="!isSidebarCollapsed">服务器监控</span>
+          <span class="menu-text" v-show="!isSidebarCollapsed">后台设置</span>
         </router-link>
       </div>
     </nav>
@@ -325,8 +325,8 @@ const currentRouteName = computed(() => {
     'RiverSimulation': '河流模拟',
     'ThreeTianDitu': 'Three+TianDitu',
     'LiveSlicedTerrain': '现切地形',
-    'ServerAdminLogin': '服务器监控登录',
-    'ServerAdminStatus': '服务器监控状态',
+    'ServerAdminLogin': '后台设置登录',
+    'ServerAdminStatus': '后台设置',
     'Algorithm': '空间算法',
     'QuadTree': 'QGIS QIX KNN 查询(四叉树)',
     'EsriSbnKDTree': 'ESRI SBN KNN 查询(KD树)',
