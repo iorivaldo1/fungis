@@ -29,6 +29,7 @@
 <script setup>
 import { onMounted, onUnmounted, ref } from 'vue';
 import { RiverRouteTool } from '../../../public/js/river_route.js';
+import { loadTiandituScript } from '@/utils/tiandituToken.js';
 
 const showPageInfo = ref(true);
 let map = null;
@@ -63,20 +64,7 @@ function addLayer(bounds) {
   wmtsLayer = lay;
 }
 
-const loadTiandituScript = () => {
-  return new Promise((resolve, reject) => {
-    if (window.T) {
-      resolve()
-      return
-    }
 
-    const script = document.createElement('script')
-    script.src = '/tianditu.api.js'
-    script.onload = resolve
-    script.onerror = reject
-    document.head.appendChild(script)
-  })
-}
 
 onMounted(async () => {
   try {

@@ -77,6 +77,7 @@
 <script setup>
 import { onMounted, onUnmounted, ref } from 'vue'
 import { api } from '@/utils/request.js'
+import { loadTiandituScript } from '@/utils/tiandituToken.js'
 
 let map = null
 let recTool = null
@@ -276,7 +277,7 @@ const setupCloseButton = () => {
 onMounted(async () => {
   try {
     // 加载必需的外部脚本
-    await loadScript('/tianditu.api.js')
+    await loadTiandituScript()
 
     // 初始化地图
     await initMap()

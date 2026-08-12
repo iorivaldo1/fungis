@@ -62,6 +62,7 @@
 import { ref, onMounted, onUnmounted, computed, nextTick } from 'vue'
 import { parseSbn, coordToBin } from '@/utils/sbnIndexParser.mjs'
 import { initBBoxLayer } from '@/utils/spatialRender.mjs'
+import { loadTiandituScript } from '@/utils/tiandituToken.js'
 
 const inputX = ref(103.00)
 const inputY = ref(30.00)
@@ -114,19 +115,7 @@ let historyStates = []
 let activeHighlightPolygon = null
 let activeHighlightPolylines = []
 
-const loadTiandituScript = () => {
-  return new Promise((resolve, reject) => {
-    if (window.T) {
-      resolve()
-      return
-    }
-    const script = document.createElement('script')
-    script.src = '/tianditu.api.js'
-    script.onload = resolve
-    script.onerror = reject
-    document.head.appendChild(script)
-  })
-}
+
 
 const initMap = () => {
   map = new window.T.Map("mapDiv")

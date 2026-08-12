@@ -13,11 +13,13 @@
     <div id="queuePanel" v-show="pq.length > 0">
       <strong style="margin-right:10px; color:#1976d2; font-size: 14px;">优先队列<br>(升序)</strong>
       <div v-for="(item, idx) in displayQueue" :key="idx" class="queue-item"
-        :class="[item.type, { 'final-result': item.isFinal || item.isFetched }]" title="点击在地图上高亮该范围/要素" @click="handleQueueItemClick(item)">
+        :class="[item.type, { 'final-result': item.isFinal || item.isFetched }]" title="点击在地图上高亮该范围/要素"
+        @click="handleQueueItemClick(item)">
         <span v-if="item.isMore">... 其它 {{ pq.length - 10 }} 项</span>
         <template v-else>
           <div v-if="item.type === 'node'" class="node-stack">
-            <div v-for="(n, nIdx) in (item.nodeStack ? item.nodeStack.slice().reverse() : ['node' + item.node.nodeId])" :key="nIdx" class="node-line">
+            <div v-for="(n, nIdx) in (item.nodeStack ? item.nodeStack.slice().reverse() : ['node' + item.node.nodeId])"
+              :key="nIdx" class="node-line">
               {{ typeof n === 'object' ? 'node' + n.nodeId : n }}
             </div>
           </div>
@@ -65,6 +67,7 @@
 import { ref, onMounted, onUnmounted, computed, nextTick } from 'vue'
 import { parseQix } from '@/utils/spatialIndexParser.mjs'
 import { initBBoxLayer } from '@/utils/spatialRender.mjs'
+import { loadTiandituScript } from '@/utils/tiandituToken.js'
 
 const inputX = ref(103.00)
 const inputY = ref(30.00)
@@ -152,19 +155,7 @@ const assignSpatialNodeIds = (node, slotId = 1) => {
   }
 }
 
-const loadTiandituScript = () => {
-  return new Promise((resolve, reject) => {
-    if (window.T) {
-      resolve()
-      return
-    }
-    const script = document.createElement('script')
-    script.src = '/tianditu.api.js'
-    script.onload = resolve
-    script.onerror = reject
-    document.head.appendChild(script)
-  })
-}
+
 
 const initMap = () => {
   map = new window.T.Map("mapDiv")
