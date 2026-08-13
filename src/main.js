@@ -64,8 +64,13 @@ const router = createRouter({
       path: '/tianditu',
       name: 'TianDiTU',
       component: RouterView,
-      redirect: '/tianditu/wmts',
+      redirect: '/tianditu/location',
       children: [
+        {
+          path: 'location',
+          name: 'TianDiTuLocation',
+          component: () => import('./views/TianDiTu/LocationMap.vue')
+        },
         {
           path: 'wmts',
           name: 'RiverWMTS',

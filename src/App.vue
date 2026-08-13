@@ -103,13 +103,17 @@
 
           <!-- 天地图多级菜单 -->
           <div class="menu-group" :class="{ expanded: isRiverMenuExpanded }">
-            <div class="menu-item parent" @click="toggleRiverMenu" :class="{ active: route.path.startsWith('/river') }">
+            <div class="menu-item parent" @click="toggleRiverMenu" :class="{ active: route.path.startsWith('/tianditu') || route.path.startsWith('/river') }">
               <IconRiver />
               <span class="menu-text">天地图</span>
               <IconArrow class="arrow-icon" :class="{ rotated: isRiverMenuExpanded }" width="16" height="16" />
             </div>
             <transition name="menu-slide">
               <div v-show="isRiverMenuExpanded" class="sub-menu">
+                <router-link to="/tianditu/location" class="menu-item sub" active-class="active">
+                  <div class="sub-dot"></div>
+                  <span class="menu-text">二维定位</span>
+                </router-link>
                 <router-link to="/tianditu/wmts" class="menu-item sub" active-class="active">
                   <div class="sub-dot"></div>
                   <span class="menu-text">WMTS河流</span>
@@ -233,7 +237,7 @@ const route = useRoute()
 const isHhglPage = computed(() => route.path.startsWith('/hhgl'))
 const isSidebarCollapsed = ref(false)
 const isCesiumMenuExpanded = ref(route.path.startsWith('/cesium'))
-const isRiverMenuExpanded = ref(route.path.startsWith('/river'))
+const isRiverMenuExpanded = ref(route.path.startsWith('/tianditu') || route.path.startsWith('/river'))
 const isBaiduMenuExpanded = ref(route.path.startsWith('/baidu'))
 const isThreeMenuExpanded = ref(route.path === '/three' || route.path.startsWith('/three/'))
 const isAlgorithmMenuExpanded = ref(route.path.startsWith('/algorithm'))
@@ -312,6 +316,7 @@ const currentRouteName = computed(() => {
     'WMTS_River': 'WMTS河流',
     'ShapeFileRiver': 'ShapeFile河流',
     'River': '天地图',
+    'TianDiTuLocation': '二维定位',
     'RiverWMTS': 'WMTS河流',
     'DownloadWMTS': '下载WMTS影像',
     'DatabaseRiver': '数据库河流',
