@@ -143,6 +143,10 @@
             </div>
             <transition name="menu-slide">
               <div v-show="isBaiduMenuExpanded" class="sub-menu">
+                <router-link to="/baidu/location" class="menu-item sub" active-class="active">
+                  <div class="sub-dot"></div>
+                  <span class="menu-text">二维定位</span>
+                </router-link>
                 <router-link to="/baidu/topic-map" class="menu-item sub" active-class="active">
                   <div class="sub-dot"></div>
                   <span class="menu-text">百度矢量投影</span>
@@ -322,6 +326,7 @@ const currentRouteName = computed(() => {
     'DatabaseRiver': '数据库河流',
     'RiverRouteCalc': '河流路径计算',
     'Baidu': '百度地图',
+    'BaiduLocation': '二维定位',
     'BaiduTopicMap': '百度坐标转换',
     'BaiduTileSlice': '百度坐标系切片',
     'Three': 'Three.js',

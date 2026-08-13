@@ -97,8 +97,13 @@ const router = createRouter({
       path: '/baidu',
       name: 'Baidu',
       component: RouterView,
-      redirect: '/baidu/topic-map',
+      redirect: '/baidu/location',
       children: [
+        {
+          path: 'location',
+          name: 'BaiduLocation',
+          component: () => import('./views/Baidu/LocationMap.vue')
+        },
         {
           path: 'topic-map',
           name: 'BaiduTopicMap',

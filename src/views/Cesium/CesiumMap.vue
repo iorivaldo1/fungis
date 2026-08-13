@@ -19,136 +19,71 @@
     <div id="cesiumContainer">
       <div class="top-panels-container">
         <div class="camera-info" :class="{ collapsed: isCollapsed }">
-        <div class="info-title" @click="toggleCollapse">
-          <span>镜头信息</span>
-          <IconChevronDown class="collapse-icon" :class="{ rotated: isCollapsed }" width="20" height="20" />
-        </div>
-        <transition name="slide-fade">
-          <div v-show="!isCollapsed" class="info-content">
-            <div class="info-item">heading: {{ cameraInfo.heading }}</div>
-            <div class="info-item">pitch: {{ cameraInfo.pitch }}</div>
-            <div class="info-item">视角经度: {{ cameraInfo.longitude }}</div>
-            <div class="info-item">视角纬度: {{ cameraInfo.latitude }}</div>
-            <div class="info-item">视角高度: {{ cameraInfo.height }}</div>
+          <div class="info-title" @click="toggleCollapse">
+            <span>镜头信息</span>
+            <IconChevronDown class="collapse-icon" :class="{ rotated: isCollapsed }" width="20" height="20" />
           </div>
-        </transition>
-      </div>
-
-      <div class="click-info" :class="{ collapsed: isClickCollapsed }">
-        <div class="info-title" @click="toggleClickCollapse">
-          <span>点击信息</span>
-          <IconChevronDown class="collapse-icon" :class="{ rotated: isClickCollapsed }" width="20" height="20" />
+          <transition name="slide-fade">
+            <div v-show="!isCollapsed" class="info-content">
+              <div class="info-item">heading: {{ cameraInfo.heading }}</div>
+              <div class="info-item">pitch: {{ cameraInfo.pitch }}</div>
+              <div class="info-item">视角经度: {{ cameraInfo.longitude }}</div>
+              <div class="info-item">视角纬度: {{ cameraInfo.latitude }}</div>
+              <div class="info-item">视角高度: {{ cameraInfo.height }}</div>
+            </div>
+          </transition>
         </div>
-        <transition name="slide-fade">
-          <div v-show="!isClickCollapsed" class="info-content">
-            <div class="info-item">经度: {{ clickInfo.longitude }}</div>
-            <div class="info-item">纬度: {{ clickInfo.latitude }}</div>
+
+        <ClickInfoPanel :point="clickPoint" crs="wgs84" theme="dark" />
+
+        <div class="layer-control" :class="{ collapsed: isLayerCollapsed }">
+          <div class="info-title" @click="toggleLayerCollapse">
+            <span>图层控制</span>
+            <IconChevronDown class="collapse-icon" :class="{ rotated: isLayerCollapsed }" width="20" height="20" />
           </div>
-        </transition>
-      </div>
-
-      <div class="layer-control" :class="{ collapsed: isLayerCollapsed }">
-        <div class="info-title" @click="toggleLayerCollapse">
-          <span>图层控制</span>
-          <IconChevronDown class="collapse-icon" :class="{ rotated: isLayerCollapsed }" width="20" height="20" />
-        </div>
-        <transition name="slide-fade">
-          <div v-show="!isLayerCollapsed" class="info-content layer-content">
-            <div class="layer-item">
-              <label class="layer-label">
-                <input type="checkbox" v-model="showYaRiver" @change="toggleYaRiver">
-                雅安河流
-              </label>
-            </div>
-            <div class="layer-item">
-              <label class="layer-label">
-                <input type="checkbox" v-model="showScPeak" @change="toggleScPeak">
-                四川山峰
-              </label>
-            </div>
-          </div>
-        </transition>
-      </div>
-
-      <div class="locate-control" :class="{ collapsed: isLocateCollapsed }">
-        <div class="info-title" @click="toggleLocateCollapse">
-          <span>坐标定位</span>
-          <IconChevronDown class="collapse-icon" :class="{ rotated: isLocateCollapsed }" width="20" height="20" />
-        </div>
-        <transition name="slide-fade">
-          <div v-show="!isLocateCollapsed" class="info-content locate-content">
-            <div class="locate-item">
-              <label>坐标系:</label>
-              <select v-model="locateForm.type" class="locate-select">
-                <option value="WGS84">WGS84 (经纬度)</option>
-                <option value="CGCS2000">CGCS2000 投影</option>
-              </select>
-            </div>
-            <div class="locate-item" v-if="locateForm.type === 'WGS84'">
-              <label>格 式:</label>
-              <select v-model="locateForm.format" class="locate-select">
-                <option value="degree">度 (DD)</option>
-                <option value="dms">度分秒 (DMS)</option>
-              </select>
-            </div>
-            <div class="locate-item" v-if="locateForm.type === 'CGCS2000'">
-              <label>分带号:</label>
-              <select v-model="locateForm.zone" class="locate-select">
-                <option v-for="z in 21" :key="z+24" :value="z+24">{{ z+24 }}带 (中央经线{{ (z+24)*3 }}°)</option>
-              </select>
-            </div>
-            <div class="locate-item" v-if="locateForm.type !== 'WGS84' || locateForm.format === 'degree'">
-              <label>{{ locateForm.type === 'CGCS2000' ? 'X:' : '经度:' }}</label>
-              <input type="number" v-model="locateForm.x" class="locate-input" :placeholder="locateForm.type === 'CGCS2000' ? '输入X坐标' : '输入经度'">
-            </div>
-            <div class="locate-item" v-if="locateForm.type !== 'WGS84' || locateForm.format === 'degree'">
-              <label>{{ locateForm.type === 'CGCS2000' ? 'Y:' : '纬度:' }}</label>
-              <input type="number" v-model="locateForm.y" class="locate-input" :placeholder="locateForm.type === 'CGCS2000' ? '输入Y坐标' : '输入纬度'">
-            </div>
-            <div class="locate-item dms-item" v-if="locateForm.type === 'WGS84' && locateForm.format === 'dms'">
-              <label>经度:</label>
-              <div class="dms-inputs">
-                <input type="number" v-model="locateForm.dms.x_deg" class="dms-input" placeholder="度">°
-                <input type="number" v-model="locateForm.dms.x_min" class="dms-input" placeholder="分">'
-                <input type="number" v-model="locateForm.dms.x_sec" class="dms-input" placeholder="秒" step="0.01">"
+          <transition name="slide-fade">
+            <div v-show="!isLayerCollapsed" class="info-content layer-content">
+              <div class="layer-item">
+                <label class="layer-label">
+                  <input type="checkbox" v-model="showYaRiver" @change="toggleYaRiver">
+                  雅安河流
+                </label>
+              </div>
+              <div class="layer-item">
+                <label class="layer-label">
+                  <input type="checkbox" v-model="showScPeak" @change="toggleScPeak">
+                  四川山峰
+                </label>
               </div>
             </div>
-            <div class="locate-item dms-item" v-if="locateForm.type === 'WGS84' && locateForm.format === 'dms'">
-              <label>纬度:</label>
-              <div class="dms-inputs">
-                <input type="number" v-model="locateForm.dms.y_deg" class="dms-input" placeholder="度">°
-                <input type="number" v-model="locateForm.dms.y_min" class="dms-input" placeholder="分">'
-                <input type="number" v-model="locateForm.dms.y_sec" class="dms-input" placeholder="秒" step="0.01">"
-              </div>
-            </div>
-            <div class="locate-actions">
-              <button class="locate-btn" @click="flyToInputPoint">定位</button>
-              <button class="locate-btn clear-btn" @click="clearInputPoints">清除</button>
-            </div>
-          </div>
-        </transition>
-      </div>
-
-      <div class="layer-control dmal-result-panel" v-show="dmalResultVisible" :class="{ collapsed: isDmalResultCollapsed }">
-        <div class="info-title" @click="isDmalResultCollapsed = !isDmalResultCollapsed">
-          <span>查询结果</span>
-          <IconChevronDown class="collapse-icon" :class="{ rotated: isDmalResultCollapsed }" width="20" height="20" />
+          </transition>
         </div>
-        <transition name="slide-fade">
-          <div v-show="!isDmalResultCollapsed" class="info-content layer-content" style="max-height: 400px; overflow-y: auto;">
-            <div v-for="item in dmalResults" :key="item.id" class="layer-item">
-              <label class="layer-label">
-                <input type="checkbox" v-model="item.show" @change="toggleDmalEntity(item)">
-                {{ item.name }}
-              </label>
-            </div>
-            <div v-if="dmalResults.length === 0" class="layer-item" style="color:#aaa;">暂无数据</div>
+
+        <LocatePanel theme="dark" @locate="handleLocate" @clear="handleClear" />
+
+        <div class="layer-control dmal-result-panel" v-show="dmalResultVisible"
+          :class="{ collapsed: isDmalResultCollapsed }">
+          <div class="info-title" @click="isDmalResultCollapsed = !isDmalResultCollapsed">
+            <span>查询结果</span>
+            <IconChevronDown class="collapse-icon" :class="{ rotated: isDmalResultCollapsed }" width="20" height="20" />
           </div>
-        </transition>
-      </div>
+          <transition name="slide-fade">
+            <div v-show="!isDmalResultCollapsed" class="info-content layer-content"
+              style="max-height: 400px; overflow-y: auto;">
+              <div v-for="item in dmalResults" :key="item.id" class="layer-item">
+                <label class="layer-label">
+                  <input type="checkbox" v-model="item.show" @change="toggleDmalEntity(item)">
+                  {{ item.name }}
+                </label>
+              </div>
+              <div v-if="dmalResults.length === 0" class="layer-item" style="color:#aaa;">暂无数据</div>
+            </div>
+          </transition>
+        </div>
       </div>
 
-      <div v-show="dmalToolVisible" class="dmal-tool-popup" :style="{ left: dmalToolPos.x + 'px', top: dmalToolPos.y + 'px' }">
+      <div v-show="dmalToolVisible" class="dmal-tool-popup"
+        :style="{ left: dmalToolPos.x + 'px', top: dmalToolPos.y + 'px' }">
         <div class="dmal-tool-header">
           <span>查询附近管理范围线</span>
           <div class="close-btn" @click="dmalToolVisible = false">×</div>
@@ -156,7 +91,8 @@
         <div class="dmal-tool-body">
           <div class="locate-item">
             <label>范围(km): </label>
-            <input type="number" v-model="dmalQueryDistance" min="1" max="50" class="locate-input" style="width:80px;" />
+            <input type="number" v-model="dmalQueryDistance" min="1" max="50" class="locate-input"
+              style="width:80px;" />
           </div>
           <button class="locate-btn" style="width:100%; margin-top:10px;" @click="queryDmal" :disabled="isDmalLoading">
             {{ isDmalLoading ? '查询中...' : '查询' }}
@@ -181,6 +117,8 @@ import 'cesium/Build/Cesium/Widgets/widgets.css'
 import IconChevronDown from '../../components/icons/IconChevronDown.vue'
 import IconPhoto from '../../components/icons/IconPhoto.vue'
 import IconLocation from '../../components/icons/IconLocation.vue'
+import ClickInfoPanel from '@/components/ClickInfoPanel.vue'
+import LocatePanel from '@/components/LocatePanel.vue'
 
 
 const router = useRouter()
@@ -198,10 +136,7 @@ const cameraInfo = ref({
   height: '0.00'
 })
 
-const clickInfo = ref({
-  longitude: '--',
-  latitude: '--'
-})
+const clickPoint = ref(null)
 
 const isCollapsed = ref(true)
 
@@ -240,6 +175,7 @@ let scPeakLayer = null
 let photosData = {}
 let currentPhotoId = null
 let handler = null
+let clickRedDotEntity = null
 
 const goBack = () => {
   router.push('/')
@@ -249,78 +185,12 @@ const toggleCollapse = () => {
   isCollapsed.value = !isCollapsed.value
 }
 
-const toggleClickCollapse = () => {
-  isClickCollapsed.value = !isClickCollapsed.value
-}
-
-const toggleLayerCollapse = () => {
-  isLayerCollapsed.value = !isLayerCollapsed.value
-}
-
-const toggleLocateCollapse = () => {
-  isLocateCollapsed.value = !isLocateCollapsed.value
-}
-
-const flyToInputPoint = () => {
-  let x, y
-  
-  if (locateForm.value.type === 'WGS84' && locateForm.value.format === 'dms') {
-    const parseDMS = (deg, min, sec) => {
-      const d = parseFloat(deg || 0)
-      const m = Math.abs(parseFloat(min || 0))
-      const s = Math.abs(parseFloat(sec || 0))
-      const sign = d < 0 || Object.is(d, -0) ? -1 : 1
-      return sign * (Math.abs(d) + m/60 + s/3600)
-    }
-    x = parseDMS(locateForm.value.dms.x_deg, locateForm.value.dms.x_min, locateForm.value.dms.x_sec)
-    y = parseDMS(locateForm.value.dms.y_deg, locateForm.value.dms.y_min, locateForm.value.dms.y_sec)
-  } else {
-    x = parseFloat(locateForm.value.x)
-    y = parseFloat(locateForm.value.y)
-  }
-
-  if (isNaN(x) || isNaN(y)) {
-    alert('请输入有效的坐标数值')
-    return
-  }
-
-  let longitude, latitude
-
-  if (locateForm.value.type === 'WGS84') {
-    longitude = x
-    latitude = y
-  } else if (locateForm.value.type === 'CGCS2000') {
-    const zone = locateForm.value.zone
-    const centralMeridian = zone * 3
-    const cgcs2000Str = `+proj=tmerc +lat_0=0 +lon_0=${centralMeridian} +k=1 +x_0=500000 +y_0=0 +ellps=GRS80 +units=m +no_defs`
-    const wgs84Str = `+proj=longlat +datum=WGS84 +no_defs`
-    
-    let actualX = x
-    // 如果输入的 x 包含了带号 (例如 34xxxxxx)，则去除带号
-    if (x > 10000000) {
-      actualX = x % 1000000
-    }
-    
-    try {
-      const [lng, lat] = proj4(cgcs2000Str, wgs84Str, [actualX, y])
-      longitude = lng
-      latitude = lat
-    } catch (e) {
-      alert('坐标转换失败，请检查输入')
-      return
-    }
-  }
-
-  if (longitude < -180 || longitude > 180 || latitude < -90 || latitude > 90) {
-    alert('坐标转换或输入有误，经纬度超出范围')
-    return
-  }
-
+const handleLocate = ({ longitude, latitude, rawX, rawY }) => {
   const positions = [Cesium.Cartographic.fromDegrees(longitude, latitude)]
   Cesium.sampleTerrainMostDetailed(viewer.terrainProvider, positions)
     .then(updated => {
       const h = updated[0].height ?? 0
-      
+
       const pointId = `input_point_${Date.now()}`
 
       lastInputCartesian = Cesium.Cartesian3.fromDegrees(longitude, latitude, h)
@@ -329,14 +199,14 @@ const flyToInputPoint = () => {
         id: pointId,
         position: lastInputCartesian,
         point: {
-          color: Cesium.Color.YELLOW,
+          color: Cesium.Color.fromCssColorString('#3b82f6'),
           pixelSize: 12,
-          outlineColor: Cesium.Color.BLACK,
+          outlineColor: Cesium.Color.WHITE,
           outlineWidth: 2,
           disableDepthTestDistance: Number.POSITIVE_INFINITY,
         },
         label: {
-          text: `定位点 (${x.toFixed(2)}, ${y.toFixed(2)})`,
+          text: `定位点 (${rawX.toFixed(2)}, ${rawY.toFixed(2)})`,
           font: '14px sans-serif',
           fillColor: Cesium.Color.WHITE,
           style: Cesium.LabelStyle.FILL_AND_OUTLINE,
@@ -365,14 +235,14 @@ const flyToInputPoint = () => {
         id: pointId,
         position: lastInputCartesian,
         point: {
-          color: Cesium.Color.YELLOW,
+          color: Cesium.Color.fromCssColorString('#3b82f6'),
           pixelSize: 12,
-          outlineColor: Cesium.Color.BLACK,
+          outlineColor: Cesium.Color.WHITE,
           outlineWidth: 2,
           disableDepthTestDistance: Number.POSITIVE_INFINITY,
         },
         label: {
-          text: `定位点 (${x.toFixed(2)}, ${y.toFixed(2)})`,
+          text: `定位点 (${rawX.toFixed(2)}, ${rawY.toFixed(2)})`,
           font: '14px sans-serif',
           fillColor: Cesium.Color.WHITE,
           style: Cesium.LabelStyle.FILL_AND_OUTLINE,
@@ -393,7 +263,7 @@ const flyToInputPoint = () => {
     })
 }
 
-const clearInputPoints = () => {
+const handleClear = () => {
   inputPointIds.value.forEach(id => {
     viewer.entities.removeById(id)
   })
@@ -412,12 +282,12 @@ const clearInputPoints = () => {
 
 const queryDmal = async () => {
   if (!lastInputCartesian) return
-  
+
   const cartographic = Cesium.Cartographic.fromCartesian(lastInputCartesian)
   const lng = Cesium.Math.toDegrees(cartographic.longitude)
   const lat = Cesium.Math.toDegrees(cartographic.latitude)
   const distance = Math.min(Math.max(parseInt(dmalQueryDistance.value) || 5, 1), 50)
-  
+
   isDmalLoading.value = true
   try {
     const res = await api.get(`/get_geo_pg/DmalController/nearest_dmal?lng=${lng}&lat=${lat}&distance=${distance}`)
@@ -425,7 +295,7 @@ const queryDmal = async () => {
       dmalResults.value.forEach(item => {
         if (item.dataSource) viewer.dataSources.remove(item.dataSource)
       })
-      
+
       dmalResults.value = (res.data || []).map(item => ({
         ...item,
         show: false,
@@ -449,22 +319,22 @@ const toggleDmalEntity = (item) => {
     let geoJson;
     try {
       geoJson = JSON.parse(item.geometry)
-    } catch(e) { return }
-    
+    } catch (e) { return }
+
     const feature = {
       type: "Feature",
       properties: { name: item.name },
       geometry: geoJson
     }
-    
+
     Cesium.GeoJsonDataSource.load(feature, {
-        stroke: Cesium.Color.CYAN,
-        fill: Cesium.Color.CYAN.withAlpha(0.3),
-        strokeWidth: 4,
-        clampToGround: true
+      stroke: Cesium.Color.CYAN,
+      fill: Cesium.Color.CYAN.withAlpha(0.3),
+      strokeWidth: 4,
+      clampToGround: true
     }).then(ds => {
-        viewer.dataSources.add(ds)
-        item.dataSource = ds
+      viewer.dataSources.add(ds)
+      item.dataSource = ds
     })
   } else {
     if (item.dataSource) {
@@ -547,6 +417,7 @@ const initCesium = () => {
 
   viewer = new Cesium.Viewer("cesiumContainer", {
     infoBox: false,
+    selectionIndicator: false,
     animation: false,
     terrain: Cesium.Terrain.fromWorldTerrain(),
     geocoder: false,
@@ -605,12 +476,28 @@ const initCesium = () => {
   handler = new Cesium.ScreenSpaceEventHandler(viewer.canvas)
   handler.setInputAction((click) => {
     // 更新点击位置的经纬度
-    const cartesian = viewer.camera.pickEllipsoid(click.position, viewer.scene.globe.ellipsoid)
+    const cartesian = viewer.scene.pickPosition(click.position) || viewer.camera.pickEllipsoid(click.position, viewer.scene.globe.ellipsoid)
     if (cartesian) {
       const cartographic = Cesium.Cartographic.fromCartesian(cartesian)
-      const longitude = Cesium.Math.toDegrees(cartographic.longitude).toFixed(6)
-      const latitude = Cesium.Math.toDegrees(cartographic.latitude).toFixed(6)
-      clickInfo.value = { longitude, latitude }
+      const longitude = Cesium.Math.toDegrees(cartographic.longitude)
+      const latitude = Cesium.Math.toDegrees(cartographic.latitude)
+      clickPoint.value = { lng: longitude, lat: latitude }
+
+      if (!clickRedDotEntity) {
+        clickRedDotEntity = viewer.entities.add({
+          id: 'click_red_dot',
+          position: cartesian,
+          point: {
+            color: Cesium.Color.RED,
+            pixelSize: 10,
+            outlineColor: Cesium.Color.WHITE,
+            outlineWidth: 2,
+            disableDepthTestDistance: Number.POSITIVE_INFINITY
+          }
+        })
+      } else {
+        clickRedDotEntity.position = cartesian
+      }
     }
 
     const pickedObject = viewer.scene.pick(click.position)
@@ -1042,7 +929,7 @@ onUnmounted(() => {
   pointer-events: none;
 }
 
-.top-panels-container > * {
+.top-panels-container>* {
   pointer-events: auto;
 }
 
@@ -1262,6 +1149,7 @@ onUnmounted(() => {
   -webkit-appearance: none;
   margin: 0;
 }
+
 .dms-input[type=number] {
   -moz-appearance: textfield;
 }
@@ -1466,7 +1354,7 @@ onUnmounted(() => {
   border-radius: 8px;
   padding: 10px;
   color: white;
-  box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(10px);
 }
 

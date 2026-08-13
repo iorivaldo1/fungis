@@ -255,7 +255,7 @@ function gcj02ToWgs84 (lng, lat) {
   return [lng * 2 - mgLng, lat * 2 - mgLat]
 }
 
-function bd09ToWgs84 (lng, lat) {
+export function bd09ToWgs84 (lng, lat) {
   const [gcjLng, gcjLat] = bd09ToGcj02(lng, lat)
   return gcj02ToWgs84(gcjLng, gcjLat)
 }
