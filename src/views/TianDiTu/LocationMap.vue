@@ -9,6 +9,15 @@
 
       <!-- 坐标定位面板 -->
       <LocatePanel @locate="handleLocate" @clear="handleClear" />
+
+      <!-- 定位结果表格面板 -->
+      <LocationTablePanel 
+        :points="locationList" 
+        @toggle-visible="handleToggleVisible"
+        @delete-item="handleDeleteItem"
+        @focus-item="handleFocusItem"
+        @clear-all="handleClear"
+      />
     </div>
   </div>
 </template>
@@ -18,12 +27,14 @@ import { ref, onMounted, onUnmounted } from 'vue'
 import { loadTiandituScript } from '@/utils/tiandituToken.js'
 import ClickInfoPanel from '@/components/ClickInfoPanel.vue'
 import LocatePanel from '@/components/LocatePanel.vue'
+import LocationTablePanel from '@/components/LocationTablePanel.vue'
 
 const clickPoint = ref(null)
+const locationList = ref([])
 
 let map = null
-let inputOverlays = []
 let clickMarker = null
+let idCounter = 1
 
 const initMap = () => {
   map = new window.T.Map("mapDiv")
@@ -65,6 +76,7 @@ const initMap = () => {
 
 const handleLocate = ({ longitude, latitude, rawX, rawY }) => {
   const point = new window.T.LngLat(longitude, latitude)
+  const currentId = idCounter++
 
   // 添加蓝色定位圆点标记
   const blueDotIcon = new window.T.Icon({
@@ -74,29 +86,70 @@ const handleLocate = ({ longitude, latitude, rawX, rawY }) => {
   })
   const marker = new window.T.Marker(point, { icon: blueDotIcon })
   map.addOverLay(marker)
-  inputOverlays.push(marker)
 
-  // 添加文字标签
-  const labelText = `定位点 (${rawX.toFixed(2)}, ${rawY.toFixed(2)})`
+  // 添加包含 ID 和坐标信息的 HTML 文字标签
+  const labelText = `<span style="background:#3b82f6;color:#ffffff;padding:2px 6px;border-radius:4px;font-weight:bold;font-size:12px;box-shadow:0 2px 4px rgba(0,0,0,0.2);">ID: ${currentId}</span> <span style="background:#ffffff;color:#1e293b;padding:2px 6px;border-radius:4px;font-size:12px;border:1px solid #cbd5e1;box-shadow:0 2px 4px rgba(0,0,0,0.15);">(${rawX.toFixed(2)}, ${rawY.toFixed(2)})</span>`
   const label = new window.T.Label({
     text: labelText,
     position: point,
-    offset: new window.T.Point(0, -30)
+    offset: new window.T.Point(-40, -35)
   })
   map.addOverLay(label)
-  inputOverlays.push(label)
+
+  // 保存记录对象
+  const item = {
+    id: currentId,
+    longitude,
+    latitude,
+    rawX,
+    rawY,
+    visible: true,
+    markerOverlay: marker,
+    labelOverlay: label
+  }
+
+  locationList.value.push(item)
 
   // 移动地图视角到该坐标点
   map.centerAndZoom(point, 15)
 }
 
+const handleToggleVisible = (item) => {
+  item.visible = !item.visible
+  if (!map) return
+
+  if (item.visible) {
+    map.addOverLay(item.markerOverlay)
+    map.addOverLay(item.labelOverlay)
+  } else {
+    map.removeOverLay(item.markerOverlay)
+    map.removeOverLay(item.labelOverlay)
+  }
+}
+
+const handleDeleteItem = (item) => {
+  if (map) {
+    map.removeOverLay(item.markerOverlay)
+    map.removeOverLay(item.labelOverlay)
+  }
+  locationList.value = locationList.value.filter(i => i.id !== item.id)
+}
+
+const handleFocusItem = (item) => {
+  if (map && item) {
+    const point = new window.T.LngLat(item.longitude, item.latitude)
+    map.centerAndZoom(point, 15)
+  }
+}
+
 const handleClear = () => {
-  inputOverlays.forEach(overlay => {
+  locationList.value.forEach(item => {
     if (map) {
-      map.removeOverLay(overlay)
+      map.removeOverLay(item.markerOverlay)
+      map.removeOverLay(item.labelOverlay)
     }
   })
-  inputOverlays = []
+  locationList.value = []
 }
 
 onMounted(async () => {
@@ -153,3 +206,4 @@ onUnmounted(() => {
   pointer-events: auto;
 }
 </style>
+

@@ -9,6 +9,15 @@
 
       <!-- 坐标定位面板 -->
       <LocatePanel crs="bd09" @locate="handleLocate" @clear="handleClear" />
+
+      <!-- 定位结果表格面板 -->
+      <LocationTablePanel 
+        :points="locationList" 
+        @toggle-visible="handleToggleVisible"
+        @delete-item="handleDeleteItem"
+        @focus-item="handleFocusItem"
+        @clear-all="handleClear"
+      />
     </div>
   </div>
 </template>
@@ -18,14 +27,16 @@ import { ref, onMounted, onUnmounted } from 'vue'
 import { loadBaiduMapScript, wgs84ToGcj02, gcj02ToBd09 } from '@/utils/baiduUtils'
 import ClickInfoPanel from '@/components/ClickInfoPanel.vue'
 import LocatePanel from '@/components/LocatePanel.vue'
+import LocationTablePanel from '@/components/LocationTablePanel.vue'
 
 const BAIDU_AK = 'MUBHlQKKLvig0Ia3QEAOzio46qq6foiT'
 
 const clickPoint = ref(null)
+const locationList = ref([])
 
 let map = null
-let inputOverlays = []
 let clickMarker = null
+let idCounter = 1
 
 const initMap = async () => {
   await loadBaiduMapScript(BAIDU_AK)
@@ -88,6 +99,7 @@ const handleLocate = ({ longitude, latitude, rawX, rawY }) => {
   const gcj = wgs84ToGcj02(longitude, latitude)
   const [bdLng, bdLat] = gcj02ToBd09(gcj[0], gcj[1])
   const point = new BMap.Point(bdLng, bdLat)
+  const currentId = idCounter++
 
   // 添加蓝色定位圆点标记
   let marker
@@ -109,37 +121,82 @@ const handleLocate = ({ longitude, latitude, rawX, rawY }) => {
     marker = new BMap.Marker(point, { icon })
   }
   map.addOverlay(marker)
-  inputOverlays.push(marker)
 
-  // 添加文字标签
-  const labelText = `定位点 (${rawX.toFixed(2)}, ${rawY.toFixed(2)})`
+  // 添加文字标签（标识 ID 和 坐标）
+  const labelText = `ID: ${currentId} (${rawX.toFixed(2)}, ${rawY.toFixed(2)})`
   const label = new BMap.Label(labelText, {
     position: point,
-    offset: new BMap.Size(-30, -35)
+    offset: new BMap.Size(-40, -35)
   })
   label.setStyle({
     color: '#1e293b',
     fontSize: '12px',
-    border: '1px solid #cbd5e1',
+    fontWeight: 'bold',
+    border: '1px solid #3b82f6',
     padding: '4px 8px',
     background: '#ffffff',
     borderRadius: '4px',
     boxShadow: '0 2px 6px rgba(0,0,0,0.15)'
   })
   map.addOverlay(label)
-  inputOverlays.push(label)
+
+  // 保存记录对象
+  const item = {
+    id: currentId,
+    longitude,
+    latitude,
+    bdLng,
+    bdLat,
+    rawX,
+    rawY,
+    visible: true,
+    markerOverlay: marker,
+    labelOverlay: label
+  }
+
+  locationList.value.push(item)
 
   // 移动地图视角到该坐标点
   map.centerAndZoom(point, 15)
 }
 
+const handleToggleVisible = (item) => {
+  item.visible = !item.visible
+  if (!map) return
+
+  if (item.visible) {
+    map.addOverlay(item.markerOverlay)
+    map.addOverlay(item.labelOverlay)
+  } else {
+    map.removeOverlay(item.markerOverlay)
+    map.removeOverlay(item.labelOverlay)
+  }
+}
+
+const handleDeleteItem = (item) => {
+  if (map) {
+    map.removeOverlay(item.markerOverlay)
+    map.removeOverlay(item.labelOverlay)
+  }
+  locationList.value = locationList.value.filter(i => i.id !== item.id)
+}
+
+const handleFocusItem = (item) => {
+  if (map && item) {
+    const BMap = window.BMap || window.BMapGL
+    const point = new BMap.Point(item.bdLng, item.bdLat)
+    map.centerAndZoom(point, 15)
+  }
+}
+
 const handleClear = () => {
-  inputOverlays.forEach(overlay => {
+  locationList.value.forEach(item => {
     if (map) {
-      map.removeOverlay(overlay)
+      map.removeOverlay(item.markerOverlay)
+      map.removeOverlay(item.labelOverlay)
     }
   })
-  inputOverlays = []
+  locationList.value = []
 }
 
 onMounted(async () => {
@@ -195,3 +252,4 @@ onUnmounted(() => {
   pointer-events: auto;
 }
 </style>
+

@@ -61,6 +61,15 @@
 
         <LocatePanel theme="dark" @locate="handleLocate" @clear="handleClear" />
 
+        <LocationTablePanel 
+          theme="dark"
+          :points="locationList" 
+          @toggle-visible="handleToggleVisible"
+          @delete-item="handleDeleteItem"
+          @focus-item="handleFocusItem"
+          @clear-all="handleClear"
+        />
+
         <div class="layer-control dmal-result-panel" v-show="dmalResultVisible"
           :class="{ collapsed: isDmalResultCollapsed }">
           <div class="info-title" @click="isDmalResultCollapsed = !isDmalResultCollapsed">
@@ -119,6 +128,7 @@ import IconPhoto from '../../components/icons/IconPhoto.vue'
 import IconLocation from '../../components/icons/IconLocation.vue'
 import ClickInfoPanel from '@/components/ClickInfoPanel.vue'
 import LocatePanel from '@/components/LocatePanel.vue'
+import LocationTablePanel from '@/components/LocationTablePanel.vue'
 
 
 const router = useRouter()
@@ -137,6 +147,8 @@ const cameraInfo = ref({
 })
 
 const clickPoint = ref(null)
+const locationList = ref([])
+let idCounter = 1
 
 const isCollapsed = ref(true)
 
@@ -186,81 +198,93 @@ const toggleCollapse = () => {
 }
 
 const handleLocate = ({ longitude, latitude, rawX, rawY }) => {
+  const currentId = idCounter++
   const positions = [Cesium.Cartographic.fromDegrees(longitude, latitude)]
+
+  const addPointEntity = (height) => {
+    const pointId = `input_point_${Date.now()}_${currentId}`
+    lastInputCartesian = Cesium.Cartesian3.fromDegrees(longitude, latitude, height)
+
+    const entity = viewer.entities.add({
+      id: pointId,
+      position: lastInputCartesian,
+      point: {
+        color: Cesium.Color.fromCssColorString('#3b82f6'),
+        pixelSize: 12,
+        outlineColor: Cesium.Color.WHITE,
+        outlineWidth: 2,
+        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+      },
+      label: {
+        text: `ID: ${currentId} (${rawX.toFixed(2)}, ${rawY.toFixed(2)})`,
+        font: '13px sans-serif',
+        fillColor: Cesium.Color.WHITE,
+        style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+        outlineColor: Cesium.Color.fromCssColorString('#1e293b'),
+        outlineWidth: 3,
+        verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+        pixelOffset: new Cesium.Cartesian2(0, -20),
+        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+      }
+    })
+
+    inputPointIds.value.push(pointId)
+
+    const item = {
+      id: currentId,
+      pointId,
+      longitude,
+      latitude,
+      rawX,
+      rawY,
+      height,
+      visible: true
+    }
+    locationList.value.push(item)
+
+    viewer.camera.flyTo({
+      destination: Cesium.Cartesian3.fromDegrees(longitude, latitude, height + 5000),
+      duration: 1.5,
+      complete: () => {
+        dmalToolVisible.value = true
+      }
+    })
+  }
+
   Cesium.sampleTerrainMostDetailed(viewer.terrainProvider, positions)
     .then(updated => {
       const h = updated[0].height ?? 0
-
-      const pointId = `input_point_${Date.now()}`
-
-      lastInputCartesian = Cesium.Cartesian3.fromDegrees(longitude, latitude, h)
-
-      viewer.entities.add({
-        id: pointId,
-        position: lastInputCartesian,
-        point: {
-          color: Cesium.Color.fromCssColorString('#3b82f6'),
-          pixelSize: 12,
-          outlineColor: Cesium.Color.WHITE,
-          outlineWidth: 2,
-          disableDepthTestDistance: Number.POSITIVE_INFINITY,
-        },
-        label: {
-          text: `定位点 (${rawX.toFixed(2)}, ${rawY.toFixed(2)})`,
-          font: '14px sans-serif',
-          fillColor: Cesium.Color.WHITE,
-          style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-          outlineWidth: 2,
-          verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
-          pixelOffset: new Cesium.Cartesian2(0, -20),
-          disableDepthTestDistance: Number.POSITIVE_INFINITY,
-        }
-      })
-
-      inputPointIds.value.push(pointId)
-
-      viewer.camera.flyTo({
-        destination: Cesium.Cartesian3.fromDegrees(longitude, latitude, h + 5000),
-        duration: 1.5,
-        complete: () => {
-          dmalToolVisible.value = true
-        }
-      })
+      addPointEntity(h)
     })
     .catch(() => {
-      const pointId = `input_point_${Date.now()}`
-      lastInputCartesian = Cesium.Cartesian3.fromDegrees(longitude, latitude)
-
-      viewer.entities.add({
-        id: pointId,
-        position: lastInputCartesian,
-        point: {
-          color: Cesium.Color.fromCssColorString('#3b82f6'),
-          pixelSize: 12,
-          outlineColor: Cesium.Color.WHITE,
-          outlineWidth: 2,
-          disableDepthTestDistance: Number.POSITIVE_INFINITY,
-        },
-        label: {
-          text: `定位点 (${rawX.toFixed(2)}, ${rawY.toFixed(2)})`,
-          font: '14px sans-serif',
-          fillColor: Cesium.Color.WHITE,
-          style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-          outlineWidth: 2,
-          verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
-          pixelOffset: new Cesium.Cartesian2(0, -20),
-          disableDepthTestDistance: Number.POSITIVE_INFINITY,
-        }
-      })
-      inputPointIds.value.push(pointId)
-      viewer.camera.flyTo({
-        destination: Cesium.Cartesian3.fromDegrees(longitude, latitude, 5000),
-        duration: 1.5,
-        complete: () => {
-          dmalToolVisible.value = true
-        }
-      })
+      addPointEntity(0)
     })
+}
+
+const handleToggleVisible = (item) => {
+  item.visible = !item.visible
+  if (!viewer) return
+  const entity = viewer.entities.getById(item.pointId)
+  if (entity) {
+    entity.show = item.visible
+  }
+}
+
+const handleDeleteItem = (item) => {
+  if (viewer) {
+    viewer.entities.removeById(item.pointId)
+  }
+  locationList.value = locationList.value.filter(i => i.id !== item.id)
+  inputPointIds.value = inputPointIds.value.filter(id => id !== item.pointId)
+}
+
+const handleFocusItem = (item) => {
+  if (viewer && item) {
+    viewer.camera.flyTo({
+      destination: Cesium.Cartesian3.fromDegrees(item.longitude, item.latitude, (item.height || 0) + 5000),
+      duration: 1.5
+    })
+  }
 }
 
 const handleClear = () => {
@@ -268,6 +292,7 @@ const handleClear = () => {
     viewer.entities.removeById(id)
   })
   inputPointIds.value = []
+  locationList.value = []
 
   dmalToolVisible.value = false
   dmalResultVisible.value = false
