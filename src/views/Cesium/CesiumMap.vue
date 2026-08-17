@@ -236,6 +236,10 @@ const toggleCollapse = () => {
   isCollapsed.value = !isCollapsed.value
 }
 
+const toggleLayerCollapse = () => {
+  isLayerCollapsed.value = !isLayerCollapsed.value
+}
+
 const handleLocate = ({ longitude, latitude, rawX, rawY }) => {
   const currentId = idCounter++
   const positions = [Cesium.Cartographic.fromDegrees(longitude, latitude)]
