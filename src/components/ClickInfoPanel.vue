@@ -1,11 +1,19 @@
 <template>
-  <div class="click-info-panel" :class="[theme, { collapsed: isCollapsed }]">
-    <div class="info-title" @click="toggleCollapse">
-      <span>{{ title }}</span>
-      <IconChevronDown class="collapse-icon" :class="{ rotated: isCollapsed }" width="20" height="20" />
+  <div class="click-info-panel" :class="[theme, { collapsed: !isChecked }]">
+    <div class="info-title" @click="toggleChecked">
+      <label class="checkbox-label" @click.stop>
+        <input 
+          type="checkbox" 
+          :checked="isChecked" 
+          @change="onCheckboxChange"
+          class="info-checkbox"
+        />
+        <span>{{ title }}</span>
+      </label>
+      <IconChevronDown class="collapse-icon" :class="{ rotated: !isChecked }" width="20" height="20" />
     </div>
     <transition name="slide-fade">
-      <div v-show="!isCollapsed" class="info-content">
+      <div v-show="isChecked" class="info-content">
         <slot :coordInfo="computedCoord">
           <template v-if="crs === 'bd09'">
             <div class="info-item">BD09经度: {{ computedCoord.bdLng }}</div>
@@ -29,7 +37,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, watch, computed } from 'vue'
 import proj4 from 'proj4'
 import { wgs84ToGcj02, gcj02ToBd09, bd09ToWgs84 } from '@/utils/baiduUtils'
 import IconChevronDown from '@/components/icons/IconChevronDown.vue'
@@ -46,11 +54,15 @@ const props = defineProps({
   },
   title: {
     type: String,
-    default: '点击信息'
+    default: '点击查询'
   },
   theme: {
     type: String,
     default: 'light' // 'light' | 'dark'
+  },
+  checked: {
+    type: Boolean,
+    default: false
   },
   defaultCollapsed: {
     type: Boolean,
@@ -58,10 +70,24 @@ const props = defineProps({
   }
 })
 
-const isCollapsed = ref(props.defaultCollapsed)
+const emit = defineEmits(['update:checked', 'change'])
 
-const toggleCollapse = () => {
-  isCollapsed.value = !isCollapsed.value
+const isChecked = ref(props.checked)
+
+watch(() => props.checked, (val) => {
+  isChecked.value = val
+})
+
+const toggleChecked = () => {
+  isChecked.value = !isChecked.value
+  emit('update:checked', isChecked.value)
+  emit('change', isChecked.value)
+}
+
+const onCheckboxChange = (e) => {
+  isChecked.value = e.target.checked
+  emit('update:checked', isChecked.value)
+  emit('change', isChecked.value)
 }
 
 const computedCoord = computed(() => {
@@ -149,6 +175,22 @@ const computedCoord = computed(() => {
   overflow: hidden;
   min-width: 240px;
   transition: all 0.3s ease;
+}
+
+.checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.info-checkbox {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: #3b82f6;
+  margin: 0;
 }
 
 /* Light Theme (Default for TianDiTu & Baidu panels) */

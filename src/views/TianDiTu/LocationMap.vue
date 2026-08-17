@@ -5,7 +5,12 @@
     <!-- 顶部控制面板区域 -->
     <div class="top-panels-container">
       <!-- 点击信息面板 -->
-      <ClickInfoPanel :point="clickPoint" crs="wgs84" />
+      <ClickInfoPanel 
+        :point="clickPoint" 
+        v-model:checked="isClickChecked" 
+        @change="handleClickCheckedChange" 
+        crs="wgs84" 
+      />
 
       <!-- 坐标定位面板 -->
       <LocatePanel @locate="handleLocate" @clear="handleClear" />
@@ -30,11 +35,35 @@ import LocatePanel from '@/components/LocatePanel.vue'
 import LocationTablePanel from '@/components/LocationTablePanel.vue'
 
 const clickPoint = ref(null)
+const isClickChecked = ref(false)
 const locationList = ref([])
 
 let map = null
 let clickMarker = null
 let idCounter = 1
+
+const updateClickMarker = (lnglatObj) => {
+  if (!map) return
+  if (clickMarker) {
+    map.removeOverLay(clickMarker)
+    clickMarker = null
+  }
+  if (isClickChecked.value && clickPoint.value) {
+    const pt = lnglatObj || new window.T.LngLat(clickPoint.value.lng, clickPoint.value.lat)
+    const redDotIcon = new window.T.Icon({
+      iconUrl: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxNiIgaGVpZ2h0PSIxNiIgdmlld0JveD0iMCAwIDE2 IDE2Ij48Y2lyY2xlIGN4PSI4IiBjeT0iOCIgcj0iNiIgZmlsbD0iI2VmNDQ0NCIgc3Ryb2tlPSIjZmZmZmZmIiBzdHJva2Utd2lkdGg9IjIiLz48L3N2Zz4=',
+      iconSize: new window.T.Point(16, 16),
+      iconAnchor: new window.T.Point(8, 8)
+    })
+    clickMarker = new window.T.Marker(pt, { icon: redDotIcon })
+    map.addOverLay(clickMarker)
+  }
+}
+
+const handleClickCheckedChange = (val) => {
+  isClickChecked.value = val
+  updateClickMarker()
+}
 
 const initMap = () => {
   map = new window.T.Map("mapDiv")
@@ -54,22 +83,13 @@ const initMap = () => {
   map.addControl(ctrl)
 
   map.addEventListener('click', (e) => {
+    if (!isClickChecked.value) return
     if (e.lnglat) {
       clickPoint.value = {
         lng: e.lnglat.getLng(),
         lat: e.lnglat.getLat()
       }
-
-      if (clickMarker) {
-        map.removeOverLay(clickMarker)
-      }
-      const redDotIcon = new window.T.Icon({
-        iconUrl: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxNiIgaGVpZ2h0PSIxNiIgdmlld0JveD0iMCAwIDE2 IDE2Ij48Y2lyY2xlIGN4PSI4IiBjeT0iOCIgcj0iNiIgZmlsbD0iI2VmNDQ0NCIgc3Ryb2tlPSIjZmZmZmZmIiBzdHJva2Utd2lkdGg9IjIiLz48L3N2Zz4=',
-        iconSize: new window.T.Point(16, 16),
-        iconAnchor: new window.T.Point(8, 8)
-      })
-      clickMarker = new window.T.Marker(e.lnglat, { icon: redDotIcon })
-      map.addOverLay(clickMarker)
+      updateClickMarker(e.lnglat)
     }
   })
 }

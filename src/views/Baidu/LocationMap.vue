@@ -5,7 +5,12 @@
     <!-- 顶部控制面板区域 -->
     <div class="top-panels-container">
       <!-- 点击信息面板 -->
-      <ClickInfoPanel :point="clickPoint" crs="bd09" />
+      <ClickInfoPanel 
+        :point="clickPoint" 
+        v-model:checked="isClickChecked" 
+        @change="handleClickCheckedChange" 
+        crs="bd09" 
+      />
 
       <!-- 坐标定位面板 -->
       <LocatePanel crs="bd09" @locate="handleLocate" @clear="handleClear" />
@@ -32,11 +37,47 @@ import LocationTablePanel from '@/components/LocationTablePanel.vue'
 const BAIDU_AK = 'MUBHlQKKLvig0Ia3QEAOzio46qq6foiT'
 
 const clickPoint = ref(null)
+const isClickChecked = ref(false)
 const locationList = ref([])
 
 let map = null
 let clickMarker = null
 let idCounter = 1
+
+const updateClickMarker = (pointObj) => {
+  if (!map) return
+  if (clickMarker) {
+    map.removeOverlay(clickMarker)
+    clickMarker = null
+  }
+  if (isClickChecked.value && clickPoint.value) {
+    const BMap = window.BMap || window.BMapGL
+    const pt = pointObj || new BMap.Point(clickPoint.value.lng, clickPoint.value.lat)
+    if (typeof window.BMAP_SYMBOL_CIRCLE !== 'undefined') {
+      const symbol = new BMap.Symbol(window.BMAP_SYMBOL_CIRCLE, {
+        scale: 6,
+        fillColor: '#ef4444',
+        fillOpacity: 1,
+        strokeColor: '#ffffff',
+        strokeWeight: 2
+      })
+      clickMarker = new BMap.Marker(pt, { icon: symbol })
+    } else {
+      const icon = new BMap.Icon(
+        'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxNiIgaGVpZ2h0PSIxNiIgdmlld0JveD0iMCAwIDE2 IDE2Ij48Y2lyY2xlIGN4PSI4IiBjeT0iOCIgcj0iNiIgZmlsbD0iI2VmNDQ0NCIgc3Ryb2tlPSIjZmZmZmZmIiBzdHJva2Utd2lkdGg9IjIiLz48L3N2Zz4=',
+        new BMap.Size(16, 16),
+        { anchor: new BMap.Size(8, 8) }
+      )
+      clickMarker = new BMap.Marker(pt, { icon })
+    }
+    map.addOverlay(clickMarker)
+  }
+}
+
+const handleClickCheckedChange = (val) => {
+  isClickChecked.value = val
+  updateClickMarker()
+}
 
 const initMap = async () => {
   await loadBaiduMapScript(BAIDU_AK)
@@ -62,34 +103,13 @@ const initMap = async () => {
   map.addControl(mapTypeCtrl)
 
   map.addEventListener('click', (e) => {
+    if (!isClickChecked.value) return
     if (e.point) {
       clickPoint.value = {
         lng: e.point.lng,
         lat: e.point.lat
       }
-
-      if (clickMarker) {
-        map.removeOverlay(clickMarker)
-      }
-      const BMap = window.BMap || window.BMapGL
-      if (typeof window.BMAP_SYMBOL_CIRCLE !== 'undefined') {
-        const symbol = new BMap.Symbol(window.BMAP_SYMBOL_CIRCLE, {
-          scale: 6,
-          fillColor: '#ef4444',
-          fillOpacity: 1,
-          strokeColor: '#ffffff',
-          strokeWeight: 2
-        })
-        clickMarker = new BMap.Marker(e.point, { icon: symbol })
-      } else {
-        const icon = new BMap.Icon(
-          'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxNiIgaGVpZ2h0PSIxNiIgdmlld0JveD0iMCAwIDE2 IDE2Ij48Y2lyY2xlIGN4PSI4IiBjeT0iOCIgcj0iNiIgZmlsbD0iI2VmNDQ0NCIgc3Ryb2tlPSIjZmZmZmZmIiBzdHJva2Utd2lkdGg9IjIiLz48L3N2Zz4=',
-          new BMap.Size(16, 16),
-          { anchor: new BMap.Size(8, 8) }
-        )
-        clickMarker = new BMap.Marker(e.point, { icon })
-      }
-      map.addOverlay(clickMarker)
+      updateClickMarker(e.point)
     }
   })
 }

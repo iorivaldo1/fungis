@@ -34,7 +34,13 @@
           </transition>
         </div>
 
-        <ClickInfoPanel :point="clickPoint" crs="wgs84" theme="dark" />
+        <ClickInfoPanel 
+          :point="clickPoint" 
+          v-model:checked="isClickChecked" 
+          @change="handleClickCheckedChange" 
+          crs="wgs84" 
+          theme="dark" 
+        />
 
         <div class="layer-control" :class="{ collapsed: isLayerCollapsed }">
           <div class="info-title" @click="toggleLayerCollapse">
@@ -147,10 +153,43 @@ const cameraInfo = ref({
 })
 
 const clickPoint = ref(null)
+const isClickChecked = ref(false)
 const locationList = ref([])
 let idCounter = 1
 
 const isCollapsed = ref(true)
+
+const updateClickMarker = (cartesian) => {
+  if (!viewer) return
+  if (isClickChecked.value && clickPoint.value) {
+    const pos = cartesian || Cesium.Cartesian3.fromDegrees(clickPoint.value.lng, clickPoint.value.lat)
+    if (!clickRedDotEntity) {
+      clickRedDotEntity = viewer.entities.add({
+        id: 'click_red_dot',
+        position: pos,
+        point: {
+          color: Cesium.Color.RED,
+          pixelSize: 10,
+          outlineColor: Cesium.Color.WHITE,
+          outlineWidth: 2,
+          disableDepthTestDistance: Number.POSITIVE_INFINITY
+        }
+      })
+    } else {
+      clickRedDotEntity.position = pos
+      clickRedDotEntity.show = true
+    }
+  } else {
+    if (clickRedDotEntity) {
+      clickRedDotEntity.show = false
+    }
+  }
+}
+
+const handleClickCheckedChange = (val) => {
+  isClickChecked.value = val
+  updateClickMarker()
+}
 
 const isClickCollapsed = ref(true)
 const isLayerCollapsed = ref(true)
@@ -501,27 +540,14 @@ const initCesium = () => {
   handler = new Cesium.ScreenSpaceEventHandler(viewer.canvas)
   handler.setInputAction((click) => {
     // 更新点击位置的经纬度
-    const cartesian = viewer.scene.pickPosition(click.position) || viewer.camera.pickEllipsoid(click.position, viewer.scene.globe.ellipsoid)
-    if (cartesian) {
-      const cartographic = Cesium.Cartographic.fromCartesian(cartesian)
-      const longitude = Cesium.Math.toDegrees(cartographic.longitude)
-      const latitude = Cesium.Math.toDegrees(cartographic.latitude)
-      clickPoint.value = { lng: longitude, lat: latitude }
-
-      if (!clickRedDotEntity) {
-        clickRedDotEntity = viewer.entities.add({
-          id: 'click_red_dot',
-          position: cartesian,
-          point: {
-            color: Cesium.Color.RED,
-            pixelSize: 10,
-            outlineColor: Cesium.Color.WHITE,
-            outlineWidth: 2,
-            disableDepthTestDistance: Number.POSITIVE_INFINITY
-          }
-        })
-      } else {
-        clickRedDotEntity.position = cartesian
+    if (isClickChecked.value) {
+      const cartesian = viewer.scene.pickPosition(click.position) || viewer.camera.pickEllipsoid(click.position, viewer.scene.globe.ellipsoid)
+      if (cartesian) {
+        const cartographic = Cesium.Cartographic.fromCartesian(cartesian)
+        const longitude = Cesium.Math.toDegrees(cartographic.longitude)
+        const latitude = Cesium.Math.toDegrees(cartographic.latitude)
+        clickPoint.value = { lng: longitude, lat: latitude }
+        updateClickMarker(cartesian)
       }
     }
 
