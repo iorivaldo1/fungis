@@ -15,6 +15,17 @@
       <!-- 坐标定位面板 -->
       <LocatePanel @locate="handleLocate" @clear="handleClear" />
 
+      <!-- SHP 文件面板 -->
+      <ShpPanel 
+        @add-layer="handleShpAddLayer" 
+        @toggle-layer="handleShpToggleLayer" 
+        @delete-layer="handleShpDeleteLayer" 
+        @focus-layer="handleShpFocusLayer" 
+        @focus-feature="handleShpFocusFeature"
+        @toggle-label-field="handleShpToggleLabelField"
+        @clear-all="handleShpClearAll" 
+      />
+
       <!-- 定位结果表格面板 -->
       <LocationTablePanel 
         :points="locationList" 
@@ -33,6 +44,8 @@ import { loadTiandituScript } from '@/utils/tiandituToken.js'
 import ClickInfoPanel from '@/components/ClickInfoPanel.vue'
 import LocatePanel from '@/components/LocatePanel.vue'
 import LocationTablePanel from '@/components/LocationTablePanel.vue'
+import ShpPanel from '@/components/ShpPanel.vue'
+import { renderGeoJsonToTianditu, flashFeatureTianditu, renderGeoJsonLabelsTianditu } from '@/utils/shpMapRenderer.js'
 
 const clickPoint = ref(null)
 const isClickChecked = ref(false)
@@ -170,6 +183,82 @@ const handleClear = () => {
     }
   })
   locationList.value = []
+}
+
+// SHP 图层渲染与交互处理
+const shpLayersMap = {}
+
+const handleShpAddLayer = (layer) => {
+  if (!map) return
+  const { overlays, boundsPoints } = renderGeoJsonToTianditu(map, layer.geojson, layer.color)
+  shpLayersMap[layer.id] = { overlays, boundsPoints }
+  if (boundsPoints.length > 0) {
+    map.setViewport(boundsPoints)
+  }
+}
+
+const handleShpToggleLayer = (layer) => {
+  if (!map || !shpLayersMap[layer.id]) return
+  const { overlays } = shpLayersMap[layer.id]
+  overlays.forEach(overlay => {
+    if (layer.visible) {
+      map.addOverLay(overlay)
+    } else {
+      map.removeOverLay(overlay)
+    }
+  })
+}
+
+const shpLabelOverlaysMap = {}
+
+const handleShpToggleLabelField = ({ layer, field }) => {
+  if (!map || !layer) return
+  if (shpLabelOverlaysMap[layer.id]) {
+    shpLabelOverlaysMap[layer.id].forEach(lbl => map.removeOverLay(lbl))
+    delete shpLabelOverlaysMap[layer.id]
+  }
+  if (field) {
+    const labels = renderGeoJsonLabelsTianditu(map, layer.geojson, field, '#1e293b')
+    shpLabelOverlaysMap[layer.id] = labels
+  }
+}
+
+const handleShpDeleteLayer = (layer) => {
+  if (!map || !shpLayersMap[layer.id]) return
+  const { overlays } = shpLayersMap[layer.id]
+  overlays.forEach(overlay => map.removeOverLay(overlay))
+  delete shpLayersMap[layer.id]
+  if (shpLabelOverlaysMap[layer.id]) {
+    shpLabelOverlaysMap[layer.id].forEach(lbl => map.removeOverLay(lbl))
+    delete shpLabelOverlaysMap[layer.id]
+  }
+}
+
+const handleShpFocusLayer = (layer) => {
+  if (!map || !shpLayersMap[layer.id]) return
+  const { boundsPoints } = shpLayersMap[layer.id]
+  if (boundsPoints && boundsPoints.length > 0) {
+    map.setViewport(boundsPoints)
+  }
+}
+
+const handleShpFocusFeature = (feature) => {
+  if (!map) return
+  flashFeatureTianditu(map, feature)
+}
+
+const handleShpClearAll = () => {
+  if (!map) return
+  Object.keys(shpLayersMap).forEach(layerId => {
+    const { overlays } = shpLayersMap[layerId]
+    overlays.forEach(overlay => map.removeOverLay(overlay))
+  })
+  Object.keys(shpLayersMap).forEach(key => delete shpLayersMap[key])
+
+  Object.keys(shpLabelOverlaysMap).forEach(layerId => {
+    shpLabelOverlaysMap[layerId].forEach(lbl => map.removeOverLay(lbl))
+  })
+  Object.keys(shpLabelOverlaysMap).forEach(key => delete shpLabelOverlaysMap[key])
 }
 
 onMounted(async () => {

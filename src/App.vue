@@ -43,14 +43,6 @@
             </transition>
           </div>
 
-          <!-- 数据结构 独立路由/链接 -->
-          <a href="https://excalidraw.fungis.site" target="_blank" class="menu-item">
-            <IconRoute />
-            <span class="menu-text">数据结构</span>
-          </a>
-
-
-
           <!-- Three+TianDitu 多级菜单 -->
           <div class="menu-group" :class="{ expanded: isThreeTdtMenuExpanded }">
             <div class="menu-item parent" @click="toggleThreeTdtMenu"
@@ -103,7 +95,8 @@
 
           <!-- 天地图多级菜单 -->
           <div class="menu-group" :class="{ expanded: isRiverMenuExpanded }">
-            <div class="menu-item parent" @click="toggleRiverMenu" :class="{ active: route.path.startsWith('/tianditu') || route.path.startsWith('/river') }">
+            <div class="menu-item parent" @click="toggleRiverMenu"
+              :class="{ active: route.path.startsWith('/tianditu') || route.path.startsWith('/river') }">
               <IconRiver />
               <span class="menu-text">天地图</span>
               <IconArrow class="arrow-icon" :class="{ rotated: isRiverMenuExpanded }" width="16" height="16" />
@@ -193,13 +186,26 @@
             </transition>
           </div>
 
-          <!-- 将原来的 /blog.html 修改为二级域名 -->
-          <a href="https://blog.fungis.site" target="_blank" class="menu-item">
-            <IconLogo />
-            <span class="menu-text">我的博客</span>
-          </a>
-
-
+          <!-- Blog 多级菜单 -->
+          <div class="menu-group" :class="{ expanded: isBlogMenuExpanded }">
+            <div class="menu-item parent" @click="toggleBlogMenu" :class="{ active: route.path.startsWith('/blog') }">
+              <IconLogo />
+              <span class="menu-text">Blog</span>
+              <IconArrow class="arrow-icon" :class="{ rotated: isBlogMenuExpanded }" width="16" height="16" />
+            </div>
+            <transition name="menu-slide">
+              <div v-show="isBlogMenuExpanded" class="sub-menu">
+                <a href="https://excalidraw.fungis.site" target="_blank" class="menu-item sub">
+                  <div class="sub-dot"></div>
+                  <span class="menu-text">数据结构</span>
+                </a>
+                <a href="https://blog.fungis.site" target="_blank" class="menu-item sub">
+                  <div class="sub-dot"></div>
+                  <span class="menu-text">glsl</span>
+                </a>
+              </div>
+            </transition>
+          </div>
         </div>
       </transition>
 
@@ -245,6 +251,7 @@ const isRiverMenuExpanded = ref(route.path.startsWith('/tianditu') || route.path
 const isBaiduMenuExpanded = ref(route.path.startsWith('/baidu'))
 const isThreeMenuExpanded = ref(route.path === '/three' || route.path.startsWith('/three/'))
 const isAlgorithmMenuExpanded = ref(route.path.startsWith('/algorithm'))
+const isBlogMenuExpanded = ref(route.path.startsWith('/blog'))
 const isReady = ref(false)
 
 onMounted(async () => {
@@ -304,6 +311,10 @@ const toggleAlgorithmMenu = () => {
   isAlgorithmMenuExpanded.value = !isAlgorithmMenuExpanded.value
 }
 
+const toggleBlogMenu = () => {
+  isBlogMenuExpanded.value = !isBlogMenuExpanded.value
+}
+
 // Ensure unique state for each menu
 const isThreeTdtMenuExpanded = ref(route.path.startsWith('/three-tdt'))
 const toggleThreeTdtMenu = () => {
@@ -340,7 +351,9 @@ const currentRouteName = computed(() => {
     'Algorithm': '空间算法',
     'QuadTree': 'QGIS QIX KNN 查询(四叉树)',
     'EsriSbnKDTree': 'ESRI SBN KNN 查询(KD树)',
-    'PostGisRTree': 'PG GIST KNN 查询(R树)'
+    'PostGisRTree': 'PG GIST KNN 查询(R树)',
+    'Blog': 'Blog',
+    'BlogGlsl': 'glsl'
   }
   return nameMap[route.name] || route.name || '未知'
 })

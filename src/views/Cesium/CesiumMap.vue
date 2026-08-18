@@ -67,6 +67,17 @@
 
         <LocatePanel theme="dark" @locate="handleLocate" @clear="handleClear" />
 
+        <ShpPanel 
+          theme="dark"
+          @add-layer="handleShpAddLayer" 
+          @toggle-layer="handleShpToggleLayer" 
+          @delete-layer="handleShpDeleteLayer" 
+          @focus-layer="handleShpFocusLayer" 
+          @focus-feature="handleShpFocusFeature"
+          @toggle-label-field="handleShpToggleLabelField"
+          @clear-all="handleShpClearAll" 
+        />
+
         <LocationTablePanel 
           theme="dark"
           :points="locationList" 
@@ -135,6 +146,8 @@ import IconLocation from '../../components/icons/IconLocation.vue'
 import ClickInfoPanel from '@/components/ClickInfoPanel.vue'
 import LocatePanel from '@/components/LocatePanel.vue'
 import LocationTablePanel from '@/components/LocationTablePanel.vue'
+import ShpPanel from '@/components/ShpPanel.vue'
+import { renderGeoJsonToCesium, flashFeatureCesium, renderGeoJsonLabelsCesium } from '@/utils/shpMapRenderer.js'
 
 
 const router = useRouter()
@@ -346,6 +359,81 @@ const handleClear = () => {
   })
   dmalResults.value = []
   lastInputCartesian = null
+}
+
+// SHP 图层渲染与交互处理
+const shpDataSourcesMap = {}
+
+const handleShpAddLayer = async (layer) => {
+  if (!viewer) return
+  try {
+    const ds = await renderGeoJsonToCesium(viewer, layer.geojson, layer.color)
+    if (ds) {
+      shpDataSourcesMap[layer.id] = ds
+      viewer.flyTo(ds)
+    }
+  } catch (err) {
+    console.error('Cesium 加载 SHP GeoJSON 失败:', err)
+  }
+}
+
+const handleShpToggleLayer = (layer) => {
+  const ds = shpDataSourcesMap[layer.id]
+  if (ds) {
+    ds.show = layer.visible
+  }
+}
+
+const shpLabelEntitiesMap = {}
+
+const handleShpToggleLabelField = ({ layer, field }) => {
+  if (!viewer || !layer) return
+  if (shpLabelEntitiesMap[layer.id]) {
+    shpLabelEntitiesMap[layer.id].forEach(entity => viewer.entities.remove(entity))
+    delete shpLabelEntitiesMap[layer.id]
+  }
+  if (field) {
+    const entities = renderGeoJsonLabelsCesium(viewer, layer.geojson, field, '#ffffff')
+    shpLabelEntitiesMap[layer.id] = entities
+  }
+}
+
+const handleShpDeleteLayer = (layer) => {
+  const ds = shpDataSourcesMap[layer.id]
+  if (ds && viewer) {
+    viewer.dataSources.remove(ds)
+    delete shpDataSourcesMap[layer.id]
+  }
+  if (shpLabelEntitiesMap[layer.id] && viewer) {
+    shpLabelEntitiesMap[layer.id].forEach(entity => viewer.entities.remove(entity))
+    delete shpLabelEntitiesMap[layer.id]
+  }
+}
+
+const handleShpFocusLayer = (layer) => {
+  const ds = shpDataSourcesMap[layer.id]
+  if (ds && viewer) {
+    viewer.flyTo(ds)
+  }
+}
+
+const handleShpFocusFeature = (feature) => {
+  if (!viewer) return
+  flashFeatureCesium(viewer, feature)
+}
+
+const handleShpClearAll = () => {
+  if (!viewer) return
+  Object.keys(shpDataSourcesMap).forEach(id => {
+    const ds = shpDataSourcesMap[id]
+    if (ds) viewer.dataSources.remove(ds)
+  })
+  Object.keys(shpDataSourcesMap).forEach(key => delete shpDataSourcesMap[key])
+
+  Object.keys(shpLabelEntitiesMap).forEach(id => {
+    shpLabelEntitiesMap[id].forEach(entity => viewer.entities.remove(entity))
+  })
+  Object.keys(shpLabelEntitiesMap).forEach(key => delete shpLabelEntitiesMap[key])
 }
 
 const queryDmal = async () => {

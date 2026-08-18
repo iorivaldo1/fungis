@@ -15,6 +15,17 @@
       <!-- 坐标定位面板 -->
       <LocatePanel crs="bd09" @locate="handleLocate" @clear="handleClear" />
 
+      <!-- SHP 文件面板 -->
+      <ShpPanel 
+        @add-layer="handleShpAddLayer" 
+        @toggle-layer="handleShpToggleLayer" 
+        @delete-layer="handleShpDeleteLayer" 
+        @focus-layer="handleShpFocusLayer" 
+        @focus-feature="handleShpFocusFeature"
+        @toggle-label-field="handleShpToggleLabelField"
+        @clear-all="handleShpClearAll" 
+      />
+
       <!-- 定位结果表格面板 -->
       <LocationTablePanel 
         :points="locationList" 
@@ -33,6 +44,8 @@ import { loadBaiduMapScript, wgs84ToGcj02, gcj02ToBd09 } from '@/utils/baiduUtil
 import ClickInfoPanel from '@/components/ClickInfoPanel.vue'
 import LocatePanel from '@/components/LocatePanel.vue'
 import LocationTablePanel from '@/components/LocationTablePanel.vue'
+import ShpPanel from '@/components/ShpPanel.vue'
+import { renderGeoJsonToBaidu, flashFeatureBaidu, renderGeoJsonLabelsBaidu } from '@/utils/shpMapRenderer.js'
 
 const BAIDU_AK = 'MUBHlQKKLvig0Ia3QEAOzio46qq6foiT'
 
@@ -217,6 +230,82 @@ const handleClear = () => {
     }
   })
   locationList.value = []
+}
+
+// SHP 图层渲染与交互处理
+const shpLayersMap = {}
+
+const handleShpAddLayer = (layer) => {
+  if (!map) return
+  const { overlays, boundsPoints } = renderGeoJsonToBaidu(map, layer.geojson, layer.color)
+  shpLayersMap[layer.id] = { overlays, boundsPoints }
+  if (boundsPoints.length > 0) {
+    map.setViewport(boundsPoints)
+  }
+}
+
+const handleShpToggleLayer = (layer) => {
+  if (!map || !shpLayersMap[layer.id]) return
+  const { overlays } = shpLayersMap[layer.id]
+  overlays.forEach(overlay => {
+    if (layer.visible) {
+      map.addOverlay(overlay)
+    } else {
+      map.removeOverlay(overlay)
+    }
+  })
+}
+
+const shpLabelOverlaysMap = {}
+
+const handleShpToggleLabelField = ({ layer, field }) => {
+  if (!map || !layer) return
+  if (shpLabelOverlaysMap[layer.id]) {
+    shpLabelOverlaysMap[layer.id].forEach(lbl => map.removeOverlay(lbl))
+    delete shpLabelOverlaysMap[layer.id]
+  }
+  if (field) {
+    const labels = renderGeoJsonLabelsBaidu(map, layer.geojson, field, '#1e293b')
+    shpLabelOverlaysMap[layer.id] = labels
+  }
+}
+
+const handleShpDeleteLayer = (layer) => {
+  if (!map || !shpLayersMap[layer.id]) return
+  const { overlays } = shpLayersMap[layer.id]
+  overlays.forEach(overlay => map.removeOverlay(overlay))
+  delete shpLayersMap[layer.id]
+  if (shpLabelOverlaysMap[layer.id]) {
+    shpLabelOverlaysMap[layer.id].forEach(lbl => map.removeOverlay(lbl))
+    delete shpLabelOverlaysMap[layer.id]
+  }
+}
+
+const handleShpFocusLayer = (layer) => {
+  if (!map || !shpLayersMap[layer.id]) return
+  const { boundsPoints } = shpLayersMap[layer.id]
+  if (boundsPoints && boundsPoints.length > 0) {
+    map.setViewport(boundsPoints)
+  }
+}
+
+const handleShpFocusFeature = (feature) => {
+  if (!map) return
+  flashFeatureBaidu(map, feature)
+}
+
+const handleShpClearAll = () => {
+  if (!map) return
+  Object.keys(shpLayersMap).forEach(layerId => {
+    const { overlays } = shpLayersMap[layerId]
+    overlays.forEach(overlay => map.removeOverlay(overlay))
+  })
+  Object.keys(shpLayersMap).forEach(key => delete shpLayersMap[key])
+
+  Object.keys(shpLabelOverlaysMap).forEach(layerId => {
+    shpLabelOverlaysMap[layerId].forEach(lbl => map.removeOverlay(lbl))
+  })
+  Object.keys(shpLabelOverlaysMap).forEach(key => delete shpLabelOverlaysMap[key])
 }
 
 onMounted(async () => {

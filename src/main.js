@@ -183,6 +183,19 @@ const router = createRouter({
       ]
     },
     {
+      path: '/blog',
+      name: 'Blog',
+      component: RouterView,
+      redirect: '/blog/glsl',
+      children: [
+        {
+          path: 'glsl',
+          name: 'BlogGlsl',
+          component: () => import('./views/Blog.vue')
+        }
+      ]
+    },
+    {
       path: '/server-admin/login',
       name: 'ServerAdminLogin',
       component: () => import('./views/ServerAdmin/Login.vue')
