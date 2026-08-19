@@ -67,6 +67,17 @@
                     </svg>
                   </button>
 
+                  <!-- 导航按钮 -->
+                  <button 
+                    class="action-btn nav-btn" 
+                    title="手机/Web 地图导航"
+                    @click.stop="onOpenNav(item)"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <polygon points="3 11 22 2 13 21 11 13 3 11"/>
+                    </svg>
+                  </button>
+
                   <!-- 删除按钮 -->
                   <button 
                     class="action-btn delete-btn" 
@@ -90,12 +101,70 @@
         </div>
       </div>
     </transition>
+
+    <!-- 地图导航选择弹窗 -->
+    <Teleport to="body">
+      <div v-if="showNavModal" class="nav-modal-mask" @click="closeNavModal">
+        <div class="nav-modal-content" :class="theme" @click.stop>
+          <div class="nav-modal-header">
+            <div class="nav-title">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="3 11 22 2 13 21 11 13 3 11"/>
+              </svg>
+              <span>选择地图导航 (定位点 #{{ activeNavItem?.id }})</span>
+            </div>
+            <button class="nav-close-btn" @click="closeNavModal">×</button>
+          </div>
+
+          <div class="nav-modal-body">
+            <div class="nav-target-info">
+              <span>{{ activeNavItem ? formatCoordFull(activeNavItem) : '' }}</span>
+            </div>
+            
+            <div class="nav-app-grid">
+              <a :href="navUrls.amap" target="_blank" class="nav-app-item amap" @click="closeNavModal">
+                <span class="app-icon">🚀</span>
+                <div class="app-info">
+                  <span class="app-name">高德地图</span>
+                  <span class="app-desc">唤起 App / Web 导航</span>
+                </div>
+              </a>
+
+              <a :href="navUrls.baidu" target="_blank" class="nav-app-item baidu" @click="closeNavModal">
+                <span class="app-icon">📍</span>
+                <div class="app-info">
+                  <span class="app-name">百度地图</span>
+                  <span class="app-desc">唤起 App / Web 路线规划</span>
+                </div>
+              </a>
+
+              <a :href="navUrls.tencent" target="_blank" class="nav-app-item tencent" @click="closeNavModal">
+                <span class="app-icon">🧭</span>
+                <div class="app-info">
+                  <span class="app-name">腾讯地图</span>
+                  <span class="app-desc">唤起腾讯地图路线导航</span>
+                </div>
+              </a>
+
+              <a :href="navUrls.apple" target="_blank" class="nav-app-item apple" @click="closeNavModal">
+                <span class="app-icon">🍎</span>
+                <div class="app-info">
+                  <span class="app-name">Apple 地图</span>
+                  <span class="app-desc">iOS / Mac 原生导航</span>
+                </div>
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
 <script setup>
 import { ref } from 'vue'
 import IconChevronDown from '@/components/icons/IconChevronDown.vue'
+import { getMapNavUrls } from '@/utils/coordTransform.js'
 
 const props = defineProps({
   points: {
@@ -115,6 +184,11 @@ const props = defineProps({
 const emit = defineEmits(['toggle-visible', 'delete-item', 'focus-item', 'clear-all'])
 
 const isCollapsed = ref(props.defaultCollapsed)
+
+// 导航弹窗状态
+const showNavModal = ref(false)
+const activeNavItem = ref(null)
+const navUrls = ref({})
 
 const toggleCollapse = () => {
   isCollapsed.value = !isCollapsed.value
@@ -152,6 +226,20 @@ const onRowClick = (item) => {
 
 const onClearAll = () => {
   emit('clear-all')
+}
+
+// 打开导航弹窗并计算目标坐标
+const onOpenNav = (item) => {
+  activeNavItem.value = item
+  const lng = item.longitude ?? item.rawX ?? 0
+  const lat = item.latitude ?? item.rawY ?? 0
+  navUrls.value = getMapNavUrls(lng, lat, `定位点 #${item.id}`)
+  showNavModal.value = true
+}
+
+const closeNavModal = () => {
+  showNavModal.value = false
+  activeNavItem.value = null
 }
 </script>
 
@@ -383,7 +471,7 @@ const onClearAll = () => {
 }
 
 .col-actions {
-  width: 100px;
+  width: 130px;
   text-align: center;
   white-space: nowrap;
 }
@@ -464,6 +552,28 @@ const onClearAll = () => {
   color: #6ee7b7;
 }
 
+.nav-btn {
+  color: #8b5cf6;
+  background: #f5f3ff;
+  border-color: #ddd6fe;
+}
+
+.nav-btn:hover {
+  background: #ede9fe;
+  color: #6d28d9;
+}
+
+.dark .nav-btn {
+  color: #a78bfa;
+  background: rgba(139, 92, 246, 0.2);
+  border-color: rgba(139, 92, 246, 0.3);
+}
+
+.dark .nav-btn:hover {
+  background: rgba(139, 92, 246, 0.4);
+  color: #c4b5fd;
+}
+
 .delete-btn {
   color: #ef4444;
   background: #fef2f2;
@@ -508,6 +618,150 @@ const onClearAll = () => {
   background: #dc2626;
 }
 
+/* 导航弹窗样式 */
+.nav-modal-mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(4px);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.nav-modal-content {
+  width: 100%;
+  max-width: 380px;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+  animation: slideUp 0.25s ease-out;
+}
+
+.nav-modal-content.light {
+  background: #ffffff;
+  color: #1e293b;
+  border: 1px solid #e2e8f0;
+}
+
+.nav-modal-content.dark {
+  background: #18181b;
+  color: #f4f4f5;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.nav-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+}
+
+.nav-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.nav-close-btn {
+  background: transparent;
+  border: none;
+  font-size: 20px;
+  line-height: 1;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+
+.nav-close-btn:hover {
+  background: rgba(148, 163, 184, 0.15);
+  color: inherit;
+}
+
+.nav-modal-body {
+  padding: 16px 18px 20px;
+}
+
+.nav-target-info {
+  font-size: 12px;
+  color: #64748b;
+  background: rgba(148, 163, 184, 0.1);
+  padding: 8px 12px;
+  border-radius: 8px;
+  margin-bottom: 14px;
+  word-break: break-all;
+}
+
+.dark .nav-target-info {
+  color: #a1a1aa;
+}
+
+.nav-app-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.nav-app-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  text-decoration: none;
+  color: inherit;
+  background: rgba(148, 163, 184, 0.06);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  transition: all 0.2s ease;
+}
+
+.nav-app-item:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.light .nav-app-item:hover {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+.dark .nav-app-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.app-icon {
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+.app-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.app-name {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.app-desc {
+  font-size: 11px;
+  opacity: 0.65;
+}
+
 /* 过渡动画 */
 .slide-fade-enter-active,
 .slide-fade-leave-active {
@@ -518,6 +772,16 @@ const onClearAll = () => {
 .slide-fade-leave-to {
   transform: translateY(-5px);
   opacity: 0;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { transform: translateY(16px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
 }
 </style>
 
