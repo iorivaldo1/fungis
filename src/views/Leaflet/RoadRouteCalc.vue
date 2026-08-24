@@ -832,9 +832,15 @@ async function submitUpload() {
     alert('请输入路网标识 Code（例: cd_road）！')
     return
   }
+  if (!/^[a-zA-Z0-9_]+$/.test(netId)) {
+    alert('路网标识 Code 格式不合法，仅支持字母、数字和下划线！')
+    return
+  }
 
   const shpRelatedExtensions = ['.shp', '.dbf', '.shx', '.prj', '.cpg', '.sbn', '.sbx']
   let hasShp = false
+  let hasDbf = false
+  let prjFile = null
   const formData = new FormData()
 
   for (let i = 0; i < files.length; i++) {
@@ -843,12 +849,31 @@ async function submitUpload() {
     if (shpRelatedExtensions.includes(ext)) {
       formData.append('files', files[i])
       if (ext === '.shp') hasShp = true
+      if (ext === '.dbf') hasDbf = true
+      if (ext === '.prj') prjFile = files[i]
     }
   }
 
   if (!hasShp) {
-    alert('选择的文件夹中未找到核心 .shp 图层文件，请检查并选择包含 Shapefile 的文件夹！')
+    alert('选择的文件夹中未找到核心 .shp 空间图形主文件，请选择包含 Shapefile 的文件夹！')
     return
+  }
+  if (!hasDbf) {
+    alert('选择的文件夹中缺少 .dbf 属性文件！Shapefile 图层必须包含配套的 .dbf 属性表。')
+    return
+  }
+
+  // 客户端前端预检 .prj 文件坐标系
+  if (prjFile) {
+    try {
+      const prjText = await prjFile.text()
+      if (prjText && (prjText.includes('PROJCS') || prjText.includes('Mercator') || prjText.includes('Gauss_Kruger') || prjText.includes('UTM'))) {
+        const confirmGo = confirm('⚠️ 投影预检提醒：\n检测到 .prj 文件定义为平面投影坐标系 (如高斯克吕格/墨卡托米制坐标)。\npgRouting 建图要求坐标系必须为 WGS84 经纬度 (EPSG:4326)，直接上传可能会导致服务端校验失败。\n是否仍要继续上传？')
+        if (!confirmGo) return
+      }
+    } catch (e) {
+      // 忽略读取异常，由服务端执行强校验
+    }
   }
 
   formData.append('networkId', netId)
@@ -857,7 +882,7 @@ async function submitUpload() {
 
   uploadMsg.show = true
   uploadMsg.color = '#38bdf8'
-  uploadMsg.text = '⏳ 正转换并构建拓扑路网中（拆线、打断节点、构建拓扑），请稍候...'
+  uploadMsg.text = '⏳ 正在转换并构建拓扑路网中（拆线、打断节点、构建拓扑），请稍候...'
   isUploading.value = true
 
   try {
@@ -870,19 +895,19 @@ async function submitUpload() {
 
     if (res.code === 200) {
       uploadMsg.color = '#10b981'
-      uploadMsg.text = `✅ ${res.data ? res.data.msg : '路网构建成功！'}`
+      uploadMsg.text = `✅ ${res.data ? res.data.msg : (res.msg || '路网构建成功！')}`
       setTimeout(() => {
         showUploadModal.value = false
         fetchRoadNetworks()
       }, 1500)
     } else {
       uploadMsg.color = '#ef4444'
-      uploadMsg.text = `❌ ${res.msg || '构建失败'}`
+      uploadMsg.text = `${res.msg || '构建失败'}`
     }
   } catch (err) {
     isUploading.value = false
     uploadMsg.color = '#ef4444'
-    uploadMsg.text = `❌ 请求异常: ${err.message}`
+    uploadMsg.text = `❌ 网络请求异常: ${err.message}`
     console.error('Upload Error:', err)
   }
 }
@@ -1402,8 +1427,15 @@ select.coord-input option {
 }
 
 .upload-msg {
-  margin-top: 10px;
+  margin-top: 12px;
   font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.6;
+  background: rgba(15, 23, 42, 0.8);
+  padding: 10px 14px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
 }
 
 .text-center {
