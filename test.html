@@ -1,503 +1,153 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>RiverShader</title>
-    <script src="/Public/js/three.min.js"></script>
-    <script src="/Public/js/OrbitControls.js"></script>
-    <script src="/Public/js/geotiff.js"></script>
-    <script src="./shader.js"></script>
-    <script src="/Public/js/jquery-3.7.1.min.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>四川本地离线地图</title>
+    <link rel="stylesheet" href="/Public/lib/leaflet/leaflet.css">
+    <script src="/Public/lib/leaflet/leaflet.js"></script>
 
     <style>
-        body {
+        * {
             margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html,
+        body,
+        #map {
+            width: 100%;
+            height: 100%;
             overflow: hidden;
-            background: #050a10;
+            background-color: #0b1120;
         }
 
-        #ui {
+        /* 实时 Zoom 悬浮显示 DOM 控件 */
+        .zoom-badge {
             position: absolute;
-            top: 20px;
-            left: 20px;
-            color: white;
-            pointer-events: none;
-            font-family: sans-serif;
-        }
-
-        #camera-info {
-            position: fixed;
-            left: 20px;
             bottom: 20px;
-            background: rgba(0, 0, 0, 0.7);
-            color: #00ff00;
-            padding: 15px;
-            font-family: "Courier New", monospace;
-            font-size: 15px;
-            border-radius: 5px;
-            border: 1px solid #00ff00;
-            line-height: 1.6;
+            left: 20px;
             z-index: 1000;
-            min-width: 150px;
+            background: rgba(15, 23, 42, 0.82);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 10px;
+            padding: 6px 14px;
+            color: #f8fafc;
+            font-family: system-ui, -apple-system, sans-serif;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+            pointer-events: none;
+            user-select: none;
         }
 
-        #camera-info .label {
-            color: #00ccff;
-            font-weight: bold;
+        .zoom-label {
+            font-size: 11px;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .zoom-num {
+            font-weight: 700;
+            color: #38bdf8;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 15px;
+        }
+
+        /* 标记点样式 */
+        .custom-point-pin {
+            width: 18px;
+            height: 18px;
+            background: #0284c7;
+            border: 3px solid #ffffff;
+            border-radius: 50%;
+            box-shadow: 0 0 12px rgba(2, 132, 199, 0.8);
+            cursor: pointer;
         }
     </style>
 </head>
 
 <body>
-    <div id="ui"></div>
-    <div id="camera-info">
-        <div><span class="label">Camera Position:</span></div>
-        <div>X: <span id="cam-x">0</span></div>
-        <div>Y: <span id="cam-y">0</span></div>
-        <div>Z: <span id="cam-z">0</span></div>
-        <div style="margin-top: 8px">
-            <span class="label">Camera Target:</span>
-        </div>
-        <div>X: <span id="target-x">0</span></div>
-        <div>Y: <span id="target-y">0</span></div>
-        <div>Z: <span id="target-z">0</span></div>
+
+    <!-- 纯净全屏地图容器 -->
+    <div id="map"></div>
+
+    <!-- 实时 Zoom 状态显示 DOM 节点 -->
+    <div id="zoomIndicator" class="zoom-badge">
+        <span class="zoom-label">Zoom Level</span>
+        <span id="zoomValue" class="zoom-num">--</span>
     </div>
 
-    <script type="module">
-        async function generateRiverHeightTexture(
-            jsonPath,
-            geoExtent,
-            heightData,
-            demWidth,
-            demHeight,
-            options = {},
-        ) {
-            const {
-                depth = 0.02, // 河流深度
-                maxDistance = 50, // 最大搜索距离（像素）
-            } = options;
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            // 目标项目精细矩形范围 [106.66214, 31.77465, 106.87585, 31.96320]
+            const targetBounds = L.latLngBounds(
+                [26.04, 97.34],
+                [34.16, 108.55]
+            );
 
-            // 直接分配最终纹理数组，省掉中间的 riverHeightData 和 distanceData
-            const textureData = new Float32Array(demWidth * demHeight * 4);
-            // 追踪每个像素最近的线段索引，用于计算局部宽度比值
-            const pixelSegIndex = new Int32Array(demWidth * demHeight).fill(-1);
-            const pixelSide = new Int8Array(demWidth * demHeight); // 1=左岸, -1=右岸
-            // 初始化: R=-1(非河流), G=Infinity, B=0, A=maxDistance
-            for (let i = 0; i < demWidth * demHeight; i++) {
-                const i4 = i * 4;
-                textureData[i4] = -1;
-                textureData[i4 + 1] = 0;
-                textureData[i4 + 2] = 0;
-                textureData[i4 + 3] = maxDistance;
+            // 给目标范围外扩 30% 作为可拖拽移动的安全缓冲锁死边界
+            const safeBounds = targetBounds.pad(0.3);
+
+            const map = L.map('map', {
+                zoom: 17,
+                minZoom: 6,
+                maxZoom: 18,
+                maxBounds: safeBounds,
+                maxBoundsViscosity: 1.0,
+                zoomControl: true,
+                attributionControl: false
+            });
+            // 视角定位至目标区域
+            map.fitBounds(targetBounds);
+
+            const tk = '73a87062ca36baaed0feebe7989f453a';
+
+            // 1. 天地图矢量底图 (vec_w)
+            const vecUrl = `https://t{s}.tianditu.gov.cn/vec_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=vec&STYLE=default&TILEMATRIXSET=w&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=tiles&tk=${tk}`;
+            L.tileLayer(vecUrl, {
+                subdomains: ['0', '1', '2', '3', '4', '5', '6', '7'],
+                minZoom: 1,
+                maxZoom: 18,
+                attribution: '天地图'
+            }).addTo(map);
+
+            // 2. 天地图矢量注记 (cva_w)
+            const cvaUrl = `https://t{s}.tianditu.gov.cn/cva_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=cva&STYLE=default&TILEMATRIXSET=w&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=tiles&tk=${tk}`;
+            L.tileLayer(cvaUrl, {
+                subdomains: ['0', '1', '2', '3', '4', '5', '6', '7'],
+                minZoom: 1,
+                maxZoom: 18
+            }).addTo(map);
+
+            const centerLatLng = [30.691294, 104.302553];
+
+            // 先设置初始地图视角，确保 Leaflet 投影矩阵初始化完成
+            map.setView(centerLatLng, 16);
+            const pointIcon = L.divIcon({
+                className: 'custom-point-pin',
+                iconSize: [18, 18],
+                iconAnchor: [9, 9]
+            });
+            const marker = L.marker(centerLatLng, { icon: pointIcon }).addTo(map);
+
+            // 3. 动态更新当前 Zoom 显示
+            const zoomValueEl = document.getElementById('zoomValue');
+
+            function updateZoomDisplay() {
+                const z = map.getZoom();
+                zoomValueEl.textContent = Number.isInteger(z) ? z : z.toFixed(1);
             }
 
-            try {
-                const response = await fetch(jsonPath);
-                const data = await response.json();
-
-                // 预计算地理坐标范围的倒数，避免重复除法
-                const invLonRange = 1 / (geoExtent.maxLon - geoExtent.minLon);
-                const invLatRange = 1 / (geoExtent.maxLat - geoExtent.minLat);
-
-                // 收集所有河流中心线的线段，并预计算 AABB
-                const segments = [];
-                let currentPathId = 0;
-
-                if (data.features && Array.isArray(data.features)) {
-                    data.features.forEach((feature) => {
-                        if (feature.geometry && feature.geometry.paths) {
-                            feature.geometry.paths.forEach((path) => {
-                                const centerPixels = [];
-
-                                path.forEach((coord) => {
-                                    const [lon, lat] = coord;
-                                    //归一化坐标(浮点数,范围：【0，1】
-                                    const normalizedX = (lon - geoExtent.minLon) * invLonRange;
-                                    const normalizedZ = (lat - geoExtent.minLat) * invLatRange;
-                                    //像素坐标(浮点数),范围[0, demWidth-1]和[0, demHeight-1]
-                                    const texX = Math.min(Math.max(normalizedX, 0), 1) * (demWidth - 1);
-                                    const texZ = Math.min(Math.max(1 - normalizedZ, 0), 1) * (demHeight - 1);
-                                    const index = Math.floor(texZ) * demWidth + Math.floor(texX);
-                                    const terrainHeight = heightData[index] || 0;
-                                    const waterHeight = terrainHeight + depth;
-
-                                    centerPixels.push({ x: texX, z: texZ, waterHeight });
-                                });
-
-                                // 保存为线段，并预计算 AABB 和长度平方
-                                let currentU = 0;
-                                for (let i = 0; i < centerPixels.length - 1; i++) {
-                                    const p1 = centerPixels[i];
-                                    const p2 = centerPixels[i + 1];
-                                    const dx = p2.x - p1.x;
-                                    const dz = p2.z - p1.z;
-                                    const segmentLen = Math.sqrt(dx * dx + dz * dz);
-                                    segments.push({
-                                        p1,
-                                        p2,
-                                        dx,
-                                        dz,
-                                        lengthSq: segmentLen * segmentLen,
-                                        length: segmentLen,
-                                        startU: currentU,
-                                        pathId: currentPathId,
-                                        minX: Math.min(p1.x, p2.x) - maxDistance,
-                                        maxX: Math.max(p1.x, p2.x) + maxDistance,
-                                        minZ: Math.min(p1.z, p2.z) - maxDistance,
-                                        maxZ: Math.max(p1.z, p2.z) + maxDistance,
-                                        isFirstSegment: i === 0,
-                                        isLastSegment: i === centerPixels.length - 2,
-                                    });
-                                    currentU += segmentLen;
-                                }
-                                currentPathId++;
-                            });
-                        }
-                    });
-                }
-
-                // ====== 空间网格索引 ======
-                const cellSize = maxDistance;
-                const maxDistSq = maxDistance * maxDistance;
-                const grid = new Map();
-
-                for (let si = 0; si < segments.length; si++) {
-                    const seg = segments[si];
-                    const cxMin = Math.floor(seg.minX / cellSize);
-                    const cxMax = Math.floor(seg.maxX / cellSize);
-                    const czMin = Math.floor(seg.minZ / cellSize);
-                    const czMax = Math.floor(seg.maxZ / cellSize);
-                    for (let cz = czMin; cz <= czMax; cz++) {
-                        for (let cx = cxMin; cx <= cxMax; cx++) {
-                            const key = cz * 100000 + cx; // 数值 key 比字符串更快
-                            let bucket = grid.get(key);
-                            if (!bucket) {
-                                bucket = [];
-                                grid.set(key, bucket);
-                            }
-                            bucket.push(si);
-                        }
-                    }
-                }
-
-                // ====== 遍历像素，通过网格索引只查附近线段 ======
-                let maxU = 0;
-                for (let z = 0; z < demHeight; z++) {
-                    const cellZ = Math.floor(z / cellSize);
-                    for (let x = 0; x < demWidth; x++) {
-                        const cellX = Math.floor(x / cellSize);
-                        const key = cellZ * 100000 + cellX;
-                        const bucket = grid.get(key);
-                        if (!bucket) continue;
-
-                        let minDistSq = Infinity;
-                        let nearestWaterHeight = -1;
-                        let nearestU = 0;
-                        let nearestCapDist = 0;
-                        let nearestSegIdx = -1;
-                        let nearestClosestX = 0;
-                        let nearestClosestZ = 0;
-
-                        for (let bi = 0; bi < bucket.length; bi++) {
-                            const seg = segments[bucket[bi]];
-
-                            //点 P 在 线段方向上的投影位置
-                            let tUnclamped = 0;
-                            if (seg.lengthSq > 0) {
-                                tUnclamped =
-                                    ((x - seg.p1.x) * seg.dx + (z - seg.p1.z) * seg.dz) /
-                                    seg.lengthSq;
-                            }
-
-                            let t = tUnclamped;
-                            if (t < 0) t = 0;
-                            else if (t > 1) t = 1;
-
-                            // 计算点 P 到线段的最近点坐标
-                            const closestX = seg.p1.x + t * seg.dx;
-                            const closestZ = seg.p1.z + t * seg.dz;
-                            // 计算距离的平方
-                            const dSq =
-                                (x - closestX) * (x - closestX) +
-                                (z - closestZ) * (z - closestZ);
-
-                            // 计算端点外的额外距离（如果在端点外）
-                            let capDistForThis = 0;
-                            if (seg.isFirstSegment && tUnclamped < 0) {
-                                capDistForThis = -tUnclamped * seg.length;
-                            } else if (seg.isLastSegment && tUnclamped > 1) {
-                                capDistForThis = (tUnclamped - 1) * seg.length;
-                            }
-
-                            //保证精度误差不导致的闪烁问题，增加一个小的 epsilon 容差
-                            const epsilon = 1e-5;
-                            if (dSq < minDistSq - epsilon) {
-                                minDistSq = dSq;
-                                // 插值水面高度
-                                nearestWaterHeight = seg.p1.waterHeight + t * (seg.p2.waterHeight - seg.p1.waterHeight);
-                                // nearestWaterHeight = (seg.p1.waterHeight + seg.p2.waterHeight) / 2.0;
-
-                                nearestU = seg.startU + t * seg.length;
-                                nearestCapDist = capDistForThis;
-                                nearestSegIdx = bucket[bi];
-                                nearestClosestX = closestX;
-                                nearestClosestZ = closestZ;
-                            } else if (Math.abs(dSq - minDistSq) <= epsilon) {
-                                nearestCapDist = Math.min(nearestCapDist, capDistForThis);
-                            }
-                        }
-
-                        // 如果在最大距离范围内，直接写入纹理数组
-                        if (minDistSq <= maxDistSq) {
-                            const idx = z * demWidth + x;
-                            const idx4 = idx * 4;
-                            pixelSegIndex[idx] = nearestSegIdx;
-                            // 用叉积判断左右岸（必须在 signedDist 之前计算）
-                            const nearestSeg = segments[nearestSegIdx];
-                            const cross = nearestSeg.dx * (z - nearestClosestZ) - nearestSeg.dz * (x - nearestClosestX);
-                            pixelSide[idx] = cross >= 0 ? 1 : -1;
-
-                            textureData[idx4] = nearestWaterHeight; // R: 水面高度
-                            const signedDist = Math.sqrt(minDistSq) * pixelSide[idx]; // 左岸正、右岸负
-                            textureData[idx4 + 1] = signedDist; // G: 有符号距离（消除中线对称斑纹）
-                            textureData[idx4 + 2] = nearestU; // B: 流域推进 (U)
-                            textureData[idx4 + 3] = nearestCapDist; // A: 端点外部距起点/终点的额外距离
-                        }
-                    }
-                }
-
-
-                const riverTexture = new THREE.DataTexture(
-                    textureData,
-                    demWidth,
-                    demHeight,
-                    THREE.RGBAFormat,
-                    THREE.FloatType,
-                );
-                riverTexture.wrapS = THREE.ClampToEdgeWrapping;
-                riverTexture.wrapT = THREE.ClampToEdgeWrapping;
-                riverTexture.minFilter = THREE.LinearFilter;
-                riverTexture.magFilter = THREE.LinearFilter;
-                riverTexture.needsUpdate = true;
-
-                return riverTexture;
-            } catch (error) {
-                console.error("生成河流纹理失败:", error);
-                return null;
-            }
-        }
-
-        const texSize = 1; // 1x1纹理，只有一个粒子
-        const planeWidth = 10;
-
-        const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(
-            60,
-            window.innerWidth / window.innerHeight,
-            0.1,
-            1000,
-        );
-        camera.position.set(-0.39, 1.21, 4.18);
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        document.body.appendChild(renderer.domElement);
-        const controls = new THREE.OrbitControls(camera, renderer.domElement);
-        controls.target.set(-1.36, -0.07, 2.32);
-        controls.update();
-        const ambientLight = new THREE.AmbientLight(0x404040);
-        scene.add(ambientLight);
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-        directionalLight.position.set(1, 1, 1);
-        scene.add(directionalLight);
-
-        // 读取水体纹理
-        const waterNormalMapTex = new THREE.TextureLoader().load(
-            "/Public/images/WaterNormal.jpg",
-            (tex) => {
-                tex.wrapS = THREE.RepeatWrapping;
-                tex.wrapT = THREE.RepeatWrapping;
-                tex.minFilter = THREE.LinearMipmapLinearFilter;
-                tex.magFilter = THREE.LinearFilter;
-                tex.generateMipmaps = true;
-                tex.needsUpdate = true;
-            },
-        );
-
-        const foamMapTex = new THREE.TextureLoader().load(
-            "/Public/images/foam.jpg",
-            (tex) => {
-                tex.wrapS = THREE.RepeatWrapping;
-                tex.wrapT = THREE.RepeatWrapping;
-                tex.minFilter = THREE.LinearMipmapLinearFilter;
-                tex.magFilter = THREE.LinearFilter;
-                tex.generateMipmaps = true;
-                tex.needsUpdate = true;
-            },
-        );
-
-        const waterSpecularMapTex = new THREE.TextureLoader().load(
-            "/Public/images/WaterSpecular.jpg",
-            (tex) => {
-                tex.wrapS = THREE.RepeatWrapping;
-                tex.wrapT = THREE.RepeatWrapping;
-                tex.minFilter = THREE.LinearMipmapLinearFilter;
-                tex.magFilter = THREE.LinearFilter;
-                tex.generateMipmaps = true;
-                tex.needsUpdate = true;
-            },
-        );
-
-        //加载地形并生成高度纹理 ---
-        const file = "/Public/dem/terrain8.tif";
-        const res = await fetch(file);
-        const arrayBuffer = await res.arrayBuffer();
-        const tiff = await GeoTIFF.fromArrayBuffer(arrayBuffer);
-        const image = await tiff.getImage();
-        const rasters = await image.readRasters();
-        const demWidth = image.getWidth();
-        const demHeight = image.getHeight();
-        const elevationData = new Float32Array(rasters[0]);
-        let minElevation = Infinity,
-            maxElevation = -Infinity;
-        for (let i = 0; i < elevationData.length; i++) {
-            const val = elevationData[i];
-            if (val !== 0) {
-                if (val < minElevation) minElevation = val;
-                if (val > maxElevation) maxElevation = val;
-            }
-        }
-        const heightData = new Float32Array(demWidth * demHeight);
-        for (let i = 0; i < elevationData.length; i++) {
-            heightData[i] =
-                (elevationData[i] - minElevation) / (maxElevation - minElevation);
-        }
-        const heightTexture = new THREE.DataTexture(
-            heightData,
-            demWidth,
-            demHeight,
-            THREE.RedFormat,
-            THREE.FloatType,
-        );
-        heightTexture.wrapS = THREE.ClampToEdgeWrapping;
-        heightTexture.wrapT = THREE.ClampToEdgeWrapping;
-        heightTexture.minFilter = THREE.LinearFilter;
-        heightTexture.magFilter = THREE.LinearFilter;
-        heightTexture.needsUpdate = true;
-
-        // ==================== 创建地形网格（使用Shader方案渲染河流） ====================
-        const planeHeight = (planeWidth * demHeight) / demWidth;
-
-        // 从 GeoTIFF 获取地理范围
-        const bbox = image.getBoundingBox();
-        const geoExtent = {
-            minLon: bbox[0],
-            maxLon: bbox[2],
-            minLat: bbox[1],
-            maxLat: bbox[3],
-        };
-
-        const riverWidth = 60.0;
-        const terrainColor = new THREE.Color(0xDDDDDD);
-
-        // 创建地形几何体
-        const terrainGeo = new THREE.PlaneGeometry(
-            planeWidth,
-            planeHeight,
-            demWidth - 1,
-            demHeight - 1,
-        );
-        const uvs = terrainGeo.attributes.uv.array;
-        for (let i = 1; i < uvs.length; i += 2) {
-            uvs[i] = 1.0 - uvs[i];
-        }
-
-        const terrainMat = new THREE.MeshStandardMaterial({
-            color: terrainColor,
-            wireframe: true,
-            displacementMap: heightTexture,
-            displacementScale: 1.0,
-        });
-        const terrainMesh = new THREE.Mesh(terrainGeo, terrainMat);
-        terrainMesh.rotation.x = -Math.PI / 2;
-        scene.add(terrainMesh);
-
-        // 创建水面
-        const riverHeightTexture = await generateRiverHeightTexture(
-            '/Public/json/river.json',
-            geoExtent,
-            heightData,
-            demWidth,
-            demHeight,
-            {
-                depth: 0.02,            // 河流深度
-                maxDistance: riverWidth / 2, // 最大搜索距离（像素）
-            }
-        );
-
-        const riverGeo = new THREE.PlaneGeometry(
-            planeWidth,
-            planeHeight,
-            demWidth - 1,
-            demHeight - 1,
-        );
-
-        const riverMat = new THREE.ShaderMaterial({
-            uniforms: {
-                heightMap: { value: heightTexture },
-                riverHeightMap: { value: riverHeightTexture },
-                waterNormalMap: { value: waterNormalMapTex },
-                foamMap: { value: foamMapTex },
-                waterSpecularMap: { value: waterSpecularMapTex },
-                terrainColor: { value: terrainColor },
-                maxRiverWidth: { value: riverWidth / 2 },
-                u_time: { value: 0 },
-                texelSize: {
-                    value: new THREE.Vector2(
-                        1.0 / heightTexture.image.width,
-                        1.0 / heightTexture.image.height,
-                    ),
-                },
-                riverTexSize: {
-                    value: new THREE.Vector2(demWidth, demHeight),
-                },
-            },
-            vertexShader: riverVS,
-            fragmentShader: riverFS,
-            transparent: false,
-        });
-
-        const riverMesh = new THREE.Mesh(riverGeo, riverMat);
-        riverMesh.rotation.x = -Math.PI / 2;
-        scene.add(riverMesh);
-
-        // 时间管理
-        const clock = new THREE.Clock();
-
-        function animate() {
-            requestAnimationFrame(animate);
-
-            const deltaTime = clock.getDelta();
-            riverMat.uniforms.u_time.value += deltaTime * 0.01;
-            controls.update();
-
-            $("#cam-x")[0].textContent = camera.position.x.toFixed(2);
-            $("#cam-y")[0].textContent = camera.position.y.toFixed(2);
-            $("#cam-z")[0].textContent = camera.position.z.toFixed(2);
-            $("#target-x")[0].textContent = controls.target.x.toFixed(2);
-            $("#target-y")[0].textContent = controls.target.y.toFixed(2);
-            $("#target-z")[0].textContent = controls.target.z.toFixed(2);
-
-            renderer.render(scene, camera);
-        }
-
-        animate();
-
-        window.addEventListener("resize", () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
+            updateZoomDisplay();
+            map.on('zoom zoomend move', updateZoomDisplay);
         });
     </script>
 </body>

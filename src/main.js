@@ -183,6 +183,19 @@ const router = createRouter({
       ]
     },
     {
+      path: '/leaflet',
+      name: 'Leaflet',
+      component: RouterView,
+      redirect: '/leaflet/road-route-calc',
+      children: [
+        {
+          path: 'road-route-calc',
+          name: 'LeafletRoadRouteCalc',
+          component: () => import('./views/Leaflet/RoadRouteCalc.vue'),
+        }
+      ]
+    },
+    {
       path: '/blog',
       name: 'Blog',
       component: RouterView,
@@ -276,7 +289,7 @@ router.beforeEach(async (to, from, next) => {
       // 加载失败时依然放行，让组件自己处理错误状态
     }
   }
-  
+
   next()
 })
 

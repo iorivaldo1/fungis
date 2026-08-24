@@ -43,6 +43,24 @@
             </transition>
           </div>
 
+          <!-- Leaflet 多级菜单 -->
+          <div class="menu-group" :class="{ expanded: isLeafletMenuExpanded }">
+            <div class="menu-item parent" @click="toggleLeafletMenu"
+              :class="{ active: route.path.startsWith('/leaflet') }">
+              <IconRoute />
+              <span class="menu-text">Leaflet</span>
+              <IconArrow class="arrow-icon" :class="{ rotated: isLeafletMenuExpanded }" width="16" height="16" />
+            </div>
+            <transition name="menu-slide">
+              <div v-show="isLeafletMenuExpanded" class="sub-menu">
+                <router-link to="/leaflet/road-route-calc" class="menu-item sub" active-class="active">
+                  <div class="sub-dot"></div>
+                  <span class="menu-text">道路路径计算</span>
+                </router-link>
+              </div>
+            </transition>
+          </div>
+
           <!-- Three+TianDitu 多级菜单 -->
           <div class="menu-group" :class="{ expanded: isThreeTdtMenuExpanded }">
             <div class="menu-item parent" @click="toggleThreeTdtMenu"
@@ -186,6 +204,10 @@
             </transition>
           </div>
 
+
+
+
+
           <!-- Blog 多级菜单 -->
           <div class="menu-group" :class="{ expanded: isBlogMenuExpanded }">
             <div class="menu-item parent" @click="toggleBlogMenu" :class="{ active: route.path.startsWith('/blog') }">
@@ -251,6 +273,7 @@ const isRiverMenuExpanded = ref(route.path.startsWith('/tianditu') || route.path
 const isBaiduMenuExpanded = ref(route.path.startsWith('/baidu'))
 const isThreeMenuExpanded = ref(route.path === '/three' || route.path.startsWith('/three/'))
 const isAlgorithmMenuExpanded = ref(route.path.startsWith('/algorithm'))
+const isLeafletMenuExpanded = ref(route.path.startsWith('/leaflet'))
 const isBlogMenuExpanded = ref(route.path.startsWith('/blog'))
 const isReady = ref(false)
 
@@ -315,6 +338,10 @@ const toggleBlogMenu = () => {
   isBlogMenuExpanded.value = !isBlogMenuExpanded.value
 }
 
+const toggleLeafletMenu = () => {
+  isLeafletMenuExpanded.value = !isLeafletMenuExpanded.value
+}
+
 // Ensure unique state for each menu
 const isThreeTdtMenuExpanded = ref(route.path.startsWith('/three-tdt'))
 const toggleThreeTdtMenu = () => {
@@ -352,6 +379,9 @@ const currentRouteName = computed(() => {
     'QuadTree': 'QGIS QIX KNN 查询(四叉树)',
     'EsriSbnKDTree': 'ESRI SBN KNN 查询(KD树)',
     'PostGisRTree': 'PG GIST KNN 查询(R树)',
+    'Leaflet': 'Leaflet',
+    'LeafletRouteCalc': '路径计算',
+    'LeafletRoadRouteCalc': '路径计算',
     'Blog': 'Blog',
     'BlogGlsl': 'glsl'
   }
