@@ -890,8 +890,22 @@ async function submitUpload() {
       method: 'POST',
       body: formData
     })
-    const res = await response.json()
     isUploading.value = false
+
+    if (response.status === 413) {
+      uploadMsg.color = '#ef4444'
+      uploadMsg.text = '❌ 上传失败 (HTTP 413 Content Too Large)：矢量文件夹体积超过服务器反向代理限制！\n【解决办法】：请在服务器 Nginx 配置文件 (/etc/nginx/nginx.conf) 的 http / server / location 块中设置:\n    client_max_body_size 500M;\n然后运行 sudo nginx -s reload 重新加载 Nginx 配置。'
+      return
+    }
+
+    let res
+    try {
+      res = await response.json()
+    } catch (e) {
+      uploadMsg.color = '#ef4444'
+      uploadMsg.text = `❌ 服务器响应异常 (HTTP ${response.status})：未能获取正确的 JSON 响应。\n可能是 Nginx / 网关代理拦截了请求 (如超时或文件体积受限)。`
+      return
+    }
 
     if (res.code === 200) {
       uploadMsg.color = '#10b981'
