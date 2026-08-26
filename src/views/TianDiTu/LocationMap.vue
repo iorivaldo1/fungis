@@ -26,6 +26,9 @@
         @clear-all="handleShpClearAll" 
       />
 
+      <!-- 地图测量工具面板 -->
+      <MeasurePanel :map="mapInstance" />
+
       <!-- 定位结果表格面板 -->
       <LocationTablePanel 
         :points="locationList" 
@@ -45,11 +48,13 @@ import ClickInfoPanel from '@/components/ClickInfoPanel.vue'
 import LocatePanel from '@/components/LocatePanel.vue'
 import LocationTablePanel from '@/components/LocationTablePanel.vue'
 import ShpPanel from '@/components/ShpPanel.vue'
+import MeasurePanel from '@/components/MeasurePanel.vue'
 import { renderGeoJsonToTianditu, flashFeatureTianditu, renderGeoJsonLabelsTianditu } from '@/utils/shpMapRenderer.js'
 
 const clickPoint = ref(null)
 const isClickChecked = ref(false)
 const locationList = ref([])
+const mapInstance = ref(null)
 
 let map = null
 let clickMarker = null
@@ -80,6 +85,7 @@ const handleClickCheckedChange = (val) => {
 
 const initMap = () => {
   map = new window.T.Map("mapDiv")
+  mapInstance.value = map
   const zoom = 14
   map.centerAndZoom(new window.T.LngLat(103.064, 30.01), zoom)
 
@@ -275,6 +281,7 @@ onUnmounted(() => {
   if (map) {
     map = null
   }
+  mapInstance.value = null
 })
 </script>
 
@@ -291,11 +298,6 @@ onUnmounted(() => {
   left: 0;
   width: 100%;
   height: 100%;
-}
-
-#mapDiv,
-#mapDiv :deep(*) {
-  cursor: default !important;
 }
 
 .top-panels-container {
