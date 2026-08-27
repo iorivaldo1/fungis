@@ -1,13 +1,21 @@
 <template>
-  <div class="shp-control-panel" :class="[theme, { collapsed: isCollapsed }]">
+  <div class="json-control-panel" :class="[theme, { collapsed: isCollapsed }]">
     <div class="info-title" @click="toggleCollapse">
       <span>{{ title }}</span>
       <IconChevronDown class="collapse-icon" :class="{ rotated: isCollapsed }" width="20" height="20" />
     </div>
 
     <transition name="slide-fade">
-      <div v-show="!isCollapsed" class="info-content shp-content">
-        <!-- 隐藏的文件夹选择 input -->
+      <div v-show="!isCollapsed" class="info-content json-content">
+        <!-- 隐藏的文件/文件夹选择 input -->
+        <input 
+          type="file" 
+          ref="fileInputRef" 
+          @change="handleFileInputChange" 
+          accept=".json,.geojson,.topojson" 
+          multiple
+          style="display: none;" 
+        />
         <input 
           type="file" 
           ref="folderInputRef" 
@@ -17,29 +25,34 @@
         />
 
         <div 
-          class="shp-upload-area"
+          class="json-upload-area"
           :class="{ dragging: isDraggingOver }"
           @dragover.prevent="isDraggingOver = true"
           @dragleave.prevent="isDraggingOver = false"
           @drop.prevent="handleDrop"
         >
-          <button class="shp-upload-btn folder-btn" @click="triggerFolderInput" :disabled="isLoading">
-            <span v-if="isLoading" class="loading-spinner">⏳ 解析中...</span>
-            <span v-else>📂 选择 SHP 矢量文件夹</span>
-          </button>
-          <div class="drag-hint">或拖拽包含 .shp / .dbf 的本地文件夹至此处</div>
+          <div class="btn-group">
+            <button class="json-upload-btn" @click="triggerFileInput" :disabled="isLoading">
+              <span v-if="isLoading" class="loading-spinner">⏳ 解析中...</span>
+              <span v-else>📄 选择 JSON 文件</span>
+            </button>
+            <button class="json-upload-btn folder-btn" @click="triggerFolderInput" :disabled="isLoading">
+              <span>📂 文件夹</span>
+            </button>
+          </div>
+          <div class="drag-hint">或拖拽 .json / .geojson 本地文件或文件夹至此处</div>
         </div>
 
-        <div class="shp-tip" v-if="layers.length === 0">
-          选择或拖拽本地文件夹，自动批量读取并关联同名 .shp 图形与 .dbf 属性表。
+        <div class="json-tip" v-if="layers.length === 0">
+          支持加载 GeoJSON、TopoJSON 或包含经纬度/坐标数据的 JSON 文件。
         </div>
 
         <!-- 图层管理列表 -->
-        <div class="shp-layer-list" v-else>
+        <div class="json-layer-list" v-else>
           <div 
             v-for="layer in layers" 
             :key="layer.id" 
-            class="shp-layer-item"
+            class="json-layer-item"
           >
             <div class="layer-main-info">
               <input 
@@ -68,15 +81,15 @@
             </div>
           </div>
 
-          <div class="shp-global-actions">
-            <button class="clear-all-btn" @click="handleClearAll">清空所有 SHP 图层</button>
+          <div class="json-global-actions">
+            <button class="clear-all-btn" @click="handleClearAll">清空所有 JSON 图层</button>
           </div>
         </div>
       </div>
     </transition>
 
-    <!-- 可拖拽与缩放的 SHP 属性表弹窗 -->
-    <ShpAttributeTable 
+    <!-- 可拖拽与缩放的 JSON 属性表弹窗 -->
+    <JsonAttributeTable 
       v-model:visible="isTableVisible" 
       :layer="activeTableLayer" 
       :theme="theme"
@@ -84,30 +97,28 @@
       @toggle-label-field="handleToggleLabelField"
     />
 
-    <!-- SHP 坐标系确认与设置弹窗 -->
-    <ShpCrsModal 
-      v-model:visible="isCrsModalVisible"
-      :layer-data="currentCrsLayer"
+    <!-- JSON 字段映射与渲染确认弹窗 -->
+    <JsonFieldMappingModal 
+      v-model:visible="isMappingModalVisible"
+      :file-data="currentMappingFile"
       :default-crs="defaultCrs"
       :theme="theme"
-      @confirm="handleCrsConfirm"
-      @cancel="handleCrsCancel"
+      @confirm="handleMappingConfirm"
+      @cancel="handleMappingCancel"
     />
   </div>
 </template>
 
 <script setup>
 import { ref } from 'vue'
-import shp, { parseShp, parseDbf, combine } from 'shpjs'
-import { ensureWgs84GeoJson } from '@/utils/shpMapRenderer.js'
 import IconChevronDown from '@/components/icons/IconChevronDown.vue'
-import ShpAttributeTable from '@/components/ShpAttributeTable.vue'
-import ShpCrsModal from '@/components/ShpCrsModal.vue'
+import JsonAttributeTable from '@/components/JsonAttributeTable.vue'
+import JsonFieldMappingModal from '@/components/JsonFieldMappingModal.vue'
 
 const props = defineProps({
   title: {
     type: String,
-    default: 'SHP 图层管理'
+    default: 'JSON 图层管理'
   },
   theme: {
     type: String,
@@ -130,8 +141,8 @@ const isLoading = ref(false)
 const layers = ref([])
 
 const colorPalette = [
-  '#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', 
-  '#ec4899', '#06b6d4', '#84cc16', '#f97316', '#6366f1'
+  '#10b981', '#3b82f6', '#f59e0b', '#8b5cf6', '#ef4444', 
+  '#06b6d4', '#ec4899', '#84cc16', '#f97316', '#6366f1'
 ]
 let colorIndex = 0
 
@@ -146,11 +157,19 @@ const toggleCollapse = () => {
 }
 
 const isDraggingOver = ref(false)
+const fileInputRef = ref(null)
 const folderInputRef = ref(null)
 
-const isCrsModalVisible = ref(false)
-const currentCrsLayer = ref(null)
-const pendingShpQueue = ref([])
+const isMappingModalVisible = ref(false)
+const currentMappingFile = ref(null)
+const pendingFilesQueue = ref([])
+
+const triggerFileInput = () => {
+  if (fileInputRef.value) {
+    fileInputRef.value.value = ''
+    fileInputRef.value.click()
+  }
+}
 
 const triggerFolderInput = () => {
   if (folderInputRef.value) {
@@ -202,126 +221,80 @@ const processSelectedFiles = async (files) => {
   if (!files || files.length === 0) return
 
   isLoading.value = true
+  const validFiles = files.filter(f => {
+    const name = f.name.toLowerCase()
+    return name.endsWith('.json') || name.endsWith('.geojson') || name.endsWith('.topojson')
+  })
+
+  if (validFiles.length === 0) {
+    alert('未找到有效的 .json / .geojson / .topojson 文件')
+    isLoading.value = false
+    return
+  }
+
   try {
-    const zipFiles = files.filter(f => f.name.toLowerCase().endsWith('.zip'))
-    const shpFiles = files.filter(f => f.name.toLowerCase().endsWith('.shp'))
-    const dbfFiles = files.filter(f => f.name.toLowerCase().endsWith('.dbf'))
-    const prjFiles = files.filter(f => f.name.toLowerCase().endsWith('.prj'))
-
-    const parseZipFn = shp.parseZip || (shp.default && shp.default.parseZip) || shp
-    const parseShpFn = parseShp || shp.parseShp || (shp.default && shp.default.parseShp)
-    const parseDbfFn = parseDbf || shp.parseDbf || (shp.default && shp.default.parseDbf)
-    const combineFn = combine || shp.combine || (shp.default && shp.default.combine)
-
     const parsedQueue = []
-
-    // 1. 处理 .zip 压缩包
-    for (const zipFile of zipFiles) {
-      const buffer = await zipFile.arrayBuffer()
-      const parsed = await parseZipFn(buffer)
-      const geojsonList = Array.isArray(parsed) ? parsed : [parsed]
-      
-      geojsonList.forEach((rawGeojson, idx) => {
-        if (!rawGeojson || !rawGeojson.features) return
-        const layerName = rawGeojson.fileName || zipFile.name.replace(/\.zip$/i, '') + (geojsonList.length > 1 ? `_${idx + 1}` : '')
-        const geojson = ensureWgs84GeoJson(rawGeojson)
+    for (const file of validFiles) {
+      const text = await file.text()
+      try {
+        const rawData = JSON.parse(text)
         parsedQueue.push({
-          name: layerName,
-          rawGeojson: geojson
+          name: file.name,
+          rawData
         })
-      })
-    }
-
-    // 2. 处理单独/多选/文件夹匹配的 .shp
-    if (shpFiles.length > 0) {
-      for (const shpFile of shpFiles) {
-        const baseName = shpFile.name.replace(/\.shp$/i, '')
-        const matchingDbf = dbfFiles.find(f => f.name.replace(/\.dbf$/i, '') === baseName) || dbfFiles[0]
-        const matchingPrj = prjFiles.find(f => f.name.replace(/\.prj$/i, '') === baseName) || prjFiles[0]
-
-        const shpBuf = await shpFile.arrayBuffer()
-        const dbfBuf = matchingDbf ? await matchingDbf.arrayBuffer() : null
-        const prjStr = matchingPrj ? await matchingPrj.text() : null
-
-        let rawGeojson = null
-
-        // 优先尝试 shp({ shp: shpBuf, dbf: dbfBuf, prj: prjStr }) 对象传输模式
-        try {
-          rawGeojson = await shp({
-            shp: shpBuf,
-            dbf: dbfBuf,
-            prj: prjStr
-          })
-        } catch (e1) {
-          if (parseShpFn) {
-            const geometries = parseShpFn(shpBuf, prjStr)
-            const properties = (dbfBuf && parseDbfFn) ? parseDbfFn(dbfBuf) : []
-            rawGeojson = combineFn ? combineFn([geometries, properties]) : {
-              type: 'FeatureCollection',
-              features: (Array.isArray(geometries) ? geometries : [geometries]).map((g, i) => ({
-                type: 'Feature',
-                geometry: g,
-                properties: (properties && properties[i]) || {}
-              }))
-            }
-          }
-        }
-
-        if (rawGeojson && rawGeojson.features) {
-          const geojson = ensureWgs84GeoJson(rawGeojson, prjStr)
-          parsedQueue.push({
-            name: shpFile.name,
-            rawGeojson: geojson
-          })
-        }
+      } catch (err) {
+        console.error(`文件 ${file.name} JSON 格式有误:`, err)
+        alert(`文件 ${file.name} 不是有效的 JSON 格式: ` + err.message)
       }
     }
 
     if (parsedQueue.length > 0) {
-      pendingShpQueue.value = parsedQueue
-      processNextPendingShp()
+      pendingFilesQueue.value = parsedQueue
+      processNextPendingFile()
     }
   } catch (err) {
-    console.error('解析 SHP 文件失败:', err)
-    alert('解析 SHP 文件失败: ' + (err.message || '格式不支持或编码错误'))
+    console.error('读取 JSON 文件失败:', err)
+    alert('读取 JSON 文件失败: ' + (err.message || '格式错误'))
   } finally {
     isLoading.value = false
   }
 }
 
-const processNextPendingShp = () => {
-  if (pendingShpQueue.value.length === 0) {
-    currentCrsLayer.value = null
-    isCrsModalVisible.value = false
+const processNextPendingFile = () => {
+  if (pendingFilesQueue.value.length === 0) {
+    currentMappingFile.value = null
+    isMappingModalVisible.value = false
     return
   }
 
-  currentCrsLayer.value = pendingShpQueue.value.shift()
-  isCrsModalVisible.value = true
+  currentMappingFile.value = pendingFilesQueue.value.shift()
+  isMappingModalVisible.value = true
 }
 
-const handleCrsConfirm = ({ fileName, geojson }) => {
+const handleMappingConfirm = ({ fileName, geojson }) => {
   if (geojson && geojson.features && geojson.features.length > 0) {
     addParsedLayer(fileName, geojson)
   } else {
-    alert(`图层 ${fileName} 未包含有效要素`)
+    alert(`文件 ${fileName} 未能转换为有效地理要素`)
   }
 
-  if (pendingShpQueue.value.length > 0) {
-    processNextPendingShp()
+  // 处理队列中的下一个文件
+  if (pendingFilesQueue.value.length > 0) {
+    processNextPendingFile()
   }
 }
 
-const handleCrsCancel = () => {
-  if (pendingShpQueue.value.length > 0) {
-    processNextPendingShp()
+const handleMappingCancel = () => {
+  // 如果还有文件，继续弹出下一个，或终止队列
+  if (pendingFilesQueue.value.length > 0) {
+    processNextPendingFile()
   } else {
-    currentCrsLayer.value = null
+    currentMappingFile.value = null
   }
 }
 
 const addParsedLayer = (name, geojson) => {
-  const id = 'shp_layer_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7)
+  const id = 'json_layer_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7)
   const layer = {
     id,
     name,
@@ -380,7 +353,7 @@ const handleClearAll = () => {
 </script>
 
 <style scoped>
-.shp-control-panel {
+.json-control-panel {
   display: flex;
   flex-direction: column;
   gap: 0;
@@ -393,18 +366,18 @@ const handleClearAll = () => {
 }
 
 /* Light Theme (TianDiTu / Baidu) */
-.shp-control-panel.light {
+.json-control-panel.light {
   background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(10px);
   border: 1px solid rgba(0, 0, 0, 0.1);
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
 }
 
-.shp-control-panel.light.collapsed {
+.json-control-panel.light.collapsed {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 
-.shp-control-panel.light .info-title {
+.json-control-panel.light .info-title {
   color: #1a202c;
   font-size: 15px;
   font-weight: 600;
@@ -421,43 +394,43 @@ const handleClearAll = () => {
   transition: background 0.3s ease;
 }
 
-.shp-control-panel.light .info-title:hover {
+.json-control-panel.light .info-title:hover {
   background: #e2e8f0;
 }
 
-.shp-control-panel.light .collapse-icon {
+.json-control-panel.light .collapse-icon {
   color: #64748b;
 }
 
-.shp-control-panel.light .shp-tip {
+.json-control-panel.light .json-tip {
   color: #64748b;
 }
 
-.shp-control-panel.light .shp-layer-item {
+.json-control-panel.light .json-layer-item {
   border-bottom: 1px dashed #e2e8f0;
 }
 
-.shp-control-panel.light .layer-name {
+.json-control-panel.light .layer-name {
   color: #1e293b;
 }
 
-.shp-control-panel.light .layer-count {
+.json-control-panel.light .layer-count {
   color: #64748b;
 }
 
 /* Dark Theme (Cesium) */
-.shp-control-panel.dark {
+.json-control-panel.dark {
   background: linear-gradient(135deg, rgba(20, 20, 20, 0.95) 0%, rgba(50, 50, 50, 0.92) 100%);
   backdrop-filter: blur(15px);
   border: 1px solid rgba(255, 255, 255, 0.15);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
 }
 
-.shp-control-panel.dark.collapsed {
+.json-control-panel.dark.collapsed {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
 }
 
-.shp-control-panel.dark .info-title {
+.json-control-panel.dark .info-title {
   color: white;
   font-size: 16px;
   font-weight: 600;
@@ -475,27 +448,27 @@ const handleClearAll = () => {
   transition: background 0.3s ease;
 }
 
-.shp-control-panel.dark .info-title:hover {
+.json-control-panel.dark .info-title:hover {
   background: linear-gradient(135deg, rgba(70, 70, 70, 0.7) 0%, rgba(90, 90, 90, 0.6) 100%);
 }
 
-.shp-control-panel.dark .collapse-icon {
+.json-control-panel.dark .collapse-icon {
   color: #ffffff;
 }
 
-.shp-control-panel.dark .shp-tip {
+.json-control-panel.dark .json-tip {
   color: rgba(255, 255, 255, 0.6);
 }
 
-.shp-control-panel.dark .shp-layer-item {
+.json-control-panel.dark .json-layer-item {
   border-bottom: 1px dashed rgba(255, 255, 255, 0.15);
 }
 
-.shp-control-panel.dark .layer-name {
+.json-control-panel.dark .layer-name {
   color: #f8fafc;
 }
 
-.shp-control-panel.dark .layer-count {
+.json-control-panel.dark .layer-count {
   color: rgba(255, 255, 255, 0.6);
 }
 
@@ -509,7 +482,7 @@ const handleClearAll = () => {
   transform: rotate(-180deg);
 }
 
-.shp-content {
+.json-content {
   padding: 12px;
   display: flex;
   flex-direction: column;
@@ -518,7 +491,7 @@ const handleClearAll = () => {
   overflow-y: auto;
 }
 
-.shp-upload-area {
+.json-upload-area {
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -528,9 +501,9 @@ const handleClearAll = () => {
   transition: all 0.2s ease;
 }
 
-.shp-upload-area.dragging {
-  border-color: #3b82f6;
-  background: rgba(59, 130, 246, 0.1);
+.json-upload-area.dragging {
+  border-color: #10b981;
+  background: rgba(16, 185, 129, 0.1);
 }
 
 .btn-group {
@@ -538,9 +511,9 @@ const handleClearAll = () => {
   gap: 6px;
 }
 
-.shp-upload-btn {
+.json-upload-btn {
   flex: 1;
-  background: #3b82f6;
+  background: #10b981;
   color: white;
   border: none;
   padding: 8px 6px;
@@ -563,11 +536,11 @@ const handleClearAll = () => {
   background: #047857;
 }
 
-.shp-upload-btn:hover:not(:disabled) {
-  background: #2563eb;
+.json-upload-btn:hover:not(:disabled) {
+  background: #059669;
 }
 
-.shp-upload-btn:disabled {
+.json-upload-btn:disabled {
   opacity: 0.7;
   cursor: not-allowed;
 }
@@ -578,23 +551,23 @@ const handleClearAll = () => {
   text-align: center;
 }
 
-.shp-control-panel.dark .drag-hint {
+.json-control-panel.dark .drag-hint {
   color: rgba(255, 255, 255, 0.5);
 }
 
-.shp-tip {
+.json-tip {
   font-size: 11px;
   line-height: 1.4;
   padding: 2px 4px;
 }
 
-.shp-layer-list {
+.json-layer-list {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.shp-layer-item {
+.json-layer-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -664,20 +637,20 @@ const handleClearAll = () => {
 }
 
 .table-btn.active {
-  background: rgba(59, 130, 246, 0.25);
-  border: 1px solid rgba(59, 130, 246, 0.5);
+  background: rgba(16, 185, 129, 0.25);
+  border: 1px solid rgba(16, 185, 129, 0.5);
 }
 
-.shp-control-panel.dark .layer-btn:hover {
+.json-control-panel.dark .layer-btn:hover {
   background: rgba(255, 255, 255, 0.2);
 }
 
-.shp-control-panel.dark .table-btn.active {
-  background: rgba(59, 130, 246, 0.4);
-  border: 1px solid rgba(59, 130, 246, 0.7);
+.json-control-panel.dark .table-btn.active {
+  background: rgba(16, 185, 129, 0.4);
+  border: 1px solid rgba(16, 185, 129, 0.7);
 }
 
-.shp-global-actions {
+.json-global-actions {
   margin-top: 6px;
 }
 

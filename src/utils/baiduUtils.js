@@ -204,14 +204,6 @@ function outOfChina (lng, lat) {
   return lng < 72.004 || lng > 137.8347 || lat < 0.8293 || lat > 55.8271
 }
 
-function bd09ToGcj02 (lng, lat) {
-  const x = lng - 0.0065
-  const y = lat - 0.006
-  const z = Math.sqrt(x * x + y * y) - 0.00002 * Math.sin(y * X_PI)
-  const theta = Math.atan2(y, x) - 0.000003 * Math.cos(x * X_PI)
-  return [z * Math.cos(theta), z * Math.sin(theta)]
-}
-
 export function wgs84ToGcj02(lng, lat) {
   if (outOfChina(lng, lat)) {
     return [lng, lat]
@@ -237,7 +229,7 @@ export function gcj02ToBd09(lng, lat) {
   return [bdLng, bdLat]
 }
 
-function gcj02ToWgs84 (lng, lat) {
+export function gcj02ToWgs84 (lng, lat) {
   if (outOfChina(lng, lat)) {
     return [lng, lat]
   }
@@ -249,10 +241,19 @@ function gcj02ToWgs84 (lng, lat) {
   const sqrtMagic = Math.sqrt(magic)
   dLat =
     (dLat * 180.0) / (((AXIS * (1 - OFFSET)) / (magic * sqrtMagic)) * Math.PI)
-  dLng = (dLng * 180.0) / ((AXIS / sqrtMagic) * Math.cos(radLat) * Math.PI)
+  dLng =
+    (dLng * 180.0) / ((AXIS / sqrtMagic) * Math.cos(radLat) * Math.PI)
   const mgLat = lat + dLat
   const mgLng = lng + dLng
   return [lng * 2 - mgLng, lat * 2 - mgLat]
+}
+
+export function bd09ToGcj02 (lng, lat) {
+  const x = lng - 0.0065
+  const y = lat - 0.006
+  const z = Math.sqrt(x * x + y * y) - 0.00002 * Math.sin(y * X_PI)
+  const theta = Math.atan2(y, x) - 0.000003 * Math.cos(x * X_PI)
+  return [z * Math.cos(theta), z * Math.sin(theta)]
 }
 
 export function bd09ToWgs84 (lng, lat) {

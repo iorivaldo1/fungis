@@ -69,6 +69,7 @@
 
         <ShpPanel 
           theme="dark"
+          default-crs="wgs84"
           @add-layer="handleShpAddLayer" 
           @toggle-layer="handleShpToggleLayer" 
           @delete-layer="handleShpDeleteLayer" 
@@ -76,6 +77,18 @@
           @focus-feature="handleShpFocusFeature"
           @toggle-label-field="handleShpToggleLabelField"
           @clear-all="handleShpClearAll" 
+        />
+
+        <JsonPanel 
+          theme="dark"
+          default-crs="wgs84"
+          @add-layer="handleJsonAddLayer" 
+          @toggle-layer="handleJsonToggleLayer" 
+          @delete-layer="handleJsonDeleteLayer" 
+          @focus-layer="handleJsonFocusLayer" 
+          @focus-feature="handleJsonFocusFeature"
+          @toggle-label-field="handleJsonToggleLabelField"
+          @clear-all="handleJsonClearAll" 
         />
 
         <LocationTablePanel 
@@ -147,6 +160,7 @@ import ClickInfoPanel from '@/components/ClickInfoPanel.vue'
 import LocatePanel from '@/components/LocatePanel.vue'
 import LocationTablePanel from '@/components/LocationTablePanel.vue'
 import ShpPanel from '@/components/ShpPanel.vue'
+import JsonPanel from '@/components/JsonPanel.vue'
 import { renderGeoJsonToCesium, flashFeatureCesium, renderGeoJsonLabelsCesium } from '@/utils/shpMapRenderer.js'
 
 
@@ -434,6 +448,81 @@ const handleShpClearAll = () => {
     shpLabelEntitiesMap[id].forEach(entity => viewer.entities.remove(entity))
   })
   Object.keys(shpLabelEntitiesMap).forEach(key => delete shpLabelEntitiesMap[key])
+}
+
+// JSON 图层渲染与交互处理
+const jsonDataSourcesMap = {}
+
+const handleJsonAddLayer = async (layer) => {
+  if (!viewer) return
+  try {
+    const ds = await renderGeoJsonToCesium(viewer, layer.geojson, layer.color)
+    if (ds) {
+      jsonDataSourcesMap[layer.id] = ds
+      viewer.flyTo(ds)
+    }
+  } catch (err) {
+    console.error('Cesium 加载 JSON GeoJSON 失败:', err)
+  }
+}
+
+const handleJsonToggleLayer = (layer) => {
+  const ds = jsonDataSourcesMap[layer.id]
+  if (ds) {
+    ds.show = layer.visible
+  }
+}
+
+const jsonLabelEntitiesMap = {}
+
+const handleJsonToggleLabelField = ({ layer, field }) => {
+  if (!viewer || !layer) return
+  if (jsonLabelEntitiesMap[layer.id]) {
+    jsonLabelEntitiesMap[layer.id].forEach(entity => viewer.entities.remove(entity))
+    delete jsonLabelEntitiesMap[layer.id]
+  }
+  if (field) {
+    const entities = renderGeoJsonLabelsCesium(viewer, layer.geojson, field, '#ffffff')
+    jsonLabelEntitiesMap[layer.id] = entities
+  }
+}
+
+const handleJsonDeleteLayer = (layer) => {
+  const ds = jsonDataSourcesMap[layer.id]
+  if (ds && viewer) {
+    viewer.dataSources.remove(ds)
+    delete jsonDataSourcesMap[layer.id]
+  }
+  if (jsonLabelEntitiesMap[layer.id] && viewer) {
+    jsonLabelEntitiesMap[layer.id].forEach(entity => viewer.entities.remove(entity))
+    delete jsonLabelEntitiesMap[layer.id]
+  }
+}
+
+const handleJsonFocusLayer = (layer) => {
+  const ds = jsonDataSourcesMap[layer.id]
+  if (ds && viewer) {
+    viewer.flyTo(ds)
+  }
+}
+
+const handleJsonFocusFeature = (feature) => {
+  if (!viewer) return
+  flashFeatureCesium(viewer, feature)
+}
+
+const handleJsonClearAll = () => {
+  if (!viewer) return
+  Object.keys(jsonDataSourcesMap).forEach(id => {
+    const ds = jsonDataSourcesMap[id]
+    if (ds) viewer.dataSources.remove(ds)
+  })
+  Object.keys(jsonDataSourcesMap).forEach(key => delete jsonDataSourcesMap[key])
+
+  Object.keys(jsonLabelEntitiesMap).forEach(id => {
+    jsonLabelEntitiesMap[id].forEach(entity => viewer.entities.remove(entity))
+  })
+  Object.keys(jsonLabelEntitiesMap).forEach(key => delete jsonLabelEntitiesMap[key])
 }
 
 const queryDmal = async () => {

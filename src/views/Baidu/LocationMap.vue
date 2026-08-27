@@ -17,6 +17,7 @@
 
       <!-- SHP 文件面板 -->
       <ShpPanel 
+        default-crs="bd09"
         @add-layer="handleShpAddLayer" 
         @toggle-layer="handleShpToggleLayer" 
         @delete-layer="handleShpDeleteLayer" 
@@ -24,6 +25,18 @@
         @focus-feature="handleShpFocusFeature"
         @toggle-label-field="handleShpToggleLabelField"
         @clear-all="handleShpClearAll" 
+      />
+
+      <!-- JSON 文件面板 -->
+      <JsonPanel 
+        default-crs="bd09"
+        @add-layer="handleJsonAddLayer" 
+        @toggle-layer="handleJsonToggleLayer" 
+        @delete-layer="handleJsonDeleteLayer" 
+        @focus-layer="handleJsonFocusLayer" 
+        @focus-feature="handleJsonFocusFeature"
+        @toggle-label-field="handleJsonToggleLabelField"
+        @clear-all="handleJsonClearAll" 
       />
 
       <!-- 定位结果表格面板 -->
@@ -45,6 +58,7 @@ import ClickInfoPanel from '@/components/ClickInfoPanel.vue'
 import LocatePanel from '@/components/LocatePanel.vue'
 import LocationTablePanel from '@/components/LocationTablePanel.vue'
 import ShpPanel from '@/components/ShpPanel.vue'
+import JsonPanel from '@/components/JsonPanel.vue'
 import { renderGeoJsonToBaidu, flashFeatureBaidu, renderGeoJsonLabelsBaidu } from '@/utils/shpMapRenderer.js'
 
 const BAIDU_AK = 'MUBHlQKKLvig0Ia3QEAOzio46qq6foiT'
@@ -306,6 +320,82 @@ const handleShpClearAll = () => {
     shpLabelOverlaysMap[layerId].forEach(lbl => map.removeOverlay(lbl))
   })
   Object.keys(shpLabelOverlaysMap).forEach(key => delete shpLabelOverlaysMap[key])
+}
+
+// JSON 图层渲染与交互处理
+const jsonLayersMap = {}
+
+const handleJsonAddLayer = (layer) => {
+  if (!map) return
+  const { overlays, boundsPoints } = renderGeoJsonToBaidu(map, layer.geojson, layer.color)
+  jsonLayersMap[layer.id] = { overlays, boundsPoints }
+  if (boundsPoints.length > 0) {
+    map.setViewport(boundsPoints)
+  }
+}
+
+const handleJsonToggleLayer = (layer) => {
+  if (!map || !jsonLayersMap[layer.id]) return
+  const { overlays } = jsonLayersMap[layer.id]
+  overlays.forEach(overlay => {
+    if (layer.visible) {
+      map.addOverlay(overlay)
+    } else {
+      map.removeOverlay(overlay)
+    }
+  })
+}
+
+const jsonLabelOverlaysMap = {}
+
+const handleJsonToggleLabelField = ({ layer, field }) => {
+  if (!map || !layer) return
+  if (jsonLabelOverlaysMap[layer.id]) {
+    jsonLabelOverlaysMap[layer.id].forEach(lbl => map.removeOverlay(lbl))
+    delete jsonLabelOverlaysMap[layer.id]
+  }
+  if (field) {
+    const labels = renderGeoJsonLabelsBaidu(map, layer.geojson, field, '#1e293b')
+    jsonLabelOverlaysMap[layer.id] = labels
+  }
+}
+
+const handleJsonDeleteLayer = (layer) => {
+  if (!map || !jsonLayersMap[layer.id]) return
+  const { overlays } = jsonLayersMap[layer.id]
+  overlays.forEach(overlay => map.removeOverlay(overlay))
+  delete jsonLayersMap[layer.id]
+  if (jsonLabelOverlaysMap[layer.id]) {
+    jsonLabelOverlaysMap[layer.id].forEach(lbl => map.removeOverlay(lbl))
+    delete jsonLabelOverlaysMap[layer.id]
+  }
+}
+
+const handleJsonFocusLayer = (layer) => {
+  if (!map || !jsonLayersMap[layer.id]) return
+  const { boundsPoints } = jsonLayersMap[layer.id]
+  if (boundsPoints && boundsPoints.length > 0) {
+    map.setViewport(boundsPoints)
+  }
+}
+
+const handleJsonFocusFeature = (feature) => {
+  if (!map) return
+  flashFeatureBaidu(map, feature)
+}
+
+const handleJsonClearAll = () => {
+  if (!map) return
+  Object.keys(jsonLayersMap).forEach(layerId => {
+    const { overlays } = jsonLayersMap[layerId]
+    overlays.forEach(overlay => map.removeOverlay(overlay))
+  })
+  Object.keys(jsonLayersMap).forEach(key => delete jsonLayersMap[key])
+
+  Object.keys(jsonLabelOverlaysMap).forEach(layerId => {
+    jsonLabelOverlaysMap[layerId].forEach(lbl => map.removeOverlay(lbl))
+  })
+  Object.keys(jsonLabelOverlaysMap).forEach(key => delete jsonLabelOverlaysMap[key])
 }
 
 onMounted(async () => {
