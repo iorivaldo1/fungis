@@ -24,17 +24,24 @@ export const tileToLngLat = (tileCol, tileRow, zoom) => {
     return [lng, lat]
 }
 
-export const getTileWMTSUrlIMG = (tileCol, tileRow, zoom) => {
-    const serviceNum = Math.floor(Math.random() * 8)
-    const key = window.TMAP_AUTHKEY || '73a87062ca36baaed0feebe7989f453a'
-    return `https://t${serviceNum}.tianditu.gov.cn/img_w/wmts?REQUEST=GetTile&SERVICE=WMTS&VERSION=1.0.0&LAYER=img&STYLE=default&TILEMATRIXSET=w&FORMAT=image%2Fpng&tk=${key}&TILECOL=${tileCol}&TILEROW=${tileRow}&TILEMATRIX=${zoom}`
+const TMAP_PRESET_KEYS = [
+    '73a87062ca36baaed0feebe7989f453a',
+    'ce4546b64fa98c94f8fbc75a4f897919',
+    '251fde23a9628cd71799ed209e7292ab',
+    '439681263a168a3cb87a19c93b209ecb'
+]
+
+export const getTileWMTSUrl = (layerType, tileCol, tileRow, zoom, attempt = 1, customToken = '') => {
+    const activeKey = customToken || window.TMAP_AUTHKEY
+    const keys = activeKey ? [activeKey, ...TMAP_PRESET_KEYS.filter(k => k !== activeKey)] : TMAP_PRESET_KEYS
+    const keyIndex = Math.abs(tileCol * 31 + tileRow + (attempt - 1)) % keys.length
+    const key = keys[keyIndex]
+    const serviceNum = Math.abs(tileCol + tileRow + attempt - 1) % 8
+    return `https://t${serviceNum}.tianditu.gov.cn/${layerType}_w/wmts?REQUEST=GetTile&SERVICE=WMTS&VERSION=1.0.0&LAYER=${layerType}&STYLE=default&TILEMATRIXSET=w&FORMAT=image%2Fpng&tk=${key}&TILECOL=${tileCol}&TILEROW=${tileRow}&TILEMATRIX=${zoom}`
 }
 
-export const getTileWMTSUrlCIA = (tileCol, tileRow, zoom) => {
-    const serviceNum = Math.floor(Math.random() * 8)
-    const key = window.TMAP_AUTHKEY || '73a87062ca36baaed0feebe7989f453a'
-    return `https://t${serviceNum}.tianditu.gov.cn/cia_w/wmts?REQUEST=GetTile&SERVICE=WMTS&VERSION=1.0.0&LAYER=cia&STYLE=default&TILEMATRIXSET=w&FORMAT=image%2Fpng&tk=${key}&TILECOL=${tileCol}&TILEROW=${tileRow}&TILEMATRIX=${zoom}`
-}
+export const getTileWMTSUrlIMG = (tileCol, tileRow, zoom, token = '') => getTileWMTSUrl('img', tileCol, tileRow, zoom, 1, token)
+export const getTileWMTSUrlCIA = (tileCol, tileRow, zoom, token = '') => getTileWMTSUrl('cia', tileCol, tileRow, zoom, 1, token)
 
 export const calculateBounds = (tiles) => {
     const cols = tiles.map(t => t.col)
@@ -47,41 +54,99 @@ export const calculateBounds = (tiles) => {
     }
 }
 
-export const loadImage = (url, timeout = 50000) => {
-    return new Promise((resolve, reject) => {
-        const img = new Image()
-        img.crossOrigin = 'anonymous'
-        const timer = setTimeout(() => reject(new Error(`Timeout: ${url}`)), timeout)
-        img.onload = () => { clearTimeout(timer); resolve(img) }
-        img.onerror = (err) => { clearTimeout(timer); reject(err) }
-        img.src = url
+// 带 Key 轮询与退避重试机制的单张瓦片加载器，重试时自动切换备用 Key/域名
+export const loadImageWithRetry = (tile, layerType = 'img', zoom = 18, retries = 3, retryDelay = 1000, timeout = 15000, customToken = '') => {
+    return new Promise((resolve) => {
+        let attempt = 0
+        const tryLoad = () => {
+            attempt++
+            const url = (typeof tile === 'object' && tile !== null && tile.col !== undefined)
+                ? getTileWMTSUrl(layerType, tile.col, tile.row, zoom, attempt, customToken)
+                : (tile.url || tile)
+
+            const img = new Image()
+            img.crossOrigin = 'anonymous'
+            let timer = null
+            let isSettled = false
+
+            const cleanup = () => {
+                if (timer) clearTimeout(timer)
+                img.onload = null
+                img.onerror = null
+            }
+
+            timer = setTimeout(() => {
+                if (isSettled) return
+                isSettled = true
+                cleanup()
+                if (attempt <= retries) {
+                    setTimeout(tryLoad, retryDelay * attempt)
+                } else {
+                    console.warn(`瓦片加载超时: ${url}`)
+                    resolve(null)
+                }
+            }, timeout)
+
+            img.onload = () => {
+                if (isSettled) return
+                isSettled = true
+                cleanup()
+                resolve(img)
+            }
+
+            img.onerror = () => {
+                if (isSettled) return
+                isSettled = true
+                cleanup()
+                if (attempt <= retries) {
+                    // 遇到错误/429限流时，等待更长时间 (1s, 2s, 3s) 并自动换用备用 Key / 备用域名
+                    setTimeout(tryLoad, retryDelay * attempt)
+                } else {
+                    console.error(`加载瓦片失败 (已重试 ${retries} 次): ${url}`)
+                    resolve(null)
+                }
+            }
+
+            img.src = url
+        }
+
+        tryLoad()
     })
 }
 
-export const getAllImages = async (tiles) => {
-    const promises = tiles.map(tile => loadImage(tile.url).catch(e => { console.error(e); return null }))
-    return Promise.all(promises)
+export const loadImage = (url, timeout = 15000) => {
+    return loadImageWithRetry(url, 'img', 18, 3, 1000, timeout)
 }
 
-export const getAllImagesWithProgress = async (tiles, progressState) => {
-    const { showProgress, loadedTiles, totalTiles, downloadProgress } = progressState
-    const loadPromises = tiles.map((tile, index) =>
-        loadImage(tile.url).then(img => {
-            if (showProgress) {
+export const getAllImages = async (tiles) => {
+    return getAllImagesWithProgress(tiles, 'img', 18, { showProgress: false })
+}
+
+// 队列限频并发加载瓦片，并发数=3，每次抓取前增加 100ms pacing 节流间隔，多 Key 自动旋转
+export const getAllImagesWithProgress = async (tiles, layerType = 'img', zoom = 18, progressState = {}, concurrency = 3, customToken = '') => {
+    const { showProgress, loadedTiles, totalTiles, downloadProgress } = (typeof progressState === 'object' ? progressState : {})
+    const results = new Array(tiles.length)
+    let poolIndex = 0
+
+    const worker = async () => {
+        while (poolIndex < tiles.length) {
+            const currentIndex = poolIndex++
+            const tile = tiles[currentIndex]
+            const img = await loadImageWithRetry(tile, layerType, zoom, 3, 1000, 15000, customToken)
+            results[currentIndex] = img
+            if (showProgress && loadedTiles && totalTiles && downloadProgress) {
                 loadedTiles.value++
                 downloadProgress.value = (loadedTiles.value / totalTiles.value) * 100
             }
-            return img
-        }).catch(error => {
-            console.error(`加载瓦片失败: ${tile.url}`, error)
-            if (showProgress) {
-                loadedTiles.value++
-                downloadProgress.value = (loadedTiles.value / totalTiles.value) * 100
-            }
-            return null
-        })
-    )
-    return await Promise.all(loadPromises)
+            // 每次完成后给予 100ms pacing 间隔，防止瞬时并发冲垮服务器引发 429
+            await new Promise(r => setTimeout(r, 100))
+        }
+    }
+
+    const workerCount = Math.min(concurrency, tiles.length)
+    const workers = Array.from({ length: workerCount }, () => worker())
+    await Promise.all(workers)
+    return results
 }
 
 export const c_dom_img_cia_lv = async (bbox, lv, progressState) => {
@@ -103,11 +168,9 @@ export const c_dom_img_cia_lv = async (bbox, lv, progressState) => {
     const maxRow = Math.max(nw[1], sw[1])
 
     const tiles = []
-    const tiles2 = []
     for (let col = minCol; col <= maxCol; col++) {
         for (let row = minRow; row <= maxRow; row++) {
-            tiles.push({ url: getTileWMTSUrlIMG(col, row, zoom), col, row })
-            tiles2.push({ url: getTileWMTSUrlCIA(col, row, zoom), col, row })
+            tiles.push({ col, row })
         }
     }
 
@@ -137,13 +200,13 @@ export const c_dom_img_cia_lv = async (bbox, lv, progressState) => {
     const offset_x = (minX - firstTile_nw_x) * pixelsPerDegreeX
     const offset_y = (maxY - firstTile_nw_y) * pixelsPerDegreeY
 
-    if (progressState.showProgress) {
-        progressState.totalTiles.value = tiles.length + tiles2.length
+    if (progressState && progressState.showProgress) {
+        progressState.totalTiles.value = tiles.length * 2
         progressState.loadedTiles.value = 0
         progressState.downloadProgress.value = 0
     }
 
-    const images = await getAllImagesWithProgress(tiles, progressState)
+    const images = await getAllImagesWithProgress(tiles, 'img', zoom, progressState, 3)
     images.forEach((img, idx) => {
         if (img) {
             const tile = tiles[idx]
@@ -152,10 +215,10 @@ export const c_dom_img_cia_lv = async (bbox, lv, progressState) => {
             ctx1.drawImage(img, x, y, tileSize, tileSize)
         }
     })
-    const cias = await getAllImagesWithProgress(tiles2, progressState)
+    const cias = await getAllImagesWithProgress(tiles, 'cia', zoom, progressState, 3)
     cias.forEach((cia, idx) => {
         if (cia) {
-            const tile = tiles2[idx]
+            const tile = tiles[idx]
             const x = (tile.col - bounds.minCol) * tileSize
             const y = (tile.row - bounds.minRow) * tileSize
             ctx1.drawImage(cia, x, y, tileSize, tileSize)

@@ -182,97 +182,118 @@ function getBbox() {
   })
 }
 
-async function getAllImages(tiles) {
-  const loadPromises = tiles.map(tile =>
-    loadImage(tile.url).catch(error => {
-      console.error(`加载瓦片失败: ${tile.url}`, error)
-      return null
-    })
-  )
-  const images = await Promise.all(loadPromises)
-  return images
+const TMAP_PRESET_KEYS = [
+  '73a87062ca36baaed0feebe7989f453a',
+  'ce4546b64fa98c94f8fbc75a4f897919',
+  '251fde23a9628cd71799ed209e7292ab',
+  '439681263a168a3cb87a19c93b209ecb'
+]
+
+function getTileWMTSUrl(layerType, tileCol, tileRow, zoom, attempt = 1, customToken = '') {
+  const activeKey = customToken || savedSettings.token || window.TMAP_AUTHKEY
+  const keys = activeKey ? [activeKey, ...TMAP_PRESET_KEYS.filter(k => k !== activeKey)] : TMAP_PRESET_KEYS
+  const keyIndex = Math.abs(tileCol * 31 + tileRow + (attempt - 1)) % keys.length
+  const key = keys[keyIndex]
+  const serviceNum = Math.abs(tileCol + tileRow + attempt - 1) % 8
+  return `https://t${serviceNum}.tianditu.gov.cn/${layerType}_w/wmts?REQUEST=GetTile&SERVICE=WMTS&VERSION=1.0.0&LAYER=${layerType}&STYLE=default&TILEMATRIXSET=w&FORMAT=image%2Fpng&tk=${key}&TILECOL=${tileCol}&TILEROW=${tileRow}&TILEMATRIX=${zoom}`
 }
 
-async function getAllImagesWithProgress(tiles, showProgress = false, isCia = false) {
-  const loadPromises = tiles.map((tile, index) =>
-    loadImage(tile.url).then(img => {
-      if (showProgress) {
-        loadedTiles.value++
-        downloadProgress.value = (loadedTiles.value / totalTiles.value) * 100
-      }
-      return img
-    }).catch(error => {
-      console.error(`加载瓦片失败: ${tile.url}`, error)
-      if (showProgress) {
-        loadedTiles.value++
-        downloadProgress.value = (loadedTiles.value / totalTiles.value) * 100
-      }
-      return null
-    })
-  )
-  const images = await Promise.all(loadPromises)
-  return images
+function getTileWMTSUrlIMG(tileCol, tileRow, zoom, token = '') {
+  return getTileWMTSUrl('img', tileCol, tileRow, zoom, 1, token)
 }
 
-function loadImage(url, timeout = 50000) {
-  return new Promise((resolve, reject) => {
-    const img = new Image()
-    img.crossOrigin = 'anonymous'
+function getTileWMTSUrlCIA(tileCol, tileRow, zoom, token = '') {
+  return getTileWMTSUrl('cia', tileCol, tileRow, zoom, 1, token)
+}
 
-    const timer = setTimeout(() => {
-      reject(new Error(`图片加载超时: ${url}`))
-    }, timeout)
+function loadImageWithRetry(tile, layerType = 'img', zoom = 18, retries = 3, retryDelay = 1000, timeout = 15000, customToken = '') {
+  return new Promise((resolve) => {
+    let attempt = 0
+    const tryLoad = () => {
+      attempt++
+      const url = (typeof tile === 'object' && tile !== null && tile.col !== undefined)
+        ? getTileWMTSUrl(layerType, tile.col, tile.row, zoom, attempt, customToken)
+        : (tile.url || tile)
 
-    img.onload = () => {
-      clearTimeout(timer)
-      resolve(img)
+      const img = new Image()
+      img.crossOrigin = 'anonymous'
+      let timer = null
+      let isSettled = false
+
+      const cleanup = () => {
+        if (timer) clearTimeout(timer)
+        img.onload = null
+        img.onerror = null
+      }
+
+      timer = setTimeout(() => {
+        if (isSettled) return
+        isSettled = true
+        cleanup()
+        if (attempt <= retries) {
+          setTimeout(tryLoad, retryDelay * attempt)
+        } else {
+          console.warn(`瓦片加载超时: ${url}`)
+          resolve(null)
+        }
+      }, timeout)
+
+      img.onload = () => {
+        if (isSettled) return
+        isSettled = true
+        cleanup()
+        resolve(img)
+      }
+
+      img.onerror = () => {
+        if (isSettled) return
+        isSettled = true
+        cleanup()
+        if (attempt <= retries) {
+          setTimeout(tryLoad, retryDelay * attempt)
+        } else {
+          console.error(`加载瓦片失败 (已重试 ${retries} 次): ${url}`)
+          resolve(null)
+        }
+      }
+
+      img.src = url
     }
 
-    img.onerror = () => {
-      clearTimeout(timer)
-      reject(new Error(`图片加载失败: ${url}`))
-    }
-
-    img.src = url
+    tryLoad()
   })
 }
 
-function getTileWMTSUrlIMG(tileCol, tileRow, zoom, token) {
-  const serviceNum = Math.floor(Math.random() * 8)
-  const baseUrl = `https://t${serviceNum}.tianditu.gov.cn/img_w/wmts?`
-  const wmtsUrl =
-    baseUrl +
-    'REQUEST=GetTile' +
-    '&SERVICE=WMTS' +
-    '&VERSION=1.0.0' +
-    '&LAYER=img' +
-    '&STYLE=default' +
-    '&TILEMATRIXSET=w' +
-    '&FORMAT=image%2Fpng' +
-    '&tk=' + token +
-    '&TILECOL=' + tileCol +
-    '&TILEROW=' + tileRow +
-    '&TILEMATRIX=' + zoom
-  return wmtsUrl
+function loadImage(url, timeout = 15000) {
+  return loadImageWithRetry(url, 'img', 18, 3, 1000, timeout)
 }
 
-function getTileWMTSUrlCIA(tileCol, tileRow, zoom, token) {
-  const serviceNum = Math.floor(Math.random() * 8)
-  const baseUrl = `https://t${serviceNum}.tianditu.gov.cn/cia_w/wmts?`
-  const wmtsUrl =
-    baseUrl +
-    'REQUEST=GetTile' +
-    '&SERVICE=WMTS' +
-    '&VERSION=1.0.0' +
-    '&LAYER=cia' +
-    '&STYLE=default' +
-    '&TILEMATRIXSET=w' +
-    '&FORMAT=image%2Fpng' +
-    '&tk=' + token +
-    '&TILECOL=' + tileCol +
-    '&TILEROW=' + tileRow +
-    '&TILEMATRIX=' + zoom
-  return wmtsUrl
+async function getAllImages(tiles) {
+  return getAllImagesWithProgress(tiles, 'img', 18, false)
+}
+
+async function getAllImagesWithProgress(tiles, layerType = 'img', zoom = 18, showProgress = false, concurrency = 3, customToken = '') {
+  const results = new Array(tiles.length)
+  let poolIndex = 0
+
+  const worker = async () => {
+    while (poolIndex < tiles.length) {
+      const currentIndex = poolIndex++
+      const tile = tiles[currentIndex]
+      const img = await loadImageWithRetry(tile, layerType, zoom, 3, 1000, 15000, customToken)
+      results[currentIndex] = img
+      if (showProgress) {
+        loadedTiles.value++
+        downloadProgress.value = (loadedTiles.value / totalTiles.value) * 100
+      }
+      await new Promise(r => setTimeout(r, 100))
+    }
+  }
+
+  const workerCount = Math.min(concurrency, tiles.length)
+  const workers = Array.from({ length: workerCount }, () => worker())
+  await Promise.all(workers)
+  return results
 }
 
 function getCurrentToken() {
@@ -441,7 +462,7 @@ const confirmDownload = async () => {
     loadedTiles.value = 0
   }
 
-  const images = await getAllImagesWithProgress(tiles, showProgress)
+  const images = await getAllImagesWithProgress(tiles, 'img', zoom, showProgress, 3, getCurrentToken())
 
   images.forEach((img, index) => {
     const tile = tiles[index]
@@ -453,11 +474,10 @@ const confirmDownload = async () => {
   // 绘制CIA注记瓦片（叠加在img之上）- 根据设置决定是否绘制
   if (savedSettings.showCia) {
     const ciaTiles = tiles.map(tile => ({
-      url: getTileWMTSUrlCIA(tile.col, tile.row, zoom, getCurrentToken()),
       col: tile.col,
       row: tile.row
     }))
-    const cias = await getAllImagesWithProgress(ciaTiles, showProgress, true)
+    const cias = await getAllImagesWithProgress(ciaTiles, 'cia', zoom, showProgress, 3, getCurrentToken())
     cias.forEach((cia, index) => {
       const tile = ciaTiles[index]
       const x = (tile.col - bounds.minCol) * tileSize
