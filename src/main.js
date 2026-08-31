@@ -186,12 +186,17 @@ const router = createRouter({
       path: '/leaflet',
       name: 'Leaflet',
       component: RouterView,
-      redirect: '/leaflet/road-route-calc',
+      redirect: '/leaflet/astar-route-calc',
       children: [
         {
-          path: 'road-route-calc',
-          name: 'LeafletRoadRouteCalc',
-          component: () => import('./views/Leaflet/RoadRouteCalc.vue'),
+          path: 'astar-route-calc',
+          name: 'LeafletAStarRouteCalc',
+          component: () => import('./views/Leaflet/AStarRouteCalc.vue'),
+        },
+        {
+          path: 'dijkstra-route-calc',
+          name: 'LeafletDijkstraRouteCalc',
+          component: () => import('./views/Leaflet/DijkstraRouteCalc.vue'),
         }
       ]
     },

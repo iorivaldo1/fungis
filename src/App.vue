@@ -53,9 +53,13 @@
             </div>
             <transition name="menu-slide">
               <div v-show="isLeafletMenuExpanded" class="sub-menu">
-                <router-link to="/leaflet/road-route-calc" class="menu-item sub" active-class="active">
+                <router-link to="/leaflet/astar-route-calc" class="menu-item sub" active-class="active">
                   <div class="sub-dot"></div>
-                  <span class="menu-text">道路路径计算</span>
+                  <span class="menu-text">astar路径计算</span>
+                </router-link>
+                <router-link to="/leaflet/dijkstra-route-calc" class="menu-item sub" active-class="active">
+                  <div class="sub-dot"></div>
+                  <span class="menu-text">dijkstra路径计算</span>
                 </router-link>
               </div>
             </transition>
@@ -380,8 +384,9 @@ const currentRouteName = computed(() => {
     'EsriSbnKDTree': 'ESRI SBN KNN 查询(KD树)',
     'PostGisRTree': 'PG GIST KNN 查询(R树)',
     'Leaflet': 'Leaflet',
-    'LeafletRouteCalc': '路径计算',
-    'LeafletRoadRouteCalc': '路径计算',
+    'LeafletAStarRouteCalc': 'astar路径计算',
+    'LeafletDijkstraRouteCalc': 'dijkstra路径计算',
+    'LeafletRoadRouteCalc': '道路路径计算',
     'Blog': 'Blog',
     'BlogGlsl': 'glsl'
   }
