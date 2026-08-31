@@ -42,30 +42,36 @@
           <span>📍 起点 (经度, 纬度)</span>
           <button
             type="button"
-            class="pick-btn"
+            class="pick-btn btn-manage-badge"
             :class="{ active: pickingMode === 'start' }"
             @click="togglePickMode('start')"
           >
-            地图选点
+            {{ pickingMode === 'start' ? '📍 正在选点...' : '🎯 地图选点' }}
           </button>
         </div>
         <div class="coord-row">
-          <input
-            type="text"
-            inputmode="decimal"
-            v-model.number="startLng"
-            class="coord-input"
-            placeholder="经度 (点击选点)"
-            @change="updateMarkers"
-          />
-          <input
-            type="text"
-            inputmode="decimal"
-            v-model.number="startLat"
-            class="coord-input"
-            placeholder="纬度 (点击选点)"
-            @change="updateMarkers"
-          />
+          <div class="coord-field">
+            <span class="coord-tag">经度</span>
+            <input
+              type="text"
+              inputmode="decimal"
+              v-model.number="startLng"
+              class="coord-input"
+              placeholder="例: 104.114"
+              @change="updateMarkers"
+            />
+          </div>
+          <div class="coord-field">
+            <span class="coord-tag">纬度</span>
+            <input
+              type="text"
+              inputmode="decimal"
+              v-model.number="startLat"
+              class="coord-input"
+              placeholder="例: 30.632"
+              @change="updateMarkers"
+            />
+          </div>
         </div>
       </div>
 
@@ -74,30 +80,36 @@
           <span>🏁 终点 (经度, 纬度)</span>
           <button
             type="button"
-            class="pick-btn"
+            class="pick-btn btn-manage-badge"
             :class="{ active: pickingMode === 'end' }"
             @click="togglePickMode('end')"
           >
-            地图选点
+            {{ pickingMode === 'end' ? '🏁 正在选点...' : '🎯 地图选点' }}
           </button>
         </div>
         <div class="coord-row">
-          <input
-            type="text"
-            inputmode="decimal"
-            v-model.number="endLng"
-            class="coord-input"
-            placeholder="经度 (点击选点)"
-            @change="updateMarkers"
-          />
-          <input
-            type="text"
-            inputmode="decimal"
-            v-model.number="endLat"
-            class="coord-input"
-            placeholder="纬度 (点击选点)"
-            @change="updateMarkers"
-          />
+          <div class="coord-field">
+            <span class="coord-tag">经度</span>
+            <input
+              type="text"
+              inputmode="decimal"
+              v-model.number="endLng"
+              class="coord-input"
+              placeholder="例: 104.120"
+              @change="updateMarkers"
+            />
+          </div>
+          <div class="coord-field">
+            <span class="coord-tag">纬度</span>
+            <input
+              type="text"
+              inputmode="decimal"
+              v-model.number="endLat"
+              class="coord-input"
+              placeholder="例: 30.638"
+              @change="updateMarkers"
+            />
+          </div>
         </div>
       </div>
 
@@ -1061,10 +1073,11 @@ onUnmounted(() => {
   font-size: 12px;
   font-weight: 600;
   color: #94a3b8;
-  margin-bottom: 6px;
+  margin-bottom: 7px;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  line-height: 1.2;
 }
 
 .coord-row {
@@ -1073,6 +1086,49 @@ onUnmounted(() => {
   align-items: center;
   width: 100%;
   box-sizing: border-box;
+}
+
+.coord-field {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  background: rgba(30, 41, 59, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  overflow: hidden;
+  transition: all 0.2s ease;
+}
+
+.coord-field:focus-within {
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.25);
+  background: rgba(30, 41, 59, 0.95);
+}
+
+.coord-tag {
+  padding: 6px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #94a3b8;
+  background: rgba(15, 23, 42, 0.6);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  user-select: none;
+  white-space: nowrap;
+}
+
+.coord-field .coord-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 6px 8px;
+  color: #e2e8f0;
+  font-size: 12px;
+  font-family: 'Courier New', Courier, monospace;
+  outline: none;
+  min-width: 0;
+  width: 100%;
+  box-shadow: none;
 }
 
 /* 隐藏 number/text 输入框原生的加减微调按钮 */
@@ -1121,11 +1177,15 @@ select.coord-input option {
   border: 1px solid rgba(56, 189, 248, 0.4);
   color: #38bdf8;
   border-radius: 6px;
-  padding: 6px 10px;
-  font-size: 12px;
+  padding: 3px 10px;
+  font-size: 11.5px;
+  line-height: 18px;
   cursor: pointer;
   white-space: nowrap;
   transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .pick-btn:hover {

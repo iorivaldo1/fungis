@@ -42,30 +42,36 @@
           <span>📍 起点 (经度, 纬度)</span>
           <button
             type="button"
-            class="pick-btn"
+            class="pick-btn btn-manage-badge"
             :class="{ active: pickingMode === 'start' }"
             @click="togglePickMode('start')"
           >
-            地图选点
+            {{ pickingMode === 'start' ? '📍 正在选点...' : '🎯 地图选点' }}
           </button>
         </div>
         <div class="coord-row">
-          <input
-            type="text"
-            inputmode="decimal"
-            v-model.number="startLng"
-            class="coord-input"
-            placeholder="经度 (点击选点)"
-            @change="updateMarkers"
-          />
-          <input
-            type="text"
-            inputmode="decimal"
-            v-model.number="startLat"
-            class="coord-input"
-            placeholder="纬度 (点击选点)"
-            @change="updateMarkers"
-          />
+          <div class="coord-field">
+            <span class="coord-tag">经度</span>
+            <input
+              type="text"
+              inputmode="decimal"
+              v-model.number="startLng"
+              class="coord-input"
+              placeholder="例: 104.114"
+              @change="updateMarkers"
+            />
+          </div>
+          <div class="coord-field">
+            <span class="coord-tag">纬度</span>
+            <input
+              type="text"
+              inputmode="decimal"
+              v-model.number="startLat"
+              class="coord-input"
+              placeholder="例: 30.632"
+              @change="updateMarkers"
+            />
+          </div>
         </div>
       </div>
 
@@ -74,30 +80,36 @@
           <span>🏁 终点 (经度, 纬度)</span>
           <button
             type="button"
-            class="pick-btn"
+            class="pick-btn btn-manage-badge"
             :class="{ active: pickingMode === 'end' }"
             @click="togglePickMode('end')"
           >
-            地图选点
+            {{ pickingMode === 'end' ? '🏁 正在选点...' : '🎯 地图选点' }}
           </button>
         </div>
         <div class="coord-row">
-          <input
-            type="text"
-            inputmode="decimal"
-            v-model.number="endLng"
-            class="coord-input"
-            placeholder="经度 (点击选点)"
-            @change="updateMarkers"
-          />
-          <input
-            type="text"
-            inputmode="decimal"
-            v-model.number="endLat"
-            class="coord-input"
-            placeholder="纬度 (点击选点)"
-            @change="updateMarkers"
-          />
+          <div class="coord-field">
+            <span class="coord-tag">经度</span>
+            <input
+              type="text"
+              inputmode="decimal"
+              v-model.number="endLng"
+              class="coord-input"
+              placeholder="例: 104.120"
+              @change="updateMarkers"
+            />
+          </div>
+          <div class="coord-field">
+            <span class="coord-tag">纬度</span>
+            <input
+              type="text"
+              inputmode="decimal"
+              v-model.number="endLat"
+              class="coord-input"
+              placeholder="例: 30.638"
+              @change="updateMarkers"
+            />
+          </div>
         </div>
       </div>
 
@@ -107,8 +119,8 @@
       </label>
 
       <label class="option-row">
-        <input type="checkbox" v-model="chkShowRoads" @change="toggleRoadNetworkVisibility" />
-        <span>👁️ 显示数据源 (矢量路网)</span>
+        <input type="checkbox" v-model="chkShowRoads" @change="toggleRoadLayer" />
+        <span>👁️ 显示数据源 (WMTS 瓦片)</span>
       </label>
 
       <label class="option-row">
@@ -342,7 +354,8 @@ let cvaLayer = null
 let baseMapGroup = null
 let startMarker = null
 let endMarker = null
-let roadNetworkLayer = null
+let wmtsRoadLayer = null
+let xzqHighlightLayer = null
 let routeGlowLayer = null
 let routeCoreLayer = null
 let startDashLayer = null
@@ -435,12 +448,12 @@ function toggleBaseMap() {
   }
 }
 
-function toggleRoadNetworkVisibility() {
-  if (!roadNetworkLayer || !map) return
+function toggleRoadLayer() {
+  if (!map || !wmtsRoadLayer) return
   if (chkShowRoads.value) {
-    if (!map.hasLayer(roadNetworkLayer)) map.addLayer(roadNetworkLayer)
+    if (!map.hasLayer(wmtsRoadLayer)) map.addLayer(wmtsRoadLayer)
   } else {
-    if (map.hasLayer(roadNetworkLayer)) map.removeLayer(roadNetworkLayer)
+    if (map.hasLayer(wmtsRoadLayer)) map.removeLayer(wmtsRoadLayer)
   }
 }
 
@@ -531,40 +544,74 @@ function onNetworkChange() {
   loadRoadNetworkRange(selectedNetworkId.value)
 }
 
-async function loadRoadNetworkRange(networkId) {
-  if (roadNetworkLayer && map) {
-    map.removeLayer(roadNetworkLayer)
-    roadNetworkLayer = null
+async function loadXzqBoundary(networkId) {
+  if (!networkId) {
+    if (xzqHighlightLayer && map) { map.removeLayer(xzqHighlightLayer); xzqHighlightLayer = null }
+    return
   }
-  const url = `${routeApiBase}/range` + (networkId ? `?networkId=${networkId}` : '')
+
+  let url = ''
+  if (networkId.startsWith('xzq_county_')) {
+    const featureId = networkId.replace('xzq_county_', '')
+    url = `${routeApiBase}/xzq/detail?level=county&featureId=${featureId}`
+  } else if (networkId.startsWith('xzq_town_')) {
+    const featureId = networkId.replace('xzq_town_', '')
+    url = `${routeApiBase}/xzq/detail?level=town&featureId=${featureId}`
+  } else if (networkId.startsWith('xzq_village_')) {
+    const featureId = networkId.replace('xzq_village_', '')
+    url = `${routeApiBase}/xzq/detail?level=village&featureId=${featureId}`
+  } else {
+    url = `${routeApiBase}/xzq/boundary?networkId=${networkId}`
+  }
+
   try {
-    const response = await fetch(url)
-    if (!response.ok) throw new Error(`HTTP ${response.status}`)
-    const res = await response.json()
-    if (res.code === 200 && res.data && map) {
-      roadNetworkLayer = L.geoJSON(res.data, {
-        renderer: L.canvas({ padding: 0.5 }),
-        style: {
-          color: '#475569',
-          weight: 1.5,
-          opacity: 0.5,
-          lineCap: 'round',
-          lineJoin: 'round'
+    const res = await fetch(url).then(r => r.json())
+    let hasFitted = false
+    if (res.code === 200 && res.data && res.data.geojson) {
+      const geoData = typeof res.data.geojson === 'string' ? JSON.parse(res.data.geojson) : res.data.geojson
+      if (xzqHighlightLayer && map) map.removeLayer(xzqHighlightLayer)
+
+      if (map) {
+        xzqHighlightLayer = L.geoJSON(geoData, {
+          renderer: L.svg({ padding: 2.0 }),
+          style: {
+            stroke: true,
+            color: '#38bdf8',
+            weight: 3,
+            opacity: 1.0,
+            dashArray: '8, 8',
+            fill: false,
+            fillOpacity: 0
+          }
+        }).addTo(map)
+
+        if (res.data.bbox && Array.isArray(res.data.bbox) && res.data.bbox.length === 4) {
+          const bounds = L.latLngBounds(
+            [res.data.bbox[1], res.data.bbox[0]],
+            [res.data.bbox[3], res.data.bbox[2]]
+          )
+          map.fitBounds(bounds, { padding: [50, 50], animate: true, duration: 0.8 })
+          hasFitted = true
         }
-      })
-      if (chkShowRoads.value) {
-        roadNetworkLayer.addTo(map)
       }
-      const bounds = roadNetworkLayer.getBounds()
-      if (bounds && bounds.isValid()) {
-        map.fitBounds(bounds, { padding: [40, 40], maxZoom: 15, animate: true, duration: 0.8 })
+    } else {
+      if (xzqHighlightLayer && map) { map.removeLayer(xzqHighlightLayer); xzqHighlightLayer = null }
+    }
+
+    if (!hasFitted && Array.isArray(networksList.value) && map) {
+      const targetNet = networksList.value.find(n => n.id === networkId)
+      if (targetNet && targetNet.centerLat && targetNet.centerLng) {
+        const zoom = targetNet.defaultZoom || 15
+        map.setView([targetNet.centerLat, targetNet.centerLng], zoom, { animate: true, duration: 0.8 })
       }
-      const featureCount = (res.data && res.data.features) ? res.data.features.length : 0
-      console.log(`[路网切换成功] 当前切换至路网 ID: ${networkId}, 查得渲染要素总数: ${featureCount} 条`)
     }
   } catch (err) {
-    console.error('加载路网背景 route_range 异常:', err)
+    console.error('Fetch boundary error:', err)
   }
+}
+
+async function loadRoadNetworkRange(networkId) {
+  await loadXzqBoundary(networkId)
 }
 
 function resetRoute() {
@@ -915,6 +962,24 @@ onMounted(() => {
 
   baseMapGroup = L.layerGroup([vecLayer, cvaLayer])
 
+  // WMTS 路网背景瓦片
+  const wmtsTileUrl = `${apiBaseUrl || 'http://localhost:8080'}/geoserver/gwc/service/wmts?` +
+    'Request=GetTile&Service=WMTS&Version=1.0.0' +
+    '&LAYER=basemap:sc_road&STYLE=&Format=image%2Fpng' +
+    '&TILEMATRIXSET=EPSG%3A900913&TILEMATRIX=EPSG%3A900913%3A{z}' +
+    '&TILEROW={y}&TILECOL={x}'
+
+  wmtsRoadLayer = L.tileLayer(wmtsTileUrl, {
+    minZoom: 1,
+    maxZoom: 18,
+    opacity: 0.85,
+    zIndex: 300
+  })
+
+  if (chkShowRoads.value) {
+    wmtsRoadLayer.addTo(map)
+  }
+
   updateZoomDisplay()
   map.on('zoom zoomend move', updateZoomDisplay)
   map.on('click', handleMapClick)
@@ -998,10 +1063,11 @@ onUnmounted(() => {
   font-size: 12px;
   font-weight: 600;
   color: #94a3b8;
-  margin-bottom: 6px;
+  margin-bottom: 7px;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  line-height: 1.2;
 }
 
 .coord-row {
@@ -1010,8 +1076,50 @@ onUnmounted(() => {
   align-items: center;
 }
 
-.coord-input {
+.coord-field {
   flex: 1;
+  display: flex;
+  align-items: center;
+  background: rgba(30, 41, 59, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  overflow: hidden;
+  transition: all 0.2s ease;
+}
+
+.coord-field:focus-within {
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.25);
+  background: rgba(30, 41, 59, 0.95);
+}
+
+.coord-tag {
+  padding: 6px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #94a3b8;
+  background: rgba(15, 23, 42, 0.6);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  user-select: none;
+  white-space: nowrap;
+}
+
+.coord-field .coord-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 6px 8px;
+  color: #e2e8f0;
+  font-size: 12px;
+  font-family: 'Courier New', Courier, monospace;
+  outline: none;
+  min-width: 0;
+  width: 100%;
+  box-shadow: none;
+}
+
+.coord-input {
   background: rgba(30, 41, 59, 0.8);
   border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 6px;
@@ -1047,11 +1155,15 @@ select.coord-input option {
   border: 1px solid rgba(56, 189, 248, 0.4);
   color: #38bdf8;
   border-radius: 6px;
-  padding: 6px 10px;
-  font-size: 12px;
+  padding: 3px 10px;
+  font-size: 11.5px;
+  line-height: 18px;
   cursor: pointer;
   white-space: nowrap;
   transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .pick-btn:hover {
