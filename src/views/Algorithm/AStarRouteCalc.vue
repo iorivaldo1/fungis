@@ -9,6 +9,51 @@
         <span class="panel-title">⚡ AStar 高速内存路径规划</span>
       </div>
 
+      <!-- 算路引擎单选切换 -->
+      <div class="form-group">
+        <div class="form-label">
+          <span>⚡ 算路引擎与算法实现</span>
+        </div>
+        <div class="engine-radio-group">
+          <label
+            class="engine-radio-item"
+            :class="{ active: selectedEngine === 'astar_pgrb' }"
+          >
+            <div class="engine-radio-header">
+              <input
+                type="radio"
+                name="calcEngine"
+                value="astar_pgrb"
+                v-model="selectedEngine"
+              />
+              <span class="radio-dot"></span>
+              <span class="radio-title">Astar+pgRouting Binary</span>
+            </div>
+            <div class="engine-radio-desc">
+              使用pg进行拓扑计算及路网生成，将图转为二进制PGRB协议并在前端内存中进行A*启发式算路
+            </div>
+          </label>
+          <label
+            class="engine-radio-item"
+            :class="{ active: selectedEngine === 'dijkstra_pgrouting' }"
+          >
+            <div class="engine-radio-header">
+              <input
+                type="radio"
+                name="calcEngine"
+                value="dijkstra_pgrouting"
+                v-model="selectedEngine"
+              />
+              <span class="radio-dot"></span>
+              <span class="radio-title">Dijkstra + pgRouting后端实现</span>
+            </div>
+            <div class="engine-radio-desc">
+              使用pg进行拓扑计算及路网生成，将相关数据保存到数据库中，每次计算都需要进行后端通信获取相关的图
+            </div>
+          </label>
+        </div>
+      </div>
+
       <div class="form-group">
         <div class="form-label">
           <span>🌐 选择路网数据集</span>
@@ -167,11 +212,6 @@
       <label class="option-row">
         <input type="checkbox" v-model="chkShowRoads" @change="toggleRoadLayer" />
         <span>👁️ 显示数据源 (WMTS 瓦片)</span>
-      </label>
-
-      <label class="option-row">
-        <input type="checkbox" v-model="chkClientRoute" />
-        <span>⚡ 前端内存算路 (CPU A* 启发式搜索)</span>
       </label>
 
       <label class="option-row">
@@ -404,7 +444,7 @@ const endLat = ref('')
 
 const chkShowBaseMap = ref(false)
 const chkShowRoads = ref(true)
-const chkClientRoute = ref(true)
+const selectedEngine = ref('astar_pgrb') // 'astar_pgrb' | 'dijkstra_pgrouting'
 const chkDirected = ref(true)
 
 const pickingMode = ref(null) // 'start' | 'end' | null
@@ -1094,11 +1134,11 @@ function resetRoute() {
   resStatusColor.value = '#38bdf8'
 }
 
-function renderRouteResult(res, calcCostMs) {
+function renderRouteResult(res, calcCostStr) {
   isPlanning.value = false
   if (res.code === 200 && res.data && res.data.geometry && map) {
     resStatusColor.value = '#10b981'
-    resStatus.value = calcCostMs ? `规划成功 (${calcCostMs} ms ⚡)` : '规划成功'
+    resStatus.value = calcCostStr ? `规划成功 (${calcCostStr})` : '规划成功'
 
     const distanceKm = (res.data.totalDistance / 1000).toFixed(2)
     resDistance.value = `${distanceKm} km`
@@ -1215,47 +1255,53 @@ async function planRoute() {
   resNodes.value = '-- -> --'
   isPlanning.value = true
 
-  // 1. 前端内存零延迟算路 (CPU A*)
-  if (chkClientRoute.value && pgrbRouterInstance && pgrbRouterInstance.isLoaded) {
-    console.log('[PGRB] 执行前端零延迟算路...')
-    const t0 = performance.now()
-    const router = pgrbRouterInstance
-    const isDirected = chkDirected.value
+  // 1. Astar + pgRouting Binary 前端内存零延迟算路 (CPU A*)
+  if (selectedEngine.value === 'astar_pgrb') {
+    if (pgrbRouterInstance && pgrbRouterInstance.isLoaded) {
+      console.log('[PGRB] 执行 Astar+pgRouting Binary 前端零延迟算路...')
+      const t0 = performance.now()
+      const router = pgrbRouterInstance
+      const isDirected = chkDirected.value
 
-    const planRes = router.planRouteWithSnap(sLng, sLat, eLng, eLat, isDirected)
-    const path = planRes.path
-    const distance = planRes.distance
-    const startSnap = planRes.startSnap
-    const endSnap = planRes.endSnap
-    const startIdx = path && path.length > 0 ? path[0] : -1
-    const endIdx = path && path.length > 0 ? path[path.length - 1] : -1
+      const planRes = router.planRouteWithSnap(sLng, sLat, eLng, eLat, isDirected)
+      const path = planRes.path
+      const distance = planRes.distance
+      const startSnap = planRes.startSnap
+      const endSnap = planRes.endSnap
+      const startIdx = path && path.length > 0 ? path[0] : -1
+      const endIdx = path && path.length > 0 ? path[path.length - 1] : -1
 
-    const t1 = performance.now()
-    const calcCostMs = (t1 - t0).toFixed(1)
+      const t1 = performance.now()
+      const calcCostMs = (t1 - t0).toFixed(1)
 
-    if (path && path.length > 0) {
-      const geojson = router.getPathGeoJSONWithSnap(path, startSnap, endSnap, isDirected)
-      const startOrigId = router.getOriginalNodeId(startIdx)
-      const endOrigId = router.getOriginalNodeId(endIdx)
+      if (path && path.length > 0) {
+        const geojson = router.getPathGeoJSONWithSnap(path, startSnap, endSnap, isDirected)
+        const startOrigId = router.getOriginalNodeId(startIdx)
+        const endOrigId = router.getOriginalNodeId(endIdx)
 
-      renderRouteResult({
-        code: 200,
-        data: {
-          totalDistance: distance,
-          startNode: startOrigId,
-          endNode: endOrigId,
-          geometry: geojson
-        }
-      }, `${calcCostMs} (CPU ⚡)`)
+        renderRouteResult({
+          code: 200,
+          data: {
+            totalDistance: distance,
+            startNode: startOrigId,
+            endNode: endOrigId,
+            geometry: geojson
+          }
+        }, `${calcCostMs} ms CPU ⚡`)
+      } else {
+        isPlanning.value = false
+        resStatusColor.value = '#ef4444'
+        resStatus.value = '起点与终点之间未找到连通路径 (Astar前端算路)'
+      }
+      return
     } else {
-      isPlanning.value = false
-      resStatusColor.value = '#ef4444'
-      resStatus.value = '起点与终点之间未找到连通路径 (前端算路)'
+      console.warn('[PGRB] 二进制图尚未加载完成，尝试通过后端接口规划...')
     }
-    return
   }
 
-  // 2. 后端兜底计算
+  // 2. Dijkstra + pgRouting 后端实现
+  console.log('[pgRouting] 执行 Dijkstra + pgRouting 后端算路...')
+  const t0 = performance.now()
   const payload = {
     networkId: selectedNetworkId.value || null,
     startLng: sLng,
@@ -1271,8 +1317,10 @@ async function planRoute() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     })
+    const t1 = performance.now()
+    const calcCostMs = (t1 - t0).toFixed(1)
     const res = await response.json()
-    renderRouteResult(res, null)
+    renderRouteResult(res, `${calcCostMs} ms pgRouting 🌐`)
   } catch (err) {
     isPlanning.value = false
     resStatusColor.value = '#ef4444'
@@ -1700,6 +1748,110 @@ onUnmounted(() => {
 .full-width-select {
   width: 100%;
   cursor: pointer;
+}
+
+/* 算路引擎单选圆点与卡片样式 */
+.engine-radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 4px 0 8px 0;
+}
+
+.engine-radio-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  cursor: pointer;
+  user-select: none;
+  padding: 8px 10px;
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.engine-radio-item:hover {
+  border-color: rgba(56, 189, 248, 0.35);
+  background: rgba(30, 41, 59, 0.6);
+}
+
+.engine-radio-item.active {
+  border-color: rgba(56, 189, 248, 0.55);
+  background: rgba(14, 165, 233, 0.12);
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.15);
+}
+
+.engine-radio-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.engine-radio-header input[type="radio"] {
+  display: none;
+}
+
+.engine-radio-item .radio-title {
+  font-size: 12.5px;
+  color: #94a3b8;
+  font-weight: 600;
+  transition: color 0.2s ease;
+}
+
+.engine-radio-item:hover .radio-title {
+  color: #e2e8f0;
+}
+
+.engine-radio-item.active .radio-title {
+  color: #38bdf8;
+}
+
+.engine-radio-desc {
+  font-size: 11px;
+  color: #64748b;
+  line-height: 1.45;
+  padding-left: 21px;
+  transition: color 0.2s ease;
+}
+
+.engine-radio-item:hover .engine-radio-desc {
+  color: #94a3b8;
+}
+
+.engine-radio-item.active .engine-radio-desc {
+  color: #93c5fd;
+}
+
+.engine-radio-item .radio-dot {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.35);
+  background: rgba(15, 23, 42, 0.85);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.engine-radio-item:hover .radio-dot {
+  border-color: rgba(56, 189, 248, 0.7);
+}
+
+.engine-radio-item.active .radio-dot {
+  border-color: #38bdf8;
+  background: rgba(14, 165, 233, 0.15);
+  box-shadow: 0 0 8px rgba(56, 189, 248, 0.5);
+}
+
+.engine-radio-item.active .radio-dot::after {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #38bdf8;
 }
 
 /* 行政级别单选圆点样式 */

@@ -41,12 +41,12 @@
                 </router-link>
                 <router-link to="/algorithm/astar-route-calc" class="menu-item sub" active-class="active">
                   <div class="sub-dot"></div>
-                  <span class="menu-text">astar路径计算-按行政区建立路网</span>
+                  <span class="menu-text">PG A* 路径计算(图)</span>
                 </router-link>
-                <router-link to="/algorithm/dijkstra-route-calc" class="menu-item sub" active-class="active">
+                <!-- <router-link to="/algorithm/dijkstra-route-calc" class="menu-item sub" active-class="active">
                   <div class="sub-dot"></div>
                   <span class="menu-text">dijkstra路径计算-上传shp建立路网</span>
-                </router-link>
+                </router-link> -->
               </div>
             </transition>
           </div>
@@ -364,10 +364,10 @@ const currentRouteName = computed(() => {
     'EsriSbnKDTree': 'ESRI SBN KNN 查询(KD树)',
     'PostGisRTree': 'PG GIST KNN 查询(R树)',
     'AStarRouteCalc': 'astar路径计算',
-    'DijkstraRouteCalc': 'dijkstra路径计算',
+    // 'DijkstraRouteCalc': 'dijkstra路径计算',
     'Leaflet': 'Leaflet',
     'LeafletAStarRouteCalc': 'astar路径计算',
-    'LeafletDijkstraRouteCalc': 'dijkstra路径计算',
+    // 'LeafletDijkstraRouteCalc': 'dijkstra路径计算',
     'LeafletRoadRouteCalc': '道路路径计算',
     'Blog': 'Blog',
     'BlogGlsl': 'glsl'
