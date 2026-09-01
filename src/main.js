@@ -186,6 +186,11 @@ const router = createRouter({
           component: () => import('./views/Algorithm/AStarRouteCalc.vue')
         },
         {
+          path: 'astar-route',
+          name: 'AStarRoute',
+          component: () => import('./views/Algorithm/AStarRoute.vue')
+        },
+        {
           path: 'dijkstra-route-calc',
           name: 'DijkstraRouteCalc',
           component: () => import('./views/Algorithm/DijkstraRouteCalc.vue')

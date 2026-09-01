@@ -39,9 +39,13 @@
                   <div class="sub-dot"></div>
                   <span class="menu-text">PG GIST KNN 查询(R树)</span>
                 </router-link>
-                <router-link to="/algorithm/astar-route-calc" class="menu-item sub" active-class="active">
+                <!-- <router-link to="/algorithm/astar-route-calc" class="menu-item sub" active-class="active">
                   <div class="sub-dot"></div>
-                  <span class="menu-text">PG A* 路径计算(图)</span>
+                  <span class="menu-text">PG A* 路径计算(原版)</span>
+                </router-link> -->
+                <router-link to="/algorithm/astar-route" class="menu-item sub" active-class="active">
+                  <div class="sub-dot"></div>
+                  <span class="menu-text">PG A* 路径计算</span>
                 </router-link>
                 <!-- <router-link to="/algorithm/dijkstra-route-calc" class="menu-item sub" active-class="active">
                   <div class="sub-dot"></div>
@@ -363,10 +367,11 @@ const currentRouteName = computed(() => {
     'QuadTree': 'QGIS QIX KNN 查询(四叉树)',
     'EsriSbnKDTree': 'ESRI SBN KNN 查询(KD树)',
     'PostGisRTree': 'PG GIST KNN 查询(R树)',
-    'AStarRouteCalc': 'astar路径计算',
+    // 'AStarRouteCalc': 'astar路径计算(原版)',
+    'AStarRoute': 'astar路径计算(PGRB v2)',
     // 'DijkstraRouteCalc': 'dijkstra路径计算',
-    'Leaflet': 'Leaflet',
-    'LeafletAStarRouteCalc': 'astar路径计算',
+    // 'Leaflet': 'Leaflet',
+    // 'LeafletAStarRouteCalc': 'astar路径计算',
     // 'LeafletDijkstraRouteCalc': 'dijkstra路径计算',
     'LeafletRoadRouteCalc': '道路路径计算',
     'Blog': 'Blog',

@@ -82,10 +82,16 @@ export class PGRBRouter {
     constructor() {
         this.isLoaded = false;
         this.networkId = null;
+        this.version = 1;
         this.nodeCount = 0;
         this.edgeCount = 0;
         this.pointCount = 0;
         this.bbox = { minLng: 0, minLat: 0, maxLng: 0, maxLat: 0 };
+
+        // 矢量边界数据 (v2 扩展特性)
+        this.boundaryPointCount = 0;
+        this.boundaryRings = null;  // Array<Array<[lng, lat]>>
+        this.boundaryCoords = null; // Int32Array [lngS, latS, ...]
 
         // Zero-Copy TypedArray 视图
         this._nodeOffsets = null;     // Uint32Array [N + 1]
@@ -173,6 +179,8 @@ export class PGRBRouter {
             const tx = db.transaction('graphs', 'readwrite');
             const store = tx.objectStore('graphs');
             if (networkId) {
+                store.delete(`pgrb_v16_${networkId}`);
+                store.delete(`pgrb_v15_${networkId}`);
                 store.delete(`pgrb_${networkId}`);
                 console.log(`[PGRB] 已清理路网 【${networkId}】 的 IndexedDB 离线缓存`);
             } else {
@@ -189,7 +197,7 @@ export class PGRBRouter {
      */
     async loadNetwork(networkId, baseUrl) {
         this.networkId = networkId;
-        const cacheKey = `pgrb_v15_${networkId}`;
+        const cacheKey = `pgrb_v16_${networkId}`;
 
         // 1. 尝试从 IndexedDB 读取
         const cachedBuffer = await this.loadFromIndexedDB(cacheKey);
@@ -238,6 +246,10 @@ export class PGRBRouter {
         if (magic !== 'PGRB') {
             throw new Error(`非法的 PGRB 魔数标识: ${magic}`);
         }
+
+        // 读取协议版本 (version=1: 基础图, version=2: 包含矢量边界)
+        const version = view.getUint16(4, true);
+        this.version = version;
 
         this.nodeCount = view.getUint32(8, true);
         this.edgeCount = view.getUint32(12, true);
@@ -359,8 +371,161 @@ export class PGRBRouter {
         // 构建 2D 空间网格索引 (Spatial Grid Index)
         this._buildSpatialGridIndex(minLngS, minLatS, maxLngS, maxLatS);
 
+        // 解析 v2 矢量边界扩展段
+        if (version >= 2) {
+            this._parseBoundaryV2(buffer, view, idMapOffset);
+        } else {
+            this.boundaryPointCount = 0;
+            this.boundaryRings = null;
+            this.boundaryCoords = null;
+        }
+
         this.isLoaded = true;
-        console.log(`[PGRB] 解码完成! 节点: ${this.nodeCount}, 原始边: ${this.edgeCount}, 全有向弧段: ${dirEdgeCount}, 坐标点: ${this.pointCount} ⚡`);
+        console.log(`[PGRB v${version}] 解码完成! 节点: ${this.nodeCount}, 原始边: ${this.edgeCount}, 全有向弧段: ${dirEdgeCount}, 坐标点: ${this.pointCount}${this.boundaryPointCount > 0 ? `, 边界点: ${this.boundaryPointCount}` : ''} ⚡`);
+    }
+
+    /**
+     * 解析 v2 二进制流末尾的 BoundaryPool 矢量边界段
+     */
+    _parseBoundaryV2(buffer, view, idMapOffset) {
+        const boundaryOffset = idMapOffset + this.nodeCount * 8;
+        if (buffer.byteLength < boundaryOffset + 8) {
+            this.boundaryPointCount = 0;
+            this.boundaryRings = null;
+            this.boundaryCoords = null;
+            return;
+        }
+
+        this.boundaryPointCount = view.getUint32(boundaryOffset, true);
+        const ringCount = view.getUint32(boundaryOffset + 4, true);
+
+        if (this.boundaryPointCount === 0 || ringCount === 0) {
+            this.boundaryRings = null;
+            this.boundaryCoords = null;
+            return;
+        }
+
+        const ringSizes = [];
+        let curOffset = boundaryOffset + 8;
+        for (let r = 0; r < ringCount; r++) {
+            ringSizes.push(view.getUint32(curOffset, true));
+            curOffset += 4;
+        }
+
+        const coordsInt32 = new Int32Array(buffer, curOffset, this.boundaryPointCount * 2);
+        this.boundaryCoords = coordsInt32;
+
+        this.boundaryRings = [];
+        let ptIdx = 0;
+        for (let r = 0; r < ringCount; r++) {
+            const rSize = ringSizes[r];
+            const ring = [];
+            for (let k = 0; k < rSize; k++) {
+                const lng = coordsInt32[(ptIdx + k) * 2] / 1e6;
+                const lat = coordsInt32[(ptIdx + k) * 2 + 1] / 1e6;
+                ring.push([lng, lat]);
+            }
+            this.boundaryRings.push(ring);
+            ptIdx += rSize;
+        }
+
+        console.log(`[PGRB v2] 🗺️ 成功解析矢量边界: ${ringCount} 个多边形环, 共 ${this.boundaryPointCount} 个顶点`);
+    }
+
+    /**
+     * 获取适合 Leaflet L.polygon 直接消费的 [lat, lng] 坐标数组
+     */
+    getBoundaryLatLngs() {
+        if (!this.boundaryRings || this.boundaryRings.length === 0) {
+            if (this.bbox) {
+                return [[
+                    [this.bbox.minLat, this.bbox.minLng],
+                    [this.bbox.maxLat, this.bbox.minLng],
+                    [this.bbox.maxLat, this.bbox.maxLng],
+                    [this.bbox.minLat, this.bbox.maxLng]
+                ]];
+            }
+            return [];
+        }
+        if (this.boundaryRings.length === 1) {
+            return this.boundaryRings[0].map(pt => [pt[1], pt[0]]);
+        }
+        return this.boundaryRings.map(ring => ring.map(pt => [pt[1], pt[0]]));
+    }
+
+    /**
+     * 获取标准 GeoJSON 格式的多边形对象
+     */
+    getBoundaryGeoJSON() {
+        if (!this.boundaryRings || this.boundaryRings.length === 0) {
+            if (this.bbox) {
+                return {
+                    type: "Feature",
+                    geometry: {
+                        type: "Polygon",
+                        coordinates: [[
+                            [this.bbox.minLng, this.bbox.minLat],
+                            [this.bbox.minLng, this.bbox.maxLat],
+                            [this.bbox.maxLng, this.bbox.maxLat],
+                            [this.bbox.maxLng, this.bbox.minLat],
+                            [this.bbox.minLng, this.bbox.minLat]
+                        ]]
+                    },
+                    properties: {}
+                };
+            }
+            return null;
+        }
+        if (this.boundaryRings.length === 1) {
+            return {
+                type: "Feature",
+                geometry: {
+                    type: "Polygon",
+                    coordinates: this.boundaryRings
+                },
+                properties: {}
+            };
+        }
+        return {
+            type: "Feature",
+            geometry: {
+                type: "MultiPolygon",
+                coordinates: this.boundaryRings.map(ring => [ring])
+            },
+            properties: {}
+        };
+    }
+
+    /**
+     * 射线法（Ray-Casting）快速判断坐标点 [lng, lat] 是否落在当前路网边界多边形内
+     */
+    isPointInBoundary(lng, lat) {
+        if (this.boundaryRings && this.boundaryRings.length > 0) {
+            const pt = [lng, lat];
+            for (const ring of this.boundaryRings) {
+                if (this._isPointInPolygonRing(pt, ring)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        if (this.bbox) {
+            return (lng >= this.bbox.minLng && lng <= this.bbox.maxLng &&
+                    lat >= this.bbox.minLat && lat <= this.bbox.maxLat);
+        }
+        return true;
+    }
+
+    _isPointInPolygonRing(pt, ring) {
+        const x = pt[0], y = pt[1];
+        let inside = false;
+        for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+            const xi = ring[i][0], yi = ring[i][1];
+            const xj = ring[j][0], yj = ring[j][1];
+            const intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+            if (intersect) inside = !inside;
+        }
+        return inside;
     }
 
     /**
