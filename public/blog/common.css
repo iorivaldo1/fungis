@@ -22,7 +22,7 @@
     --green: #34d399;
     --orange: #fb923c;
     --pink: #f472b6;
-    --sidebar-width: 260px;
+    --sidebar-width: 290px;
     --content-max-width: 960px;
     --radius: 12px;
     --radius-sm: 8px;
@@ -30,7 +30,9 @@
 }
 
 /* ---------- Reset & Base ---------- */
-*, *::before, *::after {
+*,
+*::before,
+*::after {
     margin: 0;
     padding: 0;
     box-sizing: border-box;
@@ -63,13 +65,16 @@ a:hover {
 ::-webkit-scrollbar {
     width: 6px;
 }
+
 ::-webkit-scrollbar-track {
     background: transparent;
 }
+
 ::-webkit-scrollbar-thumb {
     background: rgba(99, 102, 241, 0.3);
     border-radius: 3px;
 }
+
 ::-webkit-scrollbar-thumb:hover {
     background: rgba(99, 102, 241, 0.5);
 }
@@ -386,13 +391,41 @@ a:hover {
 }
 
 /* Basic GLSL syntax coloring */
-.code-block .kw { color: #ff7b72; }   /* keywords */
-.code-block .fn { color: #d2a8ff; }   /* functions */
-.code-block .ty { color: #79c0ff; }   /* types */
-.code-block .num { color: #a5d6ff; }  /* numbers */
-.code-block .cm { color: #8b949e; }   /* comments */
-.code-block .pp { color: #ffa657; }   /* preprocessor */
-.code-block .str { color: #a5d6ff; }  /* strings */
+.code-block .kw {
+    color: #ff7b72;
+}
+
+/* keywords */
+.code-block .fn {
+    color: #d2a8ff;
+}
+
+/* functions */
+.code-block .ty {
+    color: #79c0ff;
+}
+
+/* types */
+.code-block .num {
+    color: #a5d6ff;
+}
+
+/* numbers */
+.code-block .cm {
+    color: #8b949e;
+}
+
+/* comments */
+.code-block .pp {
+    color: #ffa657;
+}
+
+/* preprocessor */
+.code-block .str {
+    color: #a5d6ff;
+}
+
+/* strings */
 
 /* ---------- Demo Description ---------- */
 .demo-description {
@@ -453,6 +486,7 @@ a:hover {
     .demo-row {
         grid-template-columns: 1fr;
     }
+
     .code-block-wrapper {
         border-left: none;
         border-top: 1px solid var(--border-color);

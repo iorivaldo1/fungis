@@ -179,24 +179,16 @@ const router = createRouter({
           path: 'postgis-rtree',
           name: 'PostGisRTree',
           component: () => import('./views/Algorithm/PostGisRTree.vue')
-        }
-      ]
-    },
-    {
-      path: '/leaflet',
-      name: 'Leaflet',
-      component: RouterView,
-      redirect: '/leaflet/astar-route-calc',
-      children: [
+        },
         {
           path: 'astar-route-calc',
-          name: 'LeafletAStarRouteCalc',
-          component: () => import('./views/Leaflet/AStarRouteCalc.vue'),
+          name: 'AStarRouteCalc',
+          component: () => import('./views/Algorithm/AStarRouteCalc.vue')
         },
         {
           path: 'dijkstra-route-calc',
-          name: 'LeafletDijkstraRouteCalc',
-          component: () => import('./views/Leaflet/DijkstraRouteCalc.vue'),
+          name: 'DijkstraRouteCalc',
+          component: () => import('./views/Algorithm/DijkstraRouteCalc.vue')
         }
       ]
     },

@@ -39,27 +39,13 @@
                   <div class="sub-dot"></div>
                   <span class="menu-text">PG GIST KNN 查询(R树)</span>
                 </router-link>
-              </div>
-            </transition>
-          </div>
-
-          <!-- Leaflet 多级菜单 -->
-          <div class="menu-group" :class="{ expanded: isLeafletMenuExpanded }">
-            <div class="menu-item parent" @click="toggleLeafletMenu"
-              :class="{ active: route.path.startsWith('/leaflet') }">
-              <IconRoute />
-              <span class="menu-text">Leaflet</span>
-              <IconArrow class="arrow-icon" :class="{ rotated: isLeafletMenuExpanded }" width="16" height="16" />
-            </div>
-            <transition name="menu-slide">
-              <div v-show="isLeafletMenuExpanded" class="sub-menu">
-                <router-link to="/leaflet/astar-route-calc" class="menu-item sub" active-class="active">
+                <router-link to="/algorithm/astar-route-calc" class="menu-item sub" active-class="active">
                   <div class="sub-dot"></div>
-                  <span class="menu-text">astar路径计算</span>
+                  <span class="menu-text">astar路径计算-按行政区建立路网</span>
                 </router-link>
-                <router-link to="/leaflet/dijkstra-route-calc" class="menu-item sub" active-class="active">
+                <router-link to="/algorithm/dijkstra-route-calc" class="menu-item sub" active-class="active">
                   <div class="sub-dot"></div>
-                  <span class="menu-text">dijkstra路径计算</span>
+                  <span class="menu-text">dijkstra路径计算-上传shp建立路网</span>
                 </router-link>
               </div>
             </transition>
@@ -266,7 +252,6 @@ import IconArrow from './components/icons/IconArrow.vue'
 import IconRiver from './components/icons/IconRiver.vue'
 import IconThree from './components/icons/IconThree.vue'
 import IconWrench from './components/icons/IconWrench.vue'
-import IconRoute from './components/icons/IconRoute.vue'
 import IconGear from './components/icons/IconGear.vue'
 
 const route = useRoute()
@@ -277,7 +262,6 @@ const isRiverMenuExpanded = ref(route.path.startsWith('/tianditu') || route.path
 const isBaiduMenuExpanded = ref(route.path.startsWith('/baidu'))
 const isThreeMenuExpanded = ref(route.path === '/three' || route.path.startsWith('/three/'))
 const isAlgorithmMenuExpanded = ref(route.path.startsWith('/algorithm'))
-const isLeafletMenuExpanded = ref(route.path.startsWith('/leaflet'))
 const isBlogMenuExpanded = ref(route.path.startsWith('/blog'))
 const isReady = ref(false)
 
@@ -342,10 +326,6 @@ const toggleBlogMenu = () => {
   isBlogMenuExpanded.value = !isBlogMenuExpanded.value
 }
 
-const toggleLeafletMenu = () => {
-  isLeafletMenuExpanded.value = !isLeafletMenuExpanded.value
-}
-
 // Ensure unique state for each menu
 const isThreeTdtMenuExpanded = ref(route.path.startsWith('/three-tdt'))
 const toggleThreeTdtMenu = () => {
@@ -383,6 +363,8 @@ const currentRouteName = computed(() => {
     'QuadTree': 'QGIS QIX KNN 查询(四叉树)',
     'EsriSbnKDTree': 'ESRI SBN KNN 查询(KD树)',
     'PostGisRTree': 'PG GIST KNN 查询(R树)',
+    'AStarRouteCalc': 'astar路径计算',
+    'DijkstraRouteCalc': 'dijkstra路径计算',
     'Leaflet': 'Leaflet',
     'LeafletAStarRouteCalc': 'astar路径计算',
     'LeafletDijkstraRouteCalc': 'dijkstra路径计算',
@@ -400,7 +382,7 @@ const currentRouteName = computed(() => {
 :root {
   --bg-dark: #00392E;
   --bg-grey: #004D40;
-  --sidebar-width: 260px;
+  --sidebar-width: 290px;
   --header-height: 50px;
   --text-main: #DBF6DE;
   --text-muted: #42B59A;

@@ -20,15 +20,61 @@
             ⚙️ 路网管理
           </button>
         </div>
+        <!-- 行政级别单选切换 (区县、乡镇、街道) -->
+        <div class="level-radio-group">
+          <label
+            class="level-radio-item"
+            :class="{ active: selectedLevelFilter === 'county' }"
+          >
+            <input
+              type="radio"
+              name="levelFilter"
+              value="county"
+              v-model="selectedLevelFilter"
+              @change="onLevelFilterChange"
+            />
+            <span class="radio-dot"></span>
+            <span class="radio-text">区县</span>
+          </label>
+          <label
+            class="level-radio-item"
+            :class="{ active: selectedLevelFilter === 'town' }"
+          >
+            <input
+              type="radio"
+              name="levelFilter"
+              value="town"
+              v-model="selectedLevelFilter"
+              @change="onLevelFilterChange"
+            />
+            <span class="radio-dot"></span>
+            <span class="radio-text">乡镇</span>
+          </label>
+          <label
+            class="level-radio-item"
+            :class="{ active: selectedLevelFilter === 'village' }"
+          >
+            <input
+              type="radio"
+              name="levelFilter"
+              value="village"
+              v-model="selectedLevelFilter"
+              @change="onLevelFilterChange"
+            />
+            <span class="radio-dot"></span>
+            <span class="radio-text">街道</span>
+          </label>
+        </div>
+
         <select
           v-model="selectedNetworkId"
           class="coord-input full-width-select"
           @change="onNetworkChange"
         >
           <option v-if="networksLoading" value="">加载路网配置中...</option>
-          <option v-else-if="networksList.length === 0" value="">暂无可用路网配置</option>
+          <option v-else-if="filteredNetworksList.length === 0" value="">当前级别暂无可用路网配置</option>
           <option
-            v-for="net in networksList"
+            v-for="net in filteredNetworksList"
             :key="net.id"
             :value="net.id"
           >
@@ -272,28 +318,43 @@
               class="coord-input full-width-input"
               placeholder="输入关键字快速多列模糊匹配过滤..."
             />
-            <div class="xzq-list-wrapper">
+            <div class="xzq-list-wrapper" @scroll="handleXzqScroll">
               <div v-if="xzqListLoading" class="loading-state">⏳ 正在加载行政区划列表中...</div>
-              <table v-else-if="filteredXzqList.length > 0" class="xzq-table">
-                <thead>
-                  <tr>
-                    <th v-for="f in xzqFields" :key="f">{{ f }}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr
-                    v-for="item in filteredXzqList"
-                    :key="item.id"
-                    :class="{ selected: selectedXzqItem && selectedXzqItem.id === item.id }"
-                    @click="onSelectXzqItem(item)"
-                  >
-                    <td v-for="f in xzqFields" :key="f">
-                      {{ (item.fields && item.fields[f]) || item[f] || item.name || item.id || '-' }}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+              <template v-else-if="xzqList.length > 0">
+                <table class="xzq-table">
+                  <thead>
+                    <tr>
+                      <th v-for="f in xzqFields" :key="f">{{ f }}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr
+                      v-for="item in xzqList"
+                      :key="item.id"
+                      :class="{ selected: selectedXzqItem && selectedXzqItem.id === item.id }"
+                      @click="onSelectXzqItem(item)"
+                    >
+                      <td v-for="f in xzqFields" :key="f">
+                        {{ (item.fields && item.fields[f]) || item[f] || item.name || item.id || '-' }}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+                <div v-if="isXzqLoadingMore" class="scroll-more-hint">
+                  ⏳ 正在加载下 100 条...
+                </div>
+                <div v-else-if="xzqHasMore" class="scroll-more-hint">
+                  ⬇️ 已展示 {{ xzqList.length }} / {{ xzqTotal }} 条，向下滚动自动加载下 100 条...
+                </div>
+                <div v-else-if="xzqList.length > 0" class="scroll-more-hint end-hint">
+                  ✓ 已加载全部 {{ xzqList.length }} 条要素
+                </div>
+              </template>
               <div v-else class="empty-state">未检索到匹配的行政区划要素</div>
+            </div>
+            <div v-if="selectedXzqItem" class="selected-summary-bar">
+              <span class="summary-label">📌 选中完整名称：</span>
+              <span class="summary-value">{{ getXzqItemFullName(selectedXzqItem) }}</span>
             </div>
           </div>
 
@@ -321,7 +382,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, computed, watch, onMounted, onUnmounted } from 'vue'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { PGRBRouter } from '@/utils/pgrb-router.js'
@@ -330,6 +391,7 @@ import { PGRBGpuEngine } from '@/utils/pgrb-gpu-engine.js'
 const mapContainer = ref(null)
 
 const zoomValue = ref('--')
+const selectedLevelFilter = ref('county') // 'county' | 'town' | 'village'
 const selectedNetworkId = ref('')
 const networksList = ref([])
 const editableNetworks = ref([])
@@ -363,8 +425,13 @@ const xzqFields = ref([])
 const xzqList = ref([])
 const xzqSearchKeyword = ref('')
 const xzqListLoading = ref(false)
+const isXzqLoadingMore = ref(false)
 const selectedXzqItem = ref(null)
 const isXzqBuilding = ref(false)
+const xzqPage = ref(1)
+const xzqPageSize = ref(100)
+const xzqTotal = ref(0)
+const xzqHasMore = ref(false)
 const xzqMsg = reactive({
   show: false,
   text: '',
@@ -407,18 +474,66 @@ const iconEnd = L.divIcon({
   iconAnchor: [10, 10]
 })
 
-const filteredXzqList = computed(() => {
-  const q = xzqSearchKeyword.value.trim().toLowerCase()
-  if (!q) return xzqList.value
-  return xzqList.value.filter(item => {
-    if (item.name && item.name.toLowerCase().includes(q)) return true
-    if (item.id && item.id.toString().toLowerCase().includes(q)) return true
-    if (item.fields) {
-      return Object.values(item.fields).some(val => val && val.toString().toLowerCase().includes(q))
+function getXzqItemFullName(item) {
+  if (!item) return ''
+  if (item.fields && typeof item.fields === 'object') {
+    const vals = []
+    for (const key of Object.keys(item.fields)) {
+      const val = item.fields[key]
+      if (val && typeof val === 'string' && val.trim() !== '') {
+        vals.push(val.trim())
+      }
     }
-    return false
-  })
+    if (vals.length > 0) {
+      return vals.join('')
+    }
+  }
+  return item.name || String(item.id || '')
+}
+
+function getNetworkLevel(net) {
+  if (!net) return 'county'
+  if (net.level) {
+    const l = String(net.level).toLowerCase()
+    if (l === 'county' || l.includes('区') || l.includes('县')) return 'county'
+    if (l === 'town' || l.includes('镇') || l.includes('乡')) return 'town'
+    if (l === 'village' || l === 'street' || l.includes('街') || l.includes('村')) return 'village'
+  }
+  const id = (net.id || '').toLowerCase()
+  if (id.startsWith('xzq_county_') || id.includes('county')) return 'county'
+  if (id.startsWith('xzq_town_') || id.includes('town')) return 'town'
+  if (id.startsWith('xzq_village_') || id.startsWith('xzq_street_') || id.includes('village') || id.includes('street') || id.startsWith('shjd')) return 'village'
+
+  const name = (net.name || '')
+  if (name.includes('街道') || name.includes('村') || name.includes('社区')) return 'village'
+  if (name.includes('镇') || name.includes('乡')) return 'town'
+  if (name.includes('区') || name.includes('县') || name.includes('市')) return 'county'
+
+  return 'county'
+}
+
+const filteredNetworksList = computed(() => {
+  if (!Array.isArray(networksList.value)) return []
+  return networksList.value.filter(net => getNetworkLevel(net) === selectedLevelFilter.value)
 })
+
+let searchDebounceTimer = null
+watch(xzqSearchKeyword, () => {
+  if (searchDebounceTimer) clearTimeout(searchDebounceTimer)
+  searchDebounceTimer = setTimeout(() => {
+    loadXzqList(currentLevel.value, false)
+  }, 250)
+})
+
+function handleXzqScroll(e) {
+  const el = e.target
+  if (el.scrollTop + el.clientHeight >= el.scrollHeight - 35) {
+    if (xzqHasMore.value && !isXzqLoadingMore.value && !xzqListLoading.value) {
+      xzqPage.value++
+      loadXzqList(currentLevel.value, true)
+    }
+  }
+}
 
 function updateZoomDisplay() {
   if (!map) return
@@ -653,13 +768,72 @@ function toggleRoadLayer() {
   }
 }
 
+function flyMapToBounds(bounds, options = { padding: [50, 50], duration: 0.8 }) {
+  return new Promise((resolve) => {
+    if (!map || !bounds) {
+      resolve()
+      return
+    }
+    let resolved = false
+    const onMoveEnd = () => {
+      if (!resolved) {
+        resolved = true
+        map.off('moveend', onMoveEnd)
+        resolve()
+      }
+    }
+    map.once('moveend', onMoveEnd)
+    map.fitBounds(bounds, {
+      padding: options.padding || [50, 50],
+      animate: true,
+      duration: options.duration || 0.8
+    })
+    setTimeout(() => {
+      if (!resolved) {
+        resolved = true
+        map.off('moveend', onMoveEnd)
+        resolve()
+      }
+    }, (options.duration || 0.8) * 1000 + 100)
+  })
+}
+
+function flyMapToCenter(lat, lng, zoom = 15, duration = 0.8) {
+  return new Promise((resolve) => {
+    if (!map || lat == null || lng == null) {
+      resolve()
+      return
+    }
+    let resolved = false
+    const onMoveEnd = () => {
+      if (!resolved) {
+        resolved = true
+        map.off('moveend', onMoveEnd)
+        resolve()
+      }
+    }
+    map.once('moveend', onMoveEnd)
+    map.setView([lat, lng], zoom, { animate: true, duration: duration })
+    setTimeout(() => {
+      if (!resolved) {
+        resolved = true
+        map.off('moveend', onMoveEnd)
+        resolve()
+      }
+    }, duration * 1000 + 100)
+  })
+}
+
 async function loadXzqBoundary(networkId) {
   currentBoundaryGeoJSON = null
   currentBoundaryBbox = null
-  if (!networkId) {
-    if (xzqHighlightLayer && map) { map.removeLayer(xzqHighlightLayer); xzqHighlightLayer = null }
-    return
+
+  // 1. 切换路网时立即移除旧边界，避免移动时残留漂移
+  if (xzqHighlightLayer && map) {
+    map.removeLayer(xzqHighlightLayer)
+    xzqHighlightLayer = null
   }
+  if (!networkId) return
 
   let url = ''
   if (networkId.startsWith('xzq_county_')) {
@@ -677,17 +851,37 @@ async function loadXzqBoundary(networkId) {
 
   try {
     const res = await fetch(url).then(r => r.json())
-    let hasFitted = false
-    if (res.code === 200 && res.data && res.data.geojson) {
-      const geoData = typeof res.data.geojson === 'string' ? JSON.parse(res.data.geojson) : res.data.geojson
+    if (res.code === 200 && res.data) {
+      const geoData = res.data.geojson
+        ? (typeof res.data.geojson === 'string' ? JSON.parse(res.data.geojson) : res.data.geojson)
+        : null
+
       currentBoundaryGeoJSON = geoData
       if (res.data.bbox && Array.isArray(res.data.bbox) && res.data.bbox.length === 4) {
         currentBoundaryBbox = res.data.bbox
       }
-      if (xzqHighlightLayer && map) map.removeLayer(xzqHighlightLayer)
 
-      if (map) {
-        xzqHighlightLayer = L.geoJSON(geoData, {
+      // 2. 先执行地图平滑移动/缩放，等待移动完全停止
+      if (res.data.bbox && Array.isArray(res.data.bbox) && res.data.bbox.length === 4) {
+        const bounds = L.latLngBounds(
+          [res.data.bbox[1], res.data.bbox[0]],
+          [res.data.bbox[3], res.data.bbox[2]]
+        )
+        await flyMapToBounds(bounds, { padding: [50, 50], duration: 0.8 })
+      } else if (Array.isArray(networksList.value) && map) {
+        const targetNet = networksList.value.find(n => n.id === networkId)
+        if (targetNet && targetNet.centerLat && targetNet.centerLng) {
+          const zoom = targetNet.defaultZoom || 15
+          await flyMapToCenter(targetNet.centerLat, targetNet.centerLng, zoom, 0.8)
+        }
+      }
+
+      // 3. 待地图平移完全到位后，再优雅显示边界图层
+      if (map && selectedNetworkId.value === networkId && currentBoundaryGeoJSON) {
+        if (xzqHighlightLayer) {
+          map.removeLayer(xzqHighlightLayer)
+        }
+        xzqHighlightLayer = L.geoJSON(currentBoundaryGeoJSON, {
           renderer: L.svg({ padding: 2.0 }),
           style: {
             stroke: true,
@@ -699,25 +893,14 @@ async function loadXzqBoundary(networkId) {
             fillOpacity: 0
           }
         }).addTo(map)
-
-        if (res.data.bbox && Array.isArray(res.data.bbox) && res.data.bbox.length === 4) {
-          const bounds = L.latLngBounds(
-            [res.data.bbox[1], res.data.bbox[0]],
-            [res.data.bbox[3], res.data.bbox[2]]
-          )
-          map.fitBounds(bounds, { padding: [50, 50], animate: true, duration: 0.8 })
-          hasFitted = true
-        }
       }
     } else {
-      if (xzqHighlightLayer && map) { map.removeLayer(xzqHighlightLayer); xzqHighlightLayer = null }
-    }
-
-    if (!hasFitted && Array.isArray(networksList.value) && map) {
-      const targetNet = networksList.value.find(n => n.id === networkId)
-      if (targetNet && targetNet.centerLat && targetNet.centerLng) {
-        const zoom = targetNet.defaultZoom || 15
-        map.setView([targetNet.centerLat, targetNet.centerLng], zoom, { animate: true, duration: 0.8 })
+      if (Array.isArray(networksList.value) && map) {
+        const targetNet = networksList.value.find(n => n.id === networkId)
+        if (targetNet && targetNet.centerLat && targetNet.centerLng) {
+          const zoom = targetNet.defaultZoom || 15
+          await flyMapToCenter(targetNet.centerLat, targetNet.centerLng, zoom, 0.8)
+        }
       }
     }
   } catch (err) {
@@ -752,35 +935,136 @@ async function loadRoadNetworkRange(networkId) {
   }
 }
 
+const xzqListCache = new Map()
+
+async function getXzqListByLevel(level) {
+  if (xzqListCache.has(level)) {
+    return xzqListCache.get(level)
+  }
+  try {
+    const res = await fetch(`${routeApiBase}/xzq/list?level=${level}`).then(r => r.json())
+    if (res.code === 200 && res.data && Array.isArray(res.data.list)) {
+      xzqListCache.set(level, res.data.list)
+      return res.data.list
+    }
+  } catch (e) {
+    console.error(`加载 ${level} 行政区划列表失败:`, e)
+  }
+  return []
+}
+
+async function enrichNetworksWithFullName(rawList) {
+  if (!Array.isArray(rawList)) return []
+
+  const levelsNeeded = new Set()
+  for (const net of rawList) {
+    if (net.id && net.id.startsWith('xzq_')) {
+      const parts = net.id.split('_')
+      if (parts.length >= 3) {
+        levelsNeeded.add(parts[1])
+      }
+    }
+  }
+
+  await Promise.all(Array.from(levelsNeeded).map(lvl => getXzqListByLevel(lvl)))
+
+  return rawList.map(net => {
+    if (net.name && (net.name.includes('市') || net.name.includes('州'))) {
+      return { ...net }
+    }
+
+    if (net.id && net.id.startsWith('xzq_')) {
+      const parts = net.id.split('_')
+      if (parts.length >= 3) {
+        const lvl = parts[1] // 'county' | 'town' | 'village'
+        const featId = parts.slice(2).join('_')
+        const list = xzqListCache.get(lvl) || []
+
+        const matchItem = list.find(item =>
+          String(item.id) === String(featId) ||
+          item.name === net.name ||
+          (item.fields && Object.values(item.fields).some(v => v === net.name))
+        )
+
+        if (matchItem && matchItem.fields) {
+          const full = Object.values(matchItem.fields).filter(v => v && typeof v === 'string' && v.trim() !== '').join('')
+          if (full) {
+            return { ...net, name: full }
+          }
+        }
+      }
+    } else if (net.id === 'shjd_road' && (!net.name || !net.name.includes('市'))) {
+      return { ...net, name: '成都市成华区沙河街道' }
+    }
+
+    return { ...net }
+  })
+}
+
 async function fetchRoadNetworks(targetSelectId = null) {
   networksLoading.value = true
   try {
     const response = await fetch(`${routeApiBase}/networks`)
     const res = await response.json()
     if (res.code === 200 && Array.isArray(res.data) && res.data.length > 0) {
-      networksList.value = res.data
-      editableNetworks.value = res.data.map(net => ({
+      const enrichedList = await enrichNetworksWithFullName(res.data)
+      networksList.value = enrichedList
+      editableNetworks.value = enrichedList.map(net => ({
         ...net,
         editingName: net.name || net.id
       }))
-      if (targetSelectId && res.data.some(n => n.id === targetSelectId)) {
-        selectedNetworkId.value = targetSelectId
-      } else if (!selectedNetworkId.value || !res.data.some(n => n.id === selectedNetworkId.value)) {
-        selectedNetworkId.value = res.data[0].id
+
+      let targetNet = null
+      if (targetSelectId) {
+        targetNet = enrichedList.find(n => n.id === targetSelectId)
+      } else if (selectedNetworkId.value) {
+        targetNet = enrichedList.find(n => n.id === selectedNetworkId.value)
+      }
+
+      if (targetNet) {
+        selectedLevelFilter.value = getNetworkLevel(targetNet)
+        selectedNetworkId.value = targetNet.id
+      } else {
+        const currentMatch = enrichedList.filter(n => getNetworkLevel(n) === selectedLevelFilter.value)
+        if (currentMatch.length > 0) {
+          selectedNetworkId.value = currentMatch[0].id
+        } else {
+          const firstNet = enrichedList[0]
+          selectedLevelFilter.value = getNetworkLevel(firstNet)
+          selectedNetworkId.value = firstNet.id
+        }
       }
       loadRoadNetworkRange(selectedNetworkId.value)
     } else {
       networksList.value = []
       editableNetworks.value = []
+      selectedNetworkId.value = ''
       loadRoadNetworkRange(null)
     }
   } catch (err) {
     console.error('获取路网配置列表异常:', err)
     networksList.value = []
     editableNetworks.value = []
+    selectedNetworkId.value = ''
     loadRoadNetworkRange(null)
   } finally {
     networksLoading.value = false
+  }
+}
+
+function onLevelFilterChange() {
+  const currentFiltered = filteredNetworksList.value
+  if (currentFiltered.length > 0) {
+    const exists = currentFiltered.some(net => net.id === selectedNetworkId.value)
+    if (!exists) {
+      selectedNetworkId.value = currentFiltered[0].id
+      resetRoute()
+      loadRoadNetworkRange(selectedNetworkId.value)
+    }
+  } else {
+    selectedNetworkId.value = ''
+    resetRoute()
+    loadRoadNetworkRange(null)
   }
 }
 
@@ -808,10 +1092,6 @@ function resetRoute() {
   showResultCard.value = false
   resStatus.value = '已重置'
   resStatusColor.value = '#38bdf8'
-
-  if (selectedNetworkId.value) {
-    loadXzqBoundary(selectedNetworkId.value)
-  }
 }
 
 function renderRouteResult(res, calcCostMs) {
@@ -1075,37 +1355,72 @@ async function initXzqLevels() {
 
 async function switchXzqLevel(levelKey) {
   currentLevel.value = levelKey
-  await loadXzqList(levelKey)
+  await loadXzqList(levelKey, false)
 }
 
-async function loadXzqList(level) {
-  xzqListLoading.value = true
-  selectedXzqItem.value = null
+async function loadXzqList(level, isAppend = false) {
+  if (!isAppend) {
+    xzqPage.value = 1
+    xzqList.value = []
+    selectedXzqItem.value = null
+    xzqListLoading.value = true
+  } else {
+    isXzqLoadingMore.value = true
+  }
+
   try {
-    const res = await fetch(`${routeApiBase}/xzq/list?level=${level}`).then(r => r.json())
+    const kw = encodeURIComponent(xzqSearchKeyword.value.trim())
+    const url = `${routeApiBase}/xzq/list?level=${level}&page=${xzqPage.value}&pageSize=${xzqPageSize.value}&keyword=${kw}`
+    const res = await fetch(url).then(r => r.json())
     if (res.code === 200 && res.data) {
-      xzqFields.value = res.data.fields || ['名称', 'ID']
-      xzqList.value = res.data.list || []
+      xzqFields.value = res.data.fields || ['市级', '区县级', '乡镇级', '村级名']
+      xzqTotal.value = res.data.total || 0
+      xzqHasMore.value = Boolean(res.data.hasMore)
+      const incoming = res.data.list || []
+      if (!isAppend) {
+        xzqList.value = incoming
+      } else {
+        xzqList.value.push(...incoming)
+      }
     } else {
-      xzqFields.value = ['名称', 'ID']
-      xzqList.value = []
+      if (!isAppend) {
+        xzqFields.value = ['名称', 'ID']
+        xzqList.value = []
+        xzqTotal.value = 0
+        xzqHasMore.value = false
+      }
     }
   } catch (err) {
     console.error('Fetch XZQ list error:', err)
   } finally {
     xzqListLoading.value = false
+    isXzqLoadingMore.value = false
   }
 }
 
 async function onSelectXzqItem(item) {
   selectedXzqItem.value = item
+  if (xzqHighlightLayer && map) {
+    map.removeLayer(xzqHighlightLayer)
+    xzqHighlightLayer = null
+  }
+
   try {
     const res = await fetch(`${routeApiBase}/xzq/detail?level=${currentLevel.value}&featureId=${item.id}`).then(r => r.json())
     if (res.code === 200 && res.data && map) {
       const detail = res.data
-      if (xzqHighlightLayer) map.removeLayer(xzqHighlightLayer)
-      if (detail.geojson) {
-        const geoData = typeof detail.geojson === 'string' ? JSON.parse(detail.geojson) : detail.geojson
+      const geoData = detail.geojson ? (typeof detail.geojson === 'string' ? JSON.parse(detail.geojson) : detail.geojson) : null
+
+      if (detail.bbox && Array.isArray(detail.bbox) && detail.bbox.length === 4) {
+        const bounds = L.latLngBounds(
+          [detail.bbox[1], detail.bbox[0]],
+          [detail.bbox[3], detail.bbox[2]]
+        )
+        await flyMapToBounds(bounds, { padding: [50, 50], duration: 0.8 })
+      }
+
+      if (map && geoData && selectedXzqItem.value && selectedXzqItem.value.id === item.id) {
+        if (xzqHighlightLayer) map.removeLayer(xzqHighlightLayer)
         xzqHighlightLayer = L.geoJSON(geoData, {
           renderer: L.svg({ padding: 2.0 }),
           style: {
@@ -1118,14 +1433,6 @@ async function onSelectXzqItem(item) {
             fillOpacity: 0
           }
         }).addTo(map)
-
-        if (detail.bbox && Array.isArray(detail.bbox) && detail.bbox.length === 4) {
-          const bounds = L.latLngBounds(
-            [detail.bbox[1], detail.bbox[0]],
-            [detail.bbox[3], detail.bbox[2]]
-          )
-          map.fitBounds(bounds, { padding: [50, 50], animate: true, duration: 0.8 })
-        }
       }
     }
   } catch (err) {
@@ -1139,18 +1446,18 @@ async function submitXzqBuild() {
     return
   }
   const netId = `xzq_${currentLevel.value}_${selectedXzqItem.value.id}`
-  const netName = selectedXzqItem.value.name || selectedXzqItem.value.id
+  const netName = getXzqItemFullName(selectedXzqItem.value) || selectedXzqItem.value.name || selectedXzqItem.value.id
 
   xzqMsg.show = true
   xzqMsg.color = '#38bdf8'
-  xzqMsg.text = '⏳ 正基于所选行政区划范围提取 OSM 路网相交要素并构建拓扑（打散弧段、建拓扑），请稍候...'
+  xzqMsg.text = `⏳ 正基于【${netName}】提取 OSM 路网相交要素并构建拓扑（打散弧段、建拓扑），请稍候...`
   isXzqBuilding.value = true
 
   const formData = new URLSearchParams()
   formData.append('level', currentLevel.value)
   formData.append('featureId', selectedXzqItem.value.id)
   formData.append('networkId', netId)
-  formData.append('networkName', netName || selectedXzqItem.value.name)
+  formData.append('networkName', netName)
 
   try {
     const res = await fetch(`${routeApiBase}/xzq/build`, {
@@ -1393,6 +1700,73 @@ onUnmounted(() => {
 .full-width-select {
   width: 100%;
   cursor: pointer;
+}
+
+/* 行政级别单选圆点样式 */
+.level-radio-group {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 6px 0 8px 0;
+  padding: 4px 6px;
+  background: rgba(15, 23, 42, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+}
+
+.level-radio-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 12px;
+  color: #94a3b8;
+  transition: all 0.2s ease;
+}
+
+.level-radio-item:hover {
+  color: #e2e8f0;
+}
+
+.level-radio-item.active {
+  color: #38bdf8;
+  font-weight: 600;
+}
+
+.level-radio-item input[type="radio"] {
+  display: none;
+}
+
+.radio-dot {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.35);
+  background: rgba(15, 23, 42, 0.85);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.level-radio-item:hover .radio-dot {
+  border-color: rgba(56, 189, 248, 0.7);
+}
+
+.level-radio-item.active .radio-dot {
+  border-color: #38bdf8;
+  background: rgba(14, 165, 233, 0.15);
+  box-shadow: 0 0 8px rgba(56, 189, 248, 0.5);
+}
+
+.level-radio-item.active .radio-dot::after {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #38bdf8;
 }
 
 .full-width-input {
@@ -1733,12 +2107,28 @@ select.coord-input option {
   padding: 4px;
 }
 
+.scroll-more-hint {
+  text-align: center;
+  font-size: 11.5px;
+  color: #38bdf8;
+  padding: 8px;
+  background: rgba(56, 189, 248, 0.08);
+  border-top: 1px dashed rgba(56, 189, 248, 0.25);
+  user-select: none;
+}
+
+.scroll-more-hint.end-hint {
+  color: #64748b;
+  background: transparent;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
 .xzq-list-wrapper {
-  max-height: 240px;
+  max-height: 260px;
   overflow-y: auto;
-  background: rgba(15, 23, 42, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 6px;
+  background: rgba(15, 23, 42, 0.6);
   margin-top: 8px;
 }
 
@@ -1793,6 +2183,28 @@ select.coord-input option {
 
 .xzq-table tbody tr:hover {
   background: rgba(56, 189, 248, 0.12);
+}
+
+.selected-summary-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 6px 10px;
+  background: rgba(56, 189, 248, 0.1);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.summary-label {
+  color: #94a3b8;
+  white-space: nowrap;
+}
+
+.summary-value {
+  color: #38bdf8;
+  font-weight: 700;
 }
 
 .xzq-table tbody tr.selected {
