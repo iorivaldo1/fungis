@@ -868,9 +868,11 @@ function toggleRoadLayer() {
   }
 }
 
-function flyMapToBounds(bounds, options = { padding: [50, 50], duration: 0.8 }) {
+let currentNetworkLoadSeq = 0
+
+function flyMapToBounds(bounds, options = { padding: [50, 50], duration: 0.8, maxZoom: 17 }) {
   return new Promise((resolve) => {
-    if (!map || !bounds) {
+    if (!map || !bounds || (typeof bounds.isValid === 'function' && !bounds.isValid())) {
       resolve()
       return
     }
@@ -885,6 +887,7 @@ function flyMapToBounds(bounds, options = { padding: [50, 50], duration: 0.8 }) 
     map.once('moveend', onMoveEnd)
     map.fitBounds(bounds, {
       padding: options.padding || [50, 50],
+      maxZoom: options.maxZoom !== undefined ? options.maxZoom : 17,
       animate: true,
       duration: options.duration || 0.8
     })
@@ -928,6 +931,7 @@ function flyMapToCenter(lat, lng, zoom = 15, duration = 0.8) {
  * 核心升级：通过单个二进制流同时加载拓扑与矢量边界，完全消除对 /xzq/detail 明文接口的依赖
  */
 async function loadRoadNetworkRange(networkId) {
+  const loadSeq = ++currentNetworkLoadSeq
   pgrbRouterInstance = null
   gpuEngineInstance = null
 
@@ -945,16 +949,26 @@ async function loadRoadNetworkRange(networkId) {
   const router = new PGRBRouter()
   try {
     await router.loadNetwork(networkId, baseUrl)
+    if (loadSeq !== currentNetworkLoadSeq || selectedNetworkId.value !== networkId) return
+
     pgrbRouterInstance = router
     console.log(`[PGRB v${router.version || 2}] 内存离线图就绪: ${router.nodeCount} 节点, ${router.edgeCount} 边${router.boundaryPointCount > 0 ? `, 边界点: ${router.boundaryPointCount}` : ''} ⚡`)
 
-    // 2. 先执行地图平滑移动/缩放至路网 BBOX 范围
-    if (router.bbox && map) {
-      const bounds = L.latLngBounds(
+    // 3. 计算最佳视角 Bounds（优先根据矢量边界 GeoJSON 计算全域包围盒，次选路网 BBOX，最后兜底中心点+默认zoom）
+    let bounds = null
+    const boundaryGeo = router.getBoundaryGeoJSON()
+    if (boundaryGeo) {
+      const tempLayer = L.geoJSON(boundaryGeo)
+      bounds = tempLayer.getBounds()
+    } else if (router.bbox && router.bbox.minLat != null) {
+      bounds = L.latLngBounds(
         [router.bbox.minLat, router.bbox.minLng],
         [router.bbox.maxLat, router.bbox.maxLng]
       )
-      await flyMapToBounds(bounds, { padding: [50, 50], duration: 0.8 })
+    }
+
+    if (bounds && bounds.isValid() && map) {
+      await flyMapToBounds(bounds, { padding: [50, 50], maxZoom: 17, duration: 0.8 })
     } else if (Array.isArray(networksList.value) && map) {
       const targetNet = networksList.value.find(n => n.id === networkId)
       if (targetNet && targetNet.centerLat && targetNet.centerLng) {
@@ -963,32 +977,31 @@ async function loadRoadNetworkRange(networkId) {
       }
     }
 
-    // 3. 待地图平移完全到位后，直接从二进制解析出的边界坐标渲染高亮虚线框
-    if (map && selectedNetworkId.value === networkId) {
-      const boundaryGeo = router.getBoundaryGeoJSON()
-      if (boundaryGeo) {
-        if (xzqHighlightLayer) {
-          map.removeLayer(xzqHighlightLayer)
-        }
-        xzqHighlightLayer = L.geoJSON(boundaryGeo, {
-          renderer: L.svg({ padding: 2.0 }),
-          style: {
-            stroke: true,
-            color: '#38bdf8',
-            weight: 3,
-            opacity: 1.0,
-            dashArray: '8, 8',
-            fill: false,
-            fillOpacity: 0
-          }
-        }).addTo(map)
+    if (loadSeq !== currentNetworkLoadSeq || selectedNetworkId.value !== networkId) return
+
+    // 4. 待地图平移完全到位后，直接从二进制解析出的边界坐标渲染高亮虚线框
+    if (map && selectedNetworkId.value === networkId && boundaryGeo) {
+      if (xzqHighlightLayer) {
+        map.removeLayer(xzqHighlightLayer)
       }
+      xzqHighlightLayer = L.geoJSON(boundaryGeo, {
+        renderer: L.svg({ padding: 2.0 }),
+        style: {
+          stroke: true,
+          color: '#38bdf8',
+          weight: 3,
+          opacity: 1.0,
+          dashArray: '8, 8',
+          fill: false,
+          fillOpacity: 0
+        }
+      }).addTo(map)
     }
 
-    // 4. WebGPU 显存并行算路引擎异步就绪
+    // 5. WebGPU 显存并行算路引擎异步就绪
     const gpuEngine = new PGRBGpuEngine()
     const supported = await gpuEngine.init()
-    if (supported) {
+    if (supported && loadSeq === currentNetworkLoadSeq) {
       await gpuEngine.uploadGraph(router)
       gpuEngineInstance = gpuEngine
     }
@@ -1063,7 +1076,7 @@ async function enrichNetworksWithFullName(rawList) {
   })
 }
 
-async function fetchRoadNetworks(targetSelectId = null) {
+async function fetchRoadNetworks(targetSelectId = null, autoSwitchMap = true) {
   networksLoading.value = true
   try {
     const response = await fetch(`${routeApiBase}/networks`)
@@ -1075,6 +1088,11 @@ async function fetchRoadNetworks(targetSelectId = null) {
         ...net,
         editingName: net.name || net.id
       }))
+
+      if (!autoSwitchMap) {
+        // 静默更新路网元数据列表，不切换地图当前路网与视野
+        return
+      }
 
       let targetNet = null
       if (targetSelectId) {
@@ -1100,15 +1118,19 @@ async function fetchRoadNetworks(targetSelectId = null) {
     } else {
       networksList.value = []
       editableNetworks.value = []
-      selectedNetworkId.value = ''
-      loadRoadNetworkRange(null)
+      if (autoSwitchMap) {
+        selectedNetworkId.value = ''
+        loadRoadNetworkRange(null)
+      }
     }
   } catch (err) {
     console.error('获取路网配置列表异常:', err)
     networksList.value = []
     editableNetworks.value = []
-    selectedNetworkId.value = ''
-    loadRoadNetworkRange(null)
+    if (autoSwitchMap) {
+      selectedNetworkId.value = ''
+      loadRoadNetworkRange(null)
+    }
   } finally {
     networksLoading.value = false
   }
@@ -1513,12 +1535,24 @@ async function submitXzqBuild() {
 
     isXzqBuilding.value = false
     if (res.code === 200) {
+      const builtId = selectedXzqItem.value ? selectedXzqItem.value.id : null
       xzqMsg.color = '#10b981'
-      xzqMsg.text = '✅ ' + (res.data ? res.data.msg : '路网相交构建成功！')
-      setTimeout(() => {
-        showXzqModal.value = false
-        fetchRoadNetworks(netId)
-      }, 1500)
+      xzqMsg.text = `✅【${netName}】相交路网构建成功！已自动从列表中移除，可继续选择其他区域建网。`
+
+      // 1. 从当前待建列表中立即移除刚才建网的要素
+      if (builtId != null) {
+        xzqList.value = xzqList.value.filter(item => String(item.id) !== String(builtId))
+      }
+      selectedXzqItem.value = null
+
+      // 2. 清理选中的高亮预览图层，地图不进行任何平移与缩放操作
+      if (xzqHighlightLayer && map) {
+        map.removeLayer(xzqHighlightLayer)
+        xzqHighlightLayer = null
+      }
+
+      // 3. 静默在后台更新路网列表与已建计数，不切换地图当前路网与视野
+      fetchRoadNetworks(null, false)
     } else {
       xzqMsg.color = '#ef4444'
       xzqMsg.text = '❌ ' + (res.msg || '构建失败')
