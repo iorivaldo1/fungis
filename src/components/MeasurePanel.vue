@@ -171,21 +171,39 @@ const toggleArea = () => {
 }
 
 const clearMeasure = () => {
-  lineTool?.clear()
-  polygonTool?.clear()
-  lineTool?.close()
-  polygonTool?.close()
+  try {
+    lineTool?.clear()
+  } catch (e) {
+    // 忽略天地图工具内部未绘制时调用 clear 的异常
+  }
+  try {
+    polygonTool?.clear()
+  } catch (e) {
+    // 忽略天地图工具内部未绘制时调用 clear 的异常
+  }
+  try {
+    lineTool?.close()
+  } catch (e) {}
+  try {
+    polygonTool?.close()
+  } catch (e) {}
   activeTool.value = null
 }
 
 const closeTools = () => {
-  lineTool?.close()
-  polygonTool?.close()
+  try {
+    lineTool?.close()
+  } catch (e) {}
+  try {
+    polygonTool?.close()
+  } catch (e) {}
   activeTool.value = null
 }
 
 onUnmounted(() => {
-  clearMeasure()
+  try {
+    clearMeasure()
+  } catch (e) {}
   lineTool = null
   polygonTool = null
 })

@@ -161,7 +161,7 @@ import LocatePanel from '@/components/LocatePanel.vue'
 import LocationTablePanel from '@/components/LocationTablePanel.vue'
 import ShpPanel from '@/components/ShpPanel.vue'
 import JsonPanel from '@/components/JsonPanel.vue'
-import { renderGeoJsonToCesium, flashFeatureCesium, renderGeoJsonLabelsCesium } from '@/utils/shpMapRenderer.js'
+import { renderGeoJsonToCesium, flashFeatureCesium, renderGeoJsonLabelsCesium, clearGeoJsonLabelsCesium } from '@/utils/shpMapRenderer.js'
 
 
 const router = useRouter()
@@ -402,25 +402,26 @@ const shpLabelEntitiesMap = {}
 
 const handleShpToggleLabelField = ({ layer, field }) => {
   if (!viewer || !layer) return
+  const ds = shpDataSourcesMap[layer.id]
   if (shpLabelEntitiesMap[layer.id]) {
-    shpLabelEntitiesMap[layer.id].forEach(entity => viewer.entities.remove(entity))
+    clearGeoJsonLabelsCesium(viewer, ds, shpLabelEntitiesMap[layer.id])
     delete shpLabelEntitiesMap[layer.id]
   }
   if (field) {
-    const entities = renderGeoJsonLabelsCesium(viewer, layer.geojson, field, '#ffffff')
+    const entities = renderGeoJsonLabelsCesium(viewer, layer.geojson, field, '#ffffff', ds)
     shpLabelEntitiesMap[layer.id] = entities
   }
 }
 
 const handleShpDeleteLayer = (layer) => {
   const ds = shpDataSourcesMap[layer.id]
+  if (shpLabelEntitiesMap[layer.id]) {
+    clearGeoJsonLabelsCesium(viewer, ds, shpLabelEntitiesMap[layer.id])
+    delete shpLabelEntitiesMap[layer.id]
+  }
   if (ds && viewer) {
     viewer.dataSources.remove(ds)
     delete shpDataSourcesMap[layer.id]
-  }
-  if (shpLabelEntitiesMap[layer.id] && viewer) {
-    shpLabelEntitiesMap[layer.id].forEach(entity => viewer.entities.remove(entity))
-    delete shpLabelEntitiesMap[layer.id]
   }
 }
 
@@ -440,13 +441,12 @@ const handleShpClearAll = () => {
   if (!viewer) return
   Object.keys(shpDataSourcesMap).forEach(id => {
     const ds = shpDataSourcesMap[id]
+    if (shpLabelEntitiesMap[id]) {
+      clearGeoJsonLabelsCesium(viewer, ds, shpLabelEntitiesMap[id])
+    }
     if (ds) viewer.dataSources.remove(ds)
   })
   Object.keys(shpDataSourcesMap).forEach(key => delete shpDataSourcesMap[key])
-
-  Object.keys(shpLabelEntitiesMap).forEach(id => {
-    shpLabelEntitiesMap[id].forEach(entity => viewer.entities.remove(entity))
-  })
   Object.keys(shpLabelEntitiesMap).forEach(key => delete shpLabelEntitiesMap[key])
 }
 
@@ -477,25 +477,26 @@ const jsonLabelEntitiesMap = {}
 
 const handleJsonToggleLabelField = ({ layer, field }) => {
   if (!viewer || !layer) return
+  const ds = jsonDataSourcesMap[layer.id]
   if (jsonLabelEntitiesMap[layer.id]) {
-    jsonLabelEntitiesMap[layer.id].forEach(entity => viewer.entities.remove(entity))
+    clearGeoJsonLabelsCesium(viewer, ds, jsonLabelEntitiesMap[layer.id])
     delete jsonLabelEntitiesMap[layer.id]
   }
   if (field) {
-    const entities = renderGeoJsonLabelsCesium(viewer, layer.geojson, field, '#ffffff')
+    const entities = renderGeoJsonLabelsCesium(viewer, layer.geojson, field, '#ffffff', ds)
     jsonLabelEntitiesMap[layer.id] = entities
   }
 }
 
 const handleJsonDeleteLayer = (layer) => {
   const ds = jsonDataSourcesMap[layer.id]
+  if (jsonLabelEntitiesMap[layer.id]) {
+    clearGeoJsonLabelsCesium(viewer, ds, jsonLabelEntitiesMap[layer.id])
+    delete jsonLabelEntitiesMap[layer.id]
+  }
   if (ds && viewer) {
     viewer.dataSources.remove(ds)
     delete jsonDataSourcesMap[layer.id]
-  }
-  if (jsonLabelEntitiesMap[layer.id] && viewer) {
-    jsonLabelEntitiesMap[layer.id].forEach(entity => viewer.entities.remove(entity))
-    delete jsonLabelEntitiesMap[layer.id]
   }
 }
 
@@ -515,13 +516,12 @@ const handleJsonClearAll = () => {
   if (!viewer) return
   Object.keys(jsonDataSourcesMap).forEach(id => {
     const ds = jsonDataSourcesMap[id]
+    if (jsonLabelEntitiesMap[id]) {
+      clearGeoJsonLabelsCesium(viewer, ds, jsonLabelEntitiesMap[id])
+    }
     if (ds) viewer.dataSources.remove(ds)
   })
   Object.keys(jsonDataSourcesMap).forEach(key => delete jsonDataSourcesMap[key])
-
-  Object.keys(jsonLabelEntitiesMap).forEach(id => {
-    jsonLabelEntitiesMap[id].forEach(entity => viewer.entities.remove(entity))
-  })
   Object.keys(jsonLabelEntitiesMap).forEach(key => delete jsonLabelEntitiesMap[key])
 }
 

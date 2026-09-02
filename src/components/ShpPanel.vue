@@ -7,6 +7,15 @@
 
     <transition name="slide-fade">
       <div v-show="!isCollapsed" class="info-content shp-content">
+        <!-- 隐藏的文件选择 input -->
+        <input 
+          type="file" 
+          ref="fileInputRef" 
+          @change="handleFileInputChange" 
+          accept=".shp,.dbf,.prj,.cpg,.shx,.zip" 
+          multiple
+          style="display: none;" 
+        />
         <!-- 隐藏的文件夹选择 input -->
         <input 
           type="file" 
@@ -23,15 +32,20 @@
           @dragleave.prevent="isDraggingOver = false"
           @drop.prevent="handleDrop"
         >
-          <button class="shp-upload-btn folder-btn" @click="triggerFolderInput" :disabled="isLoading">
-            <span v-if="isLoading" class="loading-spinner">⏳ 解析中...</span>
-            <span v-else>📂 选择 SHP 矢量文件夹</span>
-          </button>
-          <div class="drag-hint">或拖拽包含 .shp / .dbf 的本地文件夹至此处</div>
+          <div class="btn-group">
+            <button class="shp-upload-btn" @click="triggerFileInput" :disabled="isLoading">
+              <span v-if="isLoading" class="loading-spinner">⏳ 解析中...</span>
+              <span v-else>📄 选择 SHP/ZIP 文件</span>
+            </button>
+            <button class="shp-upload-btn folder-btn" @click="triggerFolderInput" :disabled="isLoading">
+              <span>📂 文件夹</span>
+            </button>
+          </div>
+          <div class="drag-hint">或拖拽包含 .shp / .dbf 的本地文件或文件夹至此处</div>
         </div>
 
         <div class="shp-tip" v-if="layers.length === 0">
-          选择或拖拽本地文件夹，自动批量读取并关联同名 .shp 图形与 .dbf 属性表。
+          支持选择/拖拽 SHP 文件（自动关联同名 .dbf/.prj）或包含图层的文件夹/ZIP 压缩包。
         </div>
 
         <!-- 图层管理列表 -->
@@ -146,11 +160,19 @@ const toggleCollapse = () => {
 }
 
 const isDraggingOver = ref(false)
+const fileInputRef = ref(null)
 const folderInputRef = ref(null)
 
 const isCrsModalVisible = ref(false)
 const currentCrsLayer = ref(null)
 const pendingShpQueue = ref([])
+
+const triggerFileInput = () => {
+  if (fileInputRef.value) {
+    fileInputRef.value.value = ''
+    fileInputRef.value.click()
+  }
+}
 
 const triggerFolderInput = () => {
   if (folderInputRef.value) {

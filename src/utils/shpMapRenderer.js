@@ -139,6 +139,24 @@ export function ensureWgs84GeoJson(geojson, prjText = '') {
 }
 
 /**
+ * 创建天地图圆点 Marker 覆盖物
+ */
+function createTiandituPointMarker(pt, color = '#3b82f6', size = 14, fillOpacity = 0.85) {
+  const radius = size / 2
+  const innerRadius = Math.max(1, radius - 1.5)
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+    <circle cx="${radius}" cy="${radius}" r="${innerRadius}" fill="${color}" fill-opacity="${fillOpacity}" stroke="#ffffff" stroke-width="2"/>
+  </svg>`
+  const iconUrl = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg)
+  const icon = new window.T.Icon({
+    iconUrl,
+    iconSize: new window.T.Point(size, size),
+    iconAnchor: new window.T.Point(radius, radius)
+  })
+  return new window.T.Marker(pt, { icon })
+}
+
+/**
  * 将 GeoJSON 渲染为天地图 (TMap) 覆盖物组
  * @param {Object} map 天地图实例 (window.T.Map)
  * @param {Object} rawGeojson GeoJSON 数据
@@ -168,28 +186,14 @@ export function renderGeoJsonToTianditu(map, rawGeojson, color = '#3b82f6') {
     if (type === 'Point') {
       const pt = new window.T.LngLat(coordinates[0], coordinates[1])
       boundsPoints.push(pt)
-      const marker = new window.T.CircleMarker(pt, {
-        color: color,
-        weight: 2,
-        opacity: 0.9,
-        fillColor: color,
-        fillOpacity: 0.8,
-        radius: 6
-      })
+      const marker = createTiandituPointMarker(pt, color, 14, 0.85)
       map.addOverLay(marker)
       overlays.push(marker)
     } else if (type === 'MultiPoint') {
       coordinates.forEach(c => {
         const pt = new window.T.LngLat(c[0], c[1])
         boundsPoints.push(pt)
-        const marker = new window.T.CircleMarker(pt, {
-          color: color,
-          weight: 2,
-          opacity: 0.9,
-          fillColor: color,
-          fillOpacity: 0.8,
-          radius: 6
-        })
+        const marker = createTiandituPointMarker(pt, color, 14, 0.85)
         map.addOverLay(marker)
         overlays.push(marker)
       })
@@ -398,13 +402,7 @@ export function flashFeatureTianditu(map, feature, highlightColor = '#ff0055') {
   const parseCoords = (cList) => cList.map(c => new window.T.LngLat(c[0], c[1]))
 
   if (type === 'Point') {
-    flashOverlay = new window.T.CircleMarker(centerPt, {
-      color: highlightColor,
-      weight: 4,
-      fillColor: '#ffffff',
-      fillOpacity: 0.9,
-      radius: 12
-    })
+    flashOverlay = createTiandituPointMarker(centerPt, highlightColor, 22, 0.95)
   } else if (type === 'LineString') {
     flashOverlay = new window.T.Polyline(parseCoords(coords), {
       color: highlightColor,
@@ -676,12 +674,50 @@ export function renderGeoJsonLabelsBaidu(map, geojson, fieldName, labelColor = '
 /**
  * 在 Cesium 3D 上根据指定属性字段生成文字标注 Entity 数组
  */
-export function renderGeoJsonLabelsCesium(viewer, geojson, fieldName, labelColorCss = '#ffffff') {
+export function renderGeoJsonLabelsCesium(viewer, geojson, fieldName, labelColorCss = '#ffffff', dataSource = null) {
   if (!viewer || !geojson || !geojson.features || !fieldName) return []
 
-  const entities = []
   const labelColor = Cesium.Color.fromCssColorString(labelColorCss)
 
+  // 1. 如果提供了现成的 GeoJsonDataSource，直接将 Label 绑定到 DataSource 内部现有的 Entity 上
+  if (dataSource && dataSource.entities && dataSource.entities.values.length > 0) {
+    const dsEntities = dataSource.entities.values
+    dsEntities.forEach((entity, idx) => {
+      const feat = geojson.features[idx]
+      let val = null
+      if (entity.properties && typeof entity.properties.hasProperty === 'function' && entity.properties.hasProperty(fieldName)) {
+        val = entity.properties[fieldName].getValue()
+      } else if (feat && feat.properties) {
+        val = feat.properties[fieldName]
+      }
+
+      if (val !== undefined && val !== null && String(val).trim() !== '') {
+        if (!entity.position && feat) {
+          const info = getFeatureCenterAndBounds(feat)
+          if (info) {
+            entity.position = Cesium.Cartesian3.fromDegrees(info.center[0], info.center[1])
+          }
+        }
+
+        entity.label = new Cesium.LabelGraphics({
+          text: String(val),
+          font: 'bold 12px sans-serif',
+          fillColor: labelColor,
+          outlineColor: Cesium.Color.BLACK,
+          outlineWidth: 3,
+          style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+          verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+          pixelOffset: entity.billboard ? new Cesium.Cartesian2(0, -32) : new Cesium.Cartesian2(0, -10),
+          heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+          disableDepthTestDistance: Number.POSITIVE_INFINITY
+        })
+      }
+    })
+    return []
+  }
+
+  // 2. 否则创建独立的文字标注 Entity
+  const entities = []
   geojson.features.forEach(feature => {
     const val = feature.properties ? feature.properties[fieldName] : null
     if (val === undefined || val === null || String(val).trim() === '') return
@@ -692,16 +728,17 @@ export function renderGeoJsonLabelsCesium(viewer, geojson, fieldName, labelColor
     const [lng, lat] = info.center
 
     const entity = viewer.entities.add({
-      position: Cesium.Cartesian3.fromDegrees(lng, lat, 15),
+      position: Cesium.Cartesian3.fromDegrees(lng, lat),
       label: {
         text: String(val),
-        font: '13px sans-serif',
+        font: 'bold 12px sans-serif',
         fillColor: labelColor,
         outlineColor: Cesium.Color.BLACK,
         outlineWidth: 3,
         style: Cesium.LabelStyle.FILL_AND_OUTLINE,
         verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
-        pixelOffset: new Cesium.Cartesian2(0, -10),
+        pixelOffset: new Cesium.Cartesian2(0, -32),
+        heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
         disableDepthTestDistance: Number.POSITIVE_INFINITY
       }
     })
@@ -710,6 +747,20 @@ export function renderGeoJsonLabelsCesium(viewer, geojson, fieldName, labelColor
   })
 
   return entities
+}
+
+/**
+ * 清除 Cesium 图层上的文字标注
+ */
+export function clearGeoJsonLabelsCesium(viewer, dataSource = null, labelEntities = []) {
+  if (dataSource && dataSource.entities) {
+    dataSource.entities.values.forEach(entity => {
+      entity.label = undefined
+    })
+  }
+  if (viewer && Array.isArray(labelEntities)) {
+    labelEntities.forEach(entity => viewer.entities.remove(entity))
+  }
 }
 
 /**

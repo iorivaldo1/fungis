@@ -139,16 +139,25 @@ const handleCancel = () => {
 const handleConfirm = () => {
   if (!props.layerData || !props.layerData.rawGeojson) return
 
+  let geojson
   try {
-    const geojson = transformGeoJsonCrs(props.layerData.rawGeojson, selectedCrs.value)
+    geojson = transformGeoJsonCrs(props.layerData.rawGeojson, selectedCrs.value)
+  } catch (err) {
+    alert('坐标系转换失败: ' + err.message)
+    return
+  }
+
+  emit('update:visible', false)
+
+  try {
     emit('confirm', {
       fileName: props.layerData.name,
       geojson,
       crs: selectedCrs.value
     })
-    emit('update:visible', false)
   } catch (err) {
-    alert('坐标系转换失败: ' + err.message)
+    console.error('图层添加失败:', err)
+    alert('图层渲染失败: ' + err.message)
   }
 }
 </script>
