@@ -344,7 +344,10 @@
                 <td colspan="3" class="text-center empty-td">当前级别暂无配置的路网数据</td>
               </tr>
               <tr v-for="net in filteredEditableNetworks" :key="net.id">
-                <td class="net-id-cell">{{ net.id }}</td>
+                <td class="net-id-cell">
+                  <div>{{ net.id }}</div>
+                  <div v-if="net.buildTime" style="font-size: 11px; color: #64748b; margin-top: 2px;">🕒 {{ net.buildTime }}</div>
+                </td>
                 <td>
                   <input
                     type="text"
@@ -948,7 +951,9 @@ async function loadRoadNetworkRange(networkId) {
   const baseUrl = `${apiBaseUrl}/get_geo_pg`
   const router = new PGRBRouter()
   try {
-    await router.loadNetwork(networkId, baseUrl)
+    const targetNet = Array.isArray(networksList.value) ? networksList.value.find(n => n.id === networkId) : null
+    const serverBuildTime = targetNet ? targetNet.buildTime : null
+    await router.loadNetwork(networkId, baseUrl, serverBuildTime)
     if (loadSeq !== currentNetworkLoadSeq || selectedNetworkId.value !== networkId) return
 
     pgrbRouterInstance = router

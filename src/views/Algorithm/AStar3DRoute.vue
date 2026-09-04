@@ -65,8 +65,22 @@
             ⚙️ 路网管理
           </button>
         </div>
-        <!-- 行政级别单选切换 (区县、乡镇、街道) -->
+        <!-- 行政级别单选切换 (市级、区县、乡镇、街道) -->
         <div class="level-radio-group">
+          <label
+            class="level-radio-item"
+            :class="{ active: selectedLevelFilter === 'city' }"
+          >
+            <input
+              type="radio"
+              name="levelFilter"
+              value="city"
+              v-model="selectedLevelFilter"
+              @change="onLevelFilterChange"
+            />
+            <span class="radio-dot"></span>
+            <span class="radio-text">市级</span>
+          </label>
           <label
             class="level-radio-item"
             :class="{ active: selectedLevelFilter === 'county' }"
@@ -275,8 +289,21 @@
             </button>
           </div>
 
-          <!-- 行政级别单选切换 (全部、区县、乡镇、街道) -->
+          <!-- 行政级别单选切换 (全部、市级、区县、乡镇、街道) -->
           <div class="level-radio-group manage-level-radio">
+            <label
+              class="level-radio-item"
+              :class="{ active: manageLevelFilter === 'city' }"
+            >
+              <input
+                type="radio"
+                name="manageLevelFilter"
+                value="city"
+                v-model="manageLevelFilter"
+              />
+              <span class="radio-dot"></span>
+              <span class="radio-text">市级 ({{ countByLevel('city') }})</span>
+            </label>
             <label
               class="level-radio-item"
               :class="{ active: manageLevelFilter === 'county' }"
@@ -344,7 +371,10 @@
                 <td colspan="3" class="text-center empty-td">当前级别暂无配置的路网数据</td>
               </tr>
               <tr v-for="net in filteredEditableNetworks" :key="net.id">
-                <td class="net-id-cell">{{ net.id }}</td>
+                <td class="net-id-cell">
+                  <div>{{ net.id }}</div>
+                  <div v-if="net.buildTime" style="font-size: 11px; color: #64748b; margin-top: 2px;">🕒 {{ net.buildTime }}</div>
+                </td>
                 <td>
                   <input
                     type="text"
@@ -491,7 +521,7 @@ import { PGRBGpuEngine } from '@/utils/pgrb-gpu-engine.js'
 const mapContainer = ref(null)
 
 const zoomValue = ref('--')
-const selectedLevelFilter = ref('county') // 'county' | 'town' | 'village'
+const selectedLevelFilter = ref('county') // 'city' | 'county' | 'town' | 'village'
 const selectedNetworkId = ref('')
 const networksList = ref([])
 const editableNetworks = ref([])
@@ -517,7 +547,7 @@ const resDistance = ref('-- km')
 const resNodes = ref('-- -> --')
 
 const showManageModal = ref(false)
-const manageLevelFilter = ref('county') // 'county' | 'town' | 'village' | 'all'
+const manageLevelFilter = ref('county') // 'city' | 'county' | 'town' | 'village' | 'all'
 const showXzqModal = ref(false)
 
 const xzqLevels = ref([])
@@ -594,11 +624,13 @@ function getNetworkLevel(net) {
   if (!net) return 'county'
   if (net.level) {
     const l = String(net.level).toLowerCase()
+    if (l === 'city' || l.includes('市级') || l === '市') return 'city'
     if (l === 'county' || l.includes('区') || l.includes('县')) return 'county'
     if (l === 'town' || l.includes('镇') || l.includes('乡')) return 'town'
     if (l === 'village' || l === 'street' || l.includes('街') || l.includes('村')) return 'village'
   }
   const id = (net.id || '').toLowerCase()
+  if (id.startsWith('xzq_city_') || id.includes('city')) return 'city'
   if (id.startsWith('xzq_county_') || id.includes('county')) return 'county'
   if (id.startsWith('xzq_town_') || id.includes('town')) return 'town'
   if (id.startsWith('xzq_village_') || id.startsWith('xzq_street_') || id.includes('village') || id.includes('street') || id.startsWith('shjd')) return 'village'
@@ -606,7 +638,8 @@ function getNetworkLevel(net) {
   const name = (net.name || '')
   if (name.includes('街道') || name.includes('村') || name.includes('社区')) return 'village'
   if (name.includes('镇') || name.includes('乡')) return 'town'
-  if (name.includes('区') || name.includes('县') || name.includes('市')) return 'county'
+  if (name.includes('区') || name.includes('县')) return 'county'
+  if (name.includes('市') || name.includes('州') || name.includes('盟')) return 'city'
 
   return 'county'
 }
@@ -636,10 +669,10 @@ function getExistingXzqIdSet(level) {
   for (const net of networksList.value) {
     if (!net || !net.id) continue
     if (net.id.startsWith(prefix)) {
-      const featId = net.id.replace(prefix, '')
+      const featId = net.id.replace(prefix, '').replace(/_3d$/, '')
       idSet.add(String(featId).trim().toLowerCase())
     } else if (getNetworkLevel(net) === level) {
-      idSet.add(String(net.id).trim().toLowerCase())
+      idSet.add(String(net.id).replace(/_3d$/, '').trim().toLowerCase())
     }
   }
   return idSet
@@ -948,7 +981,9 @@ async function loadRoadNetworkRange(networkId) {
   const baseUrl = `${apiBaseUrl}/get_geo_pg`
   const router = new PGRBRouter()
   try {
-    await router.loadNetwork(networkId, baseUrl)
+    const targetNet = Array.isArray(networksList.value) ? networksList.value.find(n => n.id === networkId) : null
+    const serverBuildTime = targetNet ? targetNet.buildTime : null
+    await router.loadNetwork(networkId, baseUrl, serverBuildTime)
     if (loadSeq !== currentNetworkLoadSeq || selectedNetworkId.value !== networkId) return
 
     pgrbRouterInstance = router
@@ -1921,7 +1956,8 @@ onUnmounted(() => {
 .level-radio-group {
   display: flex;
   align-items: center;
-  gap: 16px;
+  justify-content: space-between;
+  gap: 8px;
   margin: 6px 0 8px 0;
   padding: 4px 6px;
   background: rgba(15, 23, 42, 0.45);

@@ -110,6 +110,11 @@ class PGRBRouter {
         this._distBuf = null;
         this._prevBuf = null;
 
+        // PGRB 离线图元数据 (Metadata: 版本时间戳与持久化状态)
+        this.buildTime = null;
+        this.savedAt = null;
+        this.metadata = null;
+
         // 2D 空间网格索引 (Spatial Grid Index)
         this._gridCols = 128;
         this._gridRows = 128;
@@ -193,32 +198,58 @@ class PGRBRouter {
     }
 
     /**
-     * 高级智能加载策略：优先从 IndexedDB 读取 → 未命中则 HTTP 下载并自动写入 IndexedDB
+     * 高级智能加载策略：支持服务端版本时间戳 (buildTime) 校验
+     * 若服务端提供了 buildTime 且与本地缓存不一致，自动清除旧缓存并拉取最新图；
+     * 若版本一致，直接从 IndexedDB 秒开；未命中则下载并持久化。
      */
-    async loadNetwork(networkId, baseUrl) {
+    async loadNetwork(networkId, baseUrl, serverBuildTime = null) {
         this.networkId = networkId;
         const cacheKey = `pgrb_v20_${networkId}`;
 
         // 1. 尝试从 IndexedDB 读取
-        const cachedBuffer = await this.loadFromIndexedDB(cacheKey);
-        if (cachedBuffer) {
-            console.log(`[PGRB] ⚡ 离线缓存命中！直接从 IndexedDB 加载路网【${networkId}】 (体积: ${(cachedBuffer.byteLength / 1024 / 1024).toFixed(2)} MB)`);
-            this.parseArrayBuffer(cachedBuffer);
-            // 智能防呆：若缓存中未包含多边形矢量边界（boundaryPointCount === 0），自动废弃并强制重新从后端同步最新图
-            if (this.boundaryPointCount > 0 || !networkId.startsWith('xzq_')) {
-                return true;
+        const cachedItem = await this.loadFromIndexedDB(cacheKey);
+        if (cachedItem) {
+            let cachedBuffer = null;
+            let cachedBuildTime = null;
+            let cachedSavedAt = null;
+
+            if (cachedItem instanceof ArrayBuffer) {
+                cachedBuffer = cachedItem;
+            } else if (cachedItem && cachedItem.buffer instanceof ArrayBuffer) {
+                cachedBuffer = cachedItem.buffer;
+                cachedBuildTime = cachedItem.buildTime || null;
+                cachedSavedAt = cachedItem.savedAt || null;
             }
-            console.warn(`[PGRB] ⚠️ 发现本地缓存缺少多边形矢量边界，自动清除本地缓存并重新从后端拉取完整矢量图...`);
-            await PGRBRouter.clearCache(networkId);
+
+            // 版本一致性比对：若服务端提供了有效 buildTime，且本地缓存中存有不同的 buildTime，则判定版本过期
+            const isVersionMatch = !serverBuildTime || !cachedBuildTime || (cachedBuildTime === serverBuildTime);
+
+            if (cachedBuffer && isVersionMatch) {
+                console.log(`[PGRB] ⚡ 离线缓存命中！直接从 IndexedDB 加载路网【${networkId}】(构建版本: ${cachedBuildTime || '历史版本'}, 体积: ${(cachedBuffer.byteLength / 1024 / 1024).toFixed(2)} MB)`);
+                this.buildTime = cachedBuildTime;
+                this.savedAt = cachedSavedAt;
+                this.metadata = { networkId, buildTime: cachedBuildTime, savedAt: cachedSavedAt };
+                this.parseArrayBuffer(cachedBuffer);
+                // 智能防呆：若缓存中未包含多边形矢量边界（boundaryPointCount === 0），自动废弃并强制重新从后端同步最新图
+                if (this.boundaryPointCount > 0 || !networkId.startsWith('xzq_')) {
+                    return true;
+                }
+                console.warn(`[PGRB] ⚠️ 发现本地缓存缺少多边形矢量边界，自动清除本地缓存并重新从后端拉取完整矢量图...`);
+                await PGRBRouter.clearCache(networkId);
+            } else if (cachedBuffer && !isVersionMatch) {
+                console.warn(`[PGRB] 🔄 检测到服务端路网已更新！本地缓存版本: [${cachedBuildTime}], 服务端最新版本: [${serverBuildTime}]，自动更新本地离线图...`);
+                await PGRBRouter.clearCache(networkId);
+            }
         }
 
-        // 2. 缓存未命中，从后端下载
-        return await this.loadFromUrl(baseUrl, networkId, cacheKey);
+        // 2. 缓存未命中或版本过期，从后端下载
+        return await this.loadFromUrl(baseUrl, networkId, cacheKey, serverBuildTime);
     }
 
-    async loadFromUrl(baseUrl, networkId, cacheKey) {
-        const downloadUrl = `${baseUrl}/geo/route/graph/binary?networkId=${networkId}`;
-        console.log(`[PGRB] 🌐 离线缓存未命中，从后端下载二进制图: ${downloadUrl}`);
+    async loadFromUrl(baseUrl, networkId, cacheKey, serverBuildTime = null) {
+        const timeParam = serverBuildTime ? `&_t=${encodeURIComponent(serverBuildTime)}` : `&_t=${Date.now()}`;
+        const downloadUrl = `${baseUrl}/geo/route/graph/binary?networkId=${networkId}${timeParam}`;
+        console.log(`[PGRB] 🌐 离线缓存未命中或已过期，从后端下载最新二进制图: ${downloadUrl}`);
         const response = await fetch(downloadUrl);
         if (!response.ok) {
             throw new Error(`下载 PGRB 失败 HTTP ${response.status}: ${downloadUrl}`);
@@ -229,14 +260,40 @@ class PGRBRouter {
         // 3. 解析二进制
         this.parseArrayBuffer(buffer);
 
-        // 4. 异步保存到 IndexedDB
+        // 4. 异步保存到 IndexedDB（包含版本与时间戳元数据）
         if (cacheKey) {
-            this.saveToIndexedDB(cacheKey, buffer).then((success) => {
+            const cachePayload = {
+                networkId: networkId,
+                buildTime: serverBuildTime || new Date().toLocaleString(),
+                savedAt: Date.now(),
+                buffer: buffer
+            };
+            this.buildTime = cachePayload.buildTime;
+            this.savedAt = cachePayload.savedAt;
+            this.metadata = { networkId, buildTime: cachePayload.buildTime, savedAt: cachePayload.savedAt };
+            this.saveToIndexedDB(cacheKey, cachePayload).then((success) => {
                 if (success) {
-                    console.log(`[PGRB] ✅ 路网【${networkId}】二进制图已持久化至 IndexedDB 离线数据库`);
+                    console.log(`[PGRB] ✅ 路网【${networkId}】二进制图与版本元数据 (${cachePayload.buildTime}) 已持久化至 IndexedDB 离线数据库`);
                 }
             });
         }
+    }
+
+    /**
+     * 获取当前路网的 PGRB 离线元数据（包含版本构建时间戳、持久化时间、图拓扑基础指标等）
+     */
+    getMetadata() {
+        return {
+            networkId: this.networkId,
+            buildTime: this.buildTime,
+            savedAt: this.savedAt,
+            version: this.version,
+            nodeCount: this.nodeCount,
+            edgeCount: this.edgeCount,
+            pointCount: this.pointCount,
+            boundaryPointCount: this.boundaryPointCount,
+            bbox: this.bbox
+        };
     }
 
     // ==========================================
@@ -698,6 +755,262 @@ class PGRBRouter {
         return { path, distance: dist[endIdx] };
     }
 
+    /**
+     * 带节点/弧段屏蔽掩码的 A* / Dijkstra 最短路计算 (用于 Yen 偏离分支探索)
+     * @param {number} startIdx 起点
+     * @param {number} endIdx 终点
+     * @param {boolean} directed 是否有向
+     * @param {Set<number>|null} disabledNodes 临时屏蔽的节点集合
+     * @param {Set<string>|null} disabledEdges 临时屏蔽的弧段集合 (格式: "u->v")
+     */
+    dijkstraWithMask(startIdx, endIdx, directed = true, disabledNodes = null, disabledEdges = null) {
+        if (!this.isLoaded || startIdx < 0 || endIdx < 0 || startIdx >= this.nodeCount || endIdx >= this.nodeCount) {
+            return { path: [], distance: 0 };
+        }
+
+        if (startIdx === endIdx) {
+            return { path: [startIdx], distance: 0 };
+        }
+
+        if (disabledNodes && (disabledNodes.has(startIdx) || disabledNodes.has(endIdx))) {
+            return { path: [], distance: 0 };
+        }
+
+        const dist = this._distBuf;
+        const prev = this._prevBuf;
+        dist.fill(Infinity);
+        prev.fill(-1);
+        dist[startIdx] = 0;
+
+        const endCoordIdx = this._nodeFirstCoordIdx[endIdx];
+        const endLngS = endCoordIdx >= 0 ? this._coordPool[endCoordIdx * 2] : 0;
+        const endLatS = endCoordIdx >= 0 ? this._coordPool[endCoordIdx * 2 + 1] : 0;
+
+        const pq = this._pq;
+        pq.clear();
+
+        const getH = (u) => {
+            const cIdx = this._nodeFirstCoordIdx[u];
+            if (cIdx < 0) return 0;
+            const dx = (this._coordPool[cIdx * 2] - endLngS) * 0.09;
+            const dy = (this._coordPool[cIdx * 2 + 1] - endLatS) * 0.11;
+            return Math.sqrt(dx * dx + dy * dy);
+        };
+
+        pq.push(startIdx, getH(startIdx));
+
+        while (!pq.isEmpty()) {
+            const { node: u, dist: fDist } = pq.pop();
+
+            if (u === endIdx) break;
+            if (dist[u] === Infinity) break;
+
+            const edgeStart = this._dirNodeOffsets ? this._dirNodeOffsets[u] : this._nodeOffsets[u];
+            const edgeEnd = this._dirNodeOffsets ? this._dirNodeOffsets[u + 1] : this._nodeOffsets[u + 1];
+
+            for (let i = edgeStart; i < edgeEnd; i++) {
+                const target = this._dirTarget ? this._dirTarget[i] : this._edgesTarget[i];
+
+                if (disabledNodes && disabledNodes.has(target)) continue;
+                if (disabledEdges && disabledEdges.has(`${u}->${target}`)) continue;
+
+                const cost = directed ? (this._dirCost ? this._dirCost[i] : this._edgesCost[i]) : (this._dirLen ? this._dirLen[i] : (this._edgesCost[i] > 0 ? this._edgesCost[i] : 100));
+
+                if (cost >= 0) {
+                    const alt = dist[u] + cost;
+                    if (alt < dist[target]) {
+                        dist[target] = alt;
+                        prev[target] = u;
+                        pq.push(target, alt + getH(target));
+                    }
+                }
+            }
+        }
+
+        if (dist[endIdx] === Infinity) {
+            return { path: [], distance: 0 };
+        }
+
+        const path = [];
+        for (let curr = endIdx; curr !== -1; curr = prev[curr]) {
+            path.push(curr);
+        }
+        path.reverse();
+
+        return { path, distance: dist[endIdx] };
+    }
+
+    _getEdgeCostBetween(u, v, directed = true) {
+        const edgeStart = this._dirNodeOffsets ? this._dirNodeOffsets[u] : this._nodeOffsets[u];
+        const edgeEnd = this._dirNodeOffsets ? this._dirNodeOffsets[u + 1] : this._nodeOffsets[u + 1];
+        for (let i = edgeStart; i < edgeEnd; i++) {
+            if (this._dirTarget[i] === v) {
+                const cost = directed ? (this._dirCost ? this._dirCost[i] : this._edgesCost[i]) : (this._dirLen ? this._dirLen[i] : 100);
+                if (cost >= 0) return cost;
+            }
+        }
+        return -1;
+    }
+
+    _calculatePathOverlapRate(pathA, pathB) {
+        if (!pathA || !pathB || pathA.length < 2 || pathB.length < 2) return 0;
+        const setA = new Set();
+        for (let i = 0; i < pathA.length - 1; i++) {
+            setA.add(`${pathA[i]}-${pathA[i + 1]}`);
+        }
+        let common = 0;
+        for (let j = 0; j < pathB.length - 1; j++) {
+            if (setA.has(`${pathB[j]}-${pathB[j + 1]}`)) {
+                common++;
+            }
+        }
+        return common / Math.max(1, Math.min(pathA.length - 1, pathB.length - 1));
+    }
+
+    /**
+     * Yen 算法核心实现 (K-Shortest Loopless Paths)
+     * @param {number} startIdx 起点节点索引
+     * @param {number} endIdx 终点节点索引
+     * @param {number} K 备选路线数量 (默认 3)
+     * @param {boolean} directed 是否有向图
+     * @param {object} options 选项: { maxOverlapRate: 0.85, returnHeapPaths: false }
+     * @returns {Array<{path: number[], distance: number, spurNode?: number}>}
+     */
+    yenKSP(startIdx, endIdx, K = 3, directed = true, options = {}) {
+        if (!this.isLoaded || startIdx < 0 || endIdx < 0 || startIdx >= this.nodeCount || endIdx >= this.nodeCount) {
+            return [];
+        }
+
+        const A = []; // 已确定的前 K 条最短路径
+        const B = []; // 候选路径堆/池
+
+        const pathKey = (p) => p.join('-');
+        const existingPathKeys = new Set();
+
+        // 1. 计算第 1 条全局最短路径 A[0]
+        const firstRes = this.dijkstra(startIdx, endIdx, directed);
+        if (!firstRes.path || firstRes.path.length === 0) {
+            return [];
+        }
+
+        A.push({ path: firstRes.path, distance: firstRes.distance });
+        existingPathKeys.add(pathKey(firstRes.path));
+
+        const popBestCandidate = () => {
+            if (B.length === 0) return null;
+            let bestIdx = 0;
+            for (let i = 1; i < B.length; i++) {
+                if (B[i].distance < B[bestIdx].distance) {
+                    bestIdx = i;
+                }
+            }
+            return B.splice(bestIdx, 1)[0];
+        };
+
+        // 2. 迭代探索第 k 条最短路径 (k 从 1 到 K - 1)
+        for (let k = 1; k < K; k++) {
+            const prevPath = A[k - 1].path;
+
+            // 遍历前一条路径上的每个点作为偏离点
+            for (let i = 0; i < prevPath.length - 1; i++) {
+                const spurNode = prevPath[i];
+                const rootPath = prevPath.slice(0, i + 1);
+
+                const disabledEdges = new Set();
+                const disabledNodes = new Set();
+
+                // 规则 1：在所有已有路径 A 中，若前缀与当前 rootPath 相同，则屏蔽其在 spurNode 处的下一条边
+                for (const aRoute of A) {
+                    const p = aRoute.path;
+                    if (p.length > i && rootPath.every((node, idx) => node === p[idx])) {
+                        disabledEdges.add(`${p[i]}->${p[i + 1]}`);
+                        if (!directed) {
+                            disabledEdges.add(`${p[i + 1]}->${p[i]}`);
+                        }
+                    }
+                }
+
+                // 规则 2：将 rootPath 中除 spurNode 之外的所有节点屏蔽，保证不产生回路
+                for (let r = 0; r < i; r++) {
+                    disabledNodes.add(rootPath[r]);
+                }
+
+                // 计算从 spurNode 到 endIdx 的偏离路径
+                const spurRes = this.dijkstraWithMask(spurNode, endIdx, directed, disabledNodes, disabledEdges);
+
+                if (spurRes.path && spurRes.path.length > 0) {
+                    const totalPath = rootPath.slice(0, i).concat(spurRes.path);
+                    const key = pathKey(totalPath);
+
+                    if (!existingPathKeys.has(key)) {
+                        existingPathKeys.add(key);
+
+                        let totalDistance = 0;
+                        let validPath = true;
+                        for (let seg = 0; seg < totalPath.length - 1; seg++) {
+                            const u = totalPath[seg];
+                            const v = totalPath[seg + 1];
+                            const edgeDist = this._getEdgeCostBetween(u, v, directed);
+                            if (edgeDist < 0) {
+                                validPath = false;
+                                break;
+                            }
+                            totalDistance += edgeDist;
+                        }
+
+                        if (validPath) {
+                            B.push({
+                                path: totalPath,
+                                distance: totalDistance,
+                                spurNode: spurNode
+                            });
+                        }
+                    }
+                }
+            }
+
+            if (B.length === 0) {
+                break;
+            }
+
+            const nextBest = popBestCandidate();
+            if (nextBest) {
+                A.push(nextBest);
+            }
+        }
+
+        // 3. 相似度重合率过滤 (可选)
+        if (options.maxOverlapRate && options.maxOverlapRate < 1.0 && A.length > 1) {
+            const filteredA = [A[0]];
+            for (let i = 1; i < A.length; i++) {
+                const cand = A[i];
+                let isDiverseEnough = true;
+                for (const ref of filteredA) {
+                    const overlap = this._calculatePathOverlapRate(cand.path, ref.path);
+                    if (overlap > options.maxOverlapRate) {
+                        isDiverseEnough = false;
+                        break;
+                    }
+                }
+                if (isDiverseEnough) {
+                    filteredA.push(cand);
+                }
+            }
+            return filteredA;
+        }
+
+        return A;
+    }
+
+    getNodeCoordinate(nodeIdx) {
+        if (!this.isLoaded || nodeIdx < 0 || nodeIdx >= this.nodeCount) return null;
+        const cIdx = this._nodeFirstCoordIdx[nodeIdx];
+        if (cIdx >= 0) {
+            return [this._coordPool[cIdx * 2] / 1e6, this._coordPool[cIdx * 2 + 1] / 1e6];
+        }
+        return null;
+    }
+
     getOriginalNodeId(idx) {
         if (!this.isLoaded || idx < 0 || idx >= this.nodeCount) return null;
         return this._idMap[idx].toString();
@@ -921,6 +1234,199 @@ class PGRBRouter {
             distance: minTotalDist,
             startSnap,
             endSnap
+        };
+    }
+
+    /**
+     * 高精度吸附并使用 Yen 偏离路径算法计算 K 条无环最短备选路径 (包含几何切片合成与增量统计)
+     * @param {number} startLng 起点经度
+     * @param {number} startLat 起点纬度
+     * @param {number} endLng 终点经度
+     * @param {number} endLat 终点纬度
+     * @param {number} K 备选路线数量 (默认 3)
+     * @param {boolean} directed 是否考虑单行道
+     * @param {object} options 选项: { maxOverlapRate: 0.85 }
+     */
+    planYenRoutesWithSnap(startLng, startLat, endLng, endLat, K = 3, directed = true, options = {}) {
+        if (!this.isLoaded) {
+            return { code: 400, msg: "路网尚未加载完成", data: { routes: [] } };
+        }
+
+        const startSnap = this.snapToNearestEdge(startLng, startLat);
+        const endSnap = this.snapToNearestEdge(endLng, endLat);
+
+        if (!startSnap || !endSnap) {
+            return { code: 404, msg: "未找到有效的吸附道路", data: { routes: [] } };
+        }
+
+        // 同一条边情况
+        if (startSnap.edgeIdx === endSnap.edgeIdx) {
+            const sameCoords = this.getSameEdgeCoords(startSnap, endSnap, directed);
+            if (sameCoords && sameCoords.length >= 2) {
+                const dist = Math.abs(startSnap.t - endSnap.t) * startSnap.length;
+                return {
+                    code: 200,
+                    data: {
+                        kCount: 1,
+                        routes: [{
+                            pathId: 1,
+                            title: "推荐路线 (同段直达)",
+                            path: [startSnap.u, startSnap.v],
+                            totalDistance: dist,
+                            deltaDistance: 0,
+                            startNode: this.getOriginalNodeId(startSnap.u),
+                            endNode: this.getOriginalNodeId(startSnap.v),
+                            nodeCount: 2,
+                            spurNode: null,
+                            spurCoord: null,
+                            geometry: {
+                                type: "FeatureCollection",
+                                features: [{
+                                    type: "Feature",
+                                    geometry: { type: "LineString", coordinates: sameCoords },
+                                    properties: { seq: 0, pathId: 1 }
+                                }]
+                            },
+                            coords: sameCoords,
+                            color: '#38bdf8'
+                        }],
+                        startSnap,
+                        endSnap
+                    }
+                };
+            }
+        }
+
+        // 构建起点候选节点（考虑单行道通行方向）
+        const startCandidates = [];
+        if (!directed || startSnap.revCost >= 0) {
+            startCandidates.push({
+                node: startSnap.u,
+                partialCost: startSnap.t * startSnap.length
+            });
+        }
+        if (!directed || startSnap.cost >= 0) {
+            startCandidates.push({
+                node: startSnap.v,
+                partialCost: (1 - startSnap.t) * startSnap.length
+            });
+        }
+        if (startCandidates.length === 0) {
+            startCandidates.push({ node: startSnap.bestNode, partialCost: 0 });
+        }
+
+        // 构建终点候选节点
+        const endCandidates = [];
+        if (!directed || endSnap.cost >= 0) {
+            endCandidates.push({
+                node: endSnap.u,
+                partialCost: endSnap.t * endSnap.length
+            });
+        }
+        if (!directed || endSnap.revCost >= 0) {
+            endCandidates.push({
+                node: endSnap.v,
+                partialCost: (1 - endSnap.t) * endSnap.length
+            });
+        }
+        if (endCandidates.length === 0) {
+            endCandidates.push({ node: endSnap.bestNode, partialCost: 0 });
+        }
+
+        // 挑选基础最短路径对应的起终点节点对
+        let bestPair = null;
+        let minBaseDist = Infinity;
+
+        for (const sCand of startCandidates) {
+            for (const eCand of endCandidates) {
+                const res = this.dijkstra(sCand.node, eCand.node, directed);
+                if (res && res.path && res.path.length > 0) {
+                    const totalDist = sCand.partialCost + res.distance + eCand.partialCost;
+                    if (totalDist < minBaseDist) {
+                        minBaseDist = totalDist;
+                        bestPair = { sCand, eCand, baseRes: res };
+                    }
+                }
+            }
+        }
+
+        if (!bestPair) {
+            const sNode = startSnap.bestNode;
+            const eNode = endSnap.bestNode;
+            const res = this.dijkstra(sNode, eNode, directed);
+            if (res && res.path && res.path.length > 0) {
+                bestPair = {
+                    sCand: { node: sNode, partialCost: 0 },
+                    eCand: { node: eNode, partialCost: 0 },
+                    baseRes: res
+                };
+            } else {
+                return { code: 404, msg: "起点与终点之间未找到连通路径", data: { routes: [] } };
+            }
+        }
+
+        const sNode = bestPair.sCand.node;
+        const eNode = bestPair.eCand.node;
+        const startPartialCost = bestPair.sCand.partialCost;
+        const endPartialCost = bestPair.eCand.partialCost;
+
+        // 执行 Yen 核心 KSP 算法
+        const kspPaths = this.yenKSP(sNode, eNode, K, directed, options);
+
+        if (!kspPaths || kspPaths.length === 0) {
+            return { code: 404, msg: "起点与终点之间未找到可行路径 (Yen)", data: { routes: [] } };
+        }
+
+        const colorPalette = ['#38bdf8', '#f59e0b', '#a855f7', '#10b981', '#ec4899', '#06b6d4', '#84cc16'];
+        const titlePrefixes = ['推荐路线 (最优)', '备选方案 1', '备选方案 2', '备选方案 3', '备选方案 4'];
+
+        const baseTotalDist = startPartialCost + kspPaths[0].distance + endPartialCost;
+
+        const routes = [];
+        for (let idx = 0; idx < kspPaths.length; idx++) {
+            const item = kspPaths[idx];
+            const routePath = item.path;
+            const totalDist = startPartialCost + item.distance + endPartialCost;
+            const deltaDist = idx === 0 ? 0 : Math.max(0, totalDist - baseTotalDist);
+
+            const geojson = this.getPathGeoJSONWithSnap(routePath, startSnap, endSnap, directed);
+            const coords = (geojson.type === 'FeatureCollection' && geojson.features && geojson.features[0])
+                ? geojson.features[0].geometry.coordinates
+                : (geojson.geometry ? geojson.geometry.coordinates : (geojson.coordinates || []));
+
+            let spurCoord = null;
+            if (item.spurNode != null) {
+                spurCoord = this.getNodeCoordinate(item.spurNode);
+            }
+
+            const startOrigId = this.getOriginalNodeId(routePath[0]);
+            const endOrigId = this.getOriginalNodeId(routePath[routePath.length - 1]);
+
+            routes.push({
+                pathId: idx + 1,
+                title: titlePrefixes[idx] || `备选方案 ${idx}`,
+                path: routePath,
+                totalDistance: totalDist,
+                deltaDistance: deltaDist,
+                startNode: startOrigId,
+                endNode: endOrigId,
+                nodeCount: routePath.length,
+                spurNode: item.spurNode != null ? this.getOriginalNodeId(item.spurNode) : null,
+                spurCoord: spurCoord,
+                geometry: geojson,
+                coords: coords,
+                color: colorPalette[idx % colorPalette.length]
+            });
+        }
+
+        return {
+            code: 200,
+            data: {
+                kCount: routes.length,
+                routes: routes,
+                startSnap,
+                endSnap
+            }
         };
     }
 
@@ -1267,6 +1773,6 @@ if (typeof window !== 'undefined') {
     window.PGRBRouter = PGRBRouter;
 }
 
-
 export { PGRBRouter };
 export default PGRBRouter;
+
