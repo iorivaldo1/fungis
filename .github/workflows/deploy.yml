@@ -12,13 +12,14 @@ jobs:
     steps:
       # 1. 把你的代码拉取到 GitHub 的云端机器
       - name: 检出代码
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       # 2. 在云端机器上安装 Node.js (这里填你项目用的 Node 版本)
       - name: 设置 Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
+          cache: 'npm'
 
       # 3. 执行安装和打包
       - name: 安装依赖与打包
