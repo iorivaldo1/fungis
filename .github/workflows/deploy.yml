@@ -14,18 +14,21 @@ jobs:
       - name: 检出代码
         uses: actions/checkout@v4
 
-      # 2. 在云端机器上安装 Node.js (这里填你项目用的 Node 版本)
+      # 2. 在云端机器上安装 Node.js 并启用依赖缓存
       - name: 设置 Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
+          cache: 'npm'
 
-      # 3. 执行安装和打包
-      - name: 安装依赖与打包
-        run: |
-          npm install
-          npm run build
-          # Vite 默认打包出的文件夹叫 dist，或者你的可能叫 fungis
+      # 3. 执行快速依赖安装
+      - name: 安装依赖
+        run: npm ci --prefer-offline --no-audit --no-fund
+
+      # 4. 执行项目打包
+      - name: 项目打包
+        run: npm run build
+        # Vite 打包产物目录由 vite.config.js 配置为 fungis/
 
       # 4. 把打包好的文件夹推送到你的 Ubuntu 服务器
       - name: 部署到 Ubuntu 服务器
