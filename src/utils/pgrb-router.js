@@ -1,9 +1,9 @@
 /**
  * PGRBRouter - 前端零拷贝二进制图路由引擎 (PGRB Format)
- * 包含 IndexedDB 离线持久化缓存、O(1) 网格空间索引与 0-GC 内存复用
+ * Phase 2 增强版：包含 IndexedDB 离线持久化缓存、O(1) 网格空间索引与 0-GC 内存复用
  */
 
-export class FlatBinaryMinHeap {
+class FlatBinaryMinHeap {
     constructor(capacity = 65536) {
         this.capacity = capacity;
         this.nodes = new Uint32Array(capacity);
@@ -78,7 +78,7 @@ export class FlatBinaryMinHeap {
     }
 }
 
-export class PGRBRouter {
+class PGRBRouter {
     constructor() {
         this.isLoaded = false;
         this.networkId = null;
@@ -179,7 +179,7 @@ export class PGRBRouter {
             const tx = db.transaction('graphs', 'readwrite');
             const store = tx.objectStore('graphs');
             if (networkId) {
-                store.delete(`pgrb_v16_${networkId}`);
+                store.delete(`pgrb_v20_${networkId}`);
                 store.delete(`pgrb_v15_${networkId}`);
                 store.delete(`pgrb_${networkId}`);
                 console.log(`[PGRB] 已清理路网 【${networkId}】 的 IndexedDB 离线缓存`);
@@ -197,14 +197,19 @@ export class PGRBRouter {
      */
     async loadNetwork(networkId, baseUrl) {
         this.networkId = networkId;
-        const cacheKey = `pgrb_v16_${networkId}`;
+        const cacheKey = `pgrb_v20_${networkId}`;
 
         // 1. 尝试从 IndexedDB 读取
         const cachedBuffer = await this.loadFromIndexedDB(cacheKey);
         if (cachedBuffer) {
             console.log(`[PGRB] ⚡ 离线缓存命中！直接从 IndexedDB 加载路网【${networkId}】 (体积: ${(cachedBuffer.byteLength / 1024 / 1024).toFixed(2)} MB)`);
             this.parseArrayBuffer(cachedBuffer);
-            return true;
+            // 智能防呆：若缓存中未包含多边形矢量边界（boundaryPointCount === 0），自动废弃并强制重新从后端同步最新图
+            if (this.boundaryPointCount > 0 || !networkId.startsWith('xzq_')) {
+                return true;
+            }
+            console.warn(`[PGRB] ⚠️ 发现本地缓存缺少多边形矢量边界，自动清除本地缓存并重新从后端拉取完整矢量图...`);
+            await PGRBRouter.clearCache(networkId);
         }
 
         // 2. 缓存未命中，从后端下载
@@ -232,7 +237,6 @@ export class PGRBRouter {
                 }
             });
         }
-        return true;
     }
 
     // ==========================================
@@ -247,10 +251,8 @@ export class PGRBRouter {
             throw new Error(`非法的 PGRB 魔数标识: ${magic}`);
         }
 
-        // 读取协议版本 (version=1: 基础图, version=2: 包含矢量边界)
         const version = view.getUint16(4, true);
-        this.version = version;
-
+        const flags = view.getUint16(6, true);
         this.nodeCount = view.getUint32(8, true);
         this.edgeCount = view.getUint32(12, true);
         this.pointCount = view.getUint32(16, true);
@@ -268,11 +270,11 @@ export class PGRBRouter {
         };
         const idMapOffset = view.getUint32(36, true);
 
-        // 利用 idMapOffset 反向推算各数据段的精确字节偏移
+        // 利用 idMapOffset 反向推算各数据段的精确字节偏移 (无需猜测填充)
         const coordPoolStart = idMapOffset - this.pointCount * 8;
         const edgesStart = coordPoolStart - this.edgeCount * 16;
 
-        // NodeOffsets: 紧随 40B Header
+        // NodeOffsets: 始终紧随 40B Header
         let offset = 40;
         this._nodeOffsets = new Uint32Array(buffer, offset, this.nodeCount + 1);
 
@@ -299,7 +301,7 @@ export class PGRBRouter {
             this._idMap[i] = view.getBigInt64(idMapOffset + i * 8, true);
         }
 
-        // 建立每个节点的坐标映射表
+        // 建立每个节点的坐标映射表 (保证出边节点与入边节点 100% 具备有效坐标)
         this._nodeFirstCoordIdx = new Int32Array(this.nodeCount).fill(-1);
         for (let u = 0; u < this.nodeCount; u++) {
             const startEdge = this._nodeOffsets[u];
@@ -321,6 +323,28 @@ export class PGRBRouter {
         // 初始化 0-GC 算路重用缓冲区
         this._distBuf = new Float32Array(this.nodeCount);
         this._prevBuf = new Int32Array(this.nodeCount);
+
+        // === 诊断日志：统计节点坐标有效性 ===
+        let validCount = 0;
+        for (let i = 0; i < this.nodeCount; i++) {
+            if (this._nodeFirstCoordIdx[i] >= 0) validCount++;
+        }
+        console.log(`[PGRB-DIAG] 节点坐标映射: ${validCount}/${this.nodeCount} 个节点拥有有效坐标`);
+        console.log(`[PGRB-DIAG] BBox: lng=[${minLngS / 1e6}, ${maxLngS / 1e6}], lat=[${minLatS / 1e6}, ${maxLatS / 1e6}]`);
+        console.log(`[PGRB-DIAG] idMapOffset=${idMapOffset}, coordPool.length=${this._coordPool.length}, pointCount=${this.pointCount}`);
+
+        // 打印前 5 个有坐标节点的详情
+        let sampleCount = 0;
+        for (let i = 0; i < this.nodeCount && sampleCount < 5; i++) {
+            const cIdx = this._nodeFirstCoordIdx[i];
+            if (cIdx >= 0) {
+                const lng = this._coordPool[cIdx * 2] / 1e6;
+                const lat = this._coordPool[cIdx * 2 + 1] / 1e6;
+                const origId = this._idMap[i].toString();
+                console.log(`[PGRB-DIAG]   节点[${i}] origID=${origId} coordIdx=${cIdx} => (${lng}, ${lat})`);
+                sampleCount++;
+            }
+        }
 
         // 构建 100% 完整的全有向图前向星结构 (包含双向道路的反向弧段)
         const allDirEdges = [];
@@ -367,6 +391,8 @@ export class PGRBRouter {
             currSrc++;
             this._dirNodeOffsets[currSrc] = dirEdgeCount;
         }
+
+        this.version = version;
 
         // 构建 2D 空间网格索引 (Spatial Grid Index)
         this._buildSpatialGridIndex(minLngS, minLatS, maxLngS, maxLatS);
@@ -545,6 +571,7 @@ export class PGRBRouter {
             tempBuckets[b] = [];
         }
 
+        // 将每条边的包围盒映射到对应的空间网格桶中 (保证不论源节点多远，途径网格均能索引到该边)
         for (let e = 0; e < this.edgeCount; e++) {
             const cStart = this._edgesCoordStart[e];
             const cEnd = (e + 1 < this.edgeCount) ? this._edgesCoordStart[e + 1] : this.pointCount;
@@ -586,6 +613,9 @@ export class PGRBRouter {
         }
     }
 
+    /**
+     * 高精度全图弧段级吸附匹配 (基于最近几何弧段定位至最近拓扑节点)
+     */
     findNearestNode(lng, lat) {
         if (!this.isLoaded || this.edgeCount === 0) return -1;
         const snap = this.snapToNearestEdge(lng, lat);
@@ -608,6 +638,7 @@ export class PGRBRouter {
             return { path: [startIdx], distance: 0 };
         }
 
+        // 复用全局 Float32Array / Int32Array 缓冲区 (0-GC)
         const dist = this._distBuf;
         const prev = this._prevBuf;
         dist.fill(Infinity);
@@ -632,7 +663,7 @@ export class PGRBRouter {
         pq.push(startIdx, getH(startIdx));
 
         while (!pq.isEmpty()) {
-            const { node: u } = pq.pop();
+            const { node: u, dist: fDist } = pq.pop();
 
             if (u === endIdx) break;
 
@@ -673,7 +704,7 @@ export class PGRBRouter {
     }
 
     /**
-     * 高精度弧段垂足吸附计算
+     * 高精度弧段垂足吸附计算（基于米制等距投影变换 + 2D 空间网格桶 O(1) 极速筛选）
      */
     snapToNearestEdge(lng, lat) {
         if (!this.isLoaded || this.edgeCount === 0) return null;
@@ -681,9 +712,11 @@ export class PGRBRouter {
         const lngS = Math.round(lng * 1e6);
         const latS = Math.round(lat * 1e6);
 
+        // 动态米制缩放比例 cos(lat)
         const radLat = (lat * Math.PI) / 180;
         const cosLat = Math.cos(radLat);
 
+        // 利用 2D 空间网格桶筛选 7x7 邻域内的候选弧段 (将 N 扫降至 10 级别)
         let candidateEdges = null;
         if (this._gridBuckets && this._cellWidthS > 0 && this._cellHeightS > 0) {
             let centerCol = Math.floor((lngS - this._minLngS) / this._cellWidthS);
@@ -693,7 +726,7 @@ export class PGRBRouter {
             centerRow = Math.max(0, Math.min(this._gridRows - 1, centerRow));
 
             const edgeSet = new Set();
-            const searchRadius = 3;
+            const searchRadius = 3; // 7x7 邻居桶
 
             for (let r = centerRow - searchRadius; r <= centerRow + searchRadius; r++) {
                 if (r < 0 || r >= this._gridRows) continue;
@@ -774,6 +807,7 @@ export class PGRBRouter {
                         }
                     }
 
+                    // 估算形点在该边中的整体比例位移 (0.0 ~ 1.0)
                     const totalPointsInEdge = cEnd - cStart;
                     const approxFrac = Math.max(0, Math.min(1, (p - cStart + t) / (totalPointsInEdge - 1 || 1)));
 
@@ -798,6 +832,7 @@ export class PGRBRouter {
 
     /**
      * 对应 pgRouting 的最佳端点组合评估算法
+     * 测试起点弧段双向端点与终点弧段双向端点的所有可行路径组合，取全局总距离最小者（包含两端残段长度）
      */
     planRouteWithSnap(startLng, startLat, endLng, endLat, directed = true) {
         if (!this.isLoaded) return { path: [], distance: 0, startSnap: null, endSnap: null };
@@ -820,9 +855,10 @@ export class PGRBRouter {
                     endSnap
                 };
             }
+            // 若不能同边直达（如单行道禁止逆行），不要返回假 path，继续向下走候选节点 Dijkstra 搜索绕行！
         }
 
-        // 起点候选节点
+        // 构建起点候选节点（考虑单行道通行方向）
         const startCandidates = [];
         if (!directed || startSnap.revCost >= 0) {
             startCandidates.push({
@@ -840,7 +876,7 @@ export class PGRBRouter {
             startCandidates.push({ node: startSnap.bestNode, partialCost: 0 });
         }
 
-        // 终点候选节点
+        // 构建终点候选节点
         const endCandidates = [];
         if (!directed || endSnap.cost >= 0) {
             endCandidates.push({
@@ -909,6 +945,7 @@ export class PGRBRouter {
         const res = [proj];
 
         if (targetNode === startSnap.u) {
+            // 从 proj 沿 start 边反向搜寻至 source 节点 u
             for (let i = segIdx; i >= 0; i--) {
                 const pt = pts[i];
                 if (Math.hypot(pt[0] - proj[0], pt[1] - proj[1]) > 1e-7) {
@@ -916,6 +953,7 @@ export class PGRBRouter {
                 }
             }
         } else {
+            // 从 proj 沿 start 边正向搜寻至 target 节点 v
             for (let i = segIdx + 1; i < pts.length; i++) {
                 const pt = pts[i];
                 if (Math.hypot(pt[0] - proj[0], pt[1] - proj[1]) > 1e-7) {
@@ -936,6 +974,7 @@ export class PGRBRouter {
         const res = [];
 
         if (fromNode === endSnap.u) {
+            // 从 source 节点 u 正向搜寻至 proj
             for (let i = 0; i <= segIdx; i++) {
                 res.push(pts[i]);
             }
@@ -943,6 +982,7 @@ export class PGRBRouter {
                 res.push(proj);
             }
         } else {
+            // 从 target 节点 v 反向搜寻至 proj
             for (let i = pts.length - 1; i >= segIdx + 1; i--) {
                 res.push(pts[i]);
             }
@@ -964,9 +1004,10 @@ export class PGRBRouter {
         const isForward = (startSnap.segIdx < endSnap.segIdx) ||
                           (startSnap.segIdx === endSnap.segIdx && startSnap.t <= endSnap.t);
 
+        // 有向图模式下的单行道合法通行检测
         if (directed) {
-            if (isForward && startSnap.cost < 0) return null;
-            if (!isForward && startSnap.revCost < 0) return null;
+            if (isForward && startSnap.cost < 0) return null; // 正向通行被禁止
+            if (!isForward && startSnap.revCost < 0) return null; // 反向通行被禁止
         }
 
         const segIdx1 = Math.min(startSnap.segIdx, pts.length - 2);
@@ -979,6 +1020,7 @@ export class PGRBRouter {
                 res.push(endSnap.projPoint);
             }
         } else if (isForward) {
+            // 正向：t1 <= t2
             for (let i = segIdx1 + 1; i <= segIdx2; i++) {
                 const pt = pts[i];
                 if (Math.hypot(pt[0] - res[res.length - 1][0], pt[1] - res[res.length - 1][1]) > 1e-7) {
@@ -989,6 +1031,7 @@ export class PGRBRouter {
                 res.push(endSnap.projPoint);
             }
         } else {
+            // 反向：t1 > t2
             for (let i = segIdx1; i >= segIdx2 + 1; i--) {
                 const pt = pts[i];
                 if (Math.hypot(pt[0] - res[res.length - 1][0], pt[1] - res[res.length - 1][1]) > 1e-7) {
@@ -1022,9 +1065,13 @@ export class PGRBRouter {
         return this.getPathGeoJSONWithSnap(path, null, null);
     }
 
+    /**
+     * 100% 对标 PostGIS pgRouting 的全线段几何合成算法 (seg_start + dijkstra_edges + seg_end)
+     */
     getPathGeoJSONWithSnap(path, startSnap, endSnap, directed = true) {
         if (!path || path.length === 0) return { type: "FeatureCollection", features: [] };
 
+        // 0. 特殊处理：起点与终点落在同一条弧段上的直接切割线段
         if (startSnap && endSnap && startSnap.edgeIdx === endSnap.edgeIdx) {
             const sameCoords = this.getSameEdgeCoords(startSnap, endSnap, directed);
             if (sameCoords && sameCoords.length >= 2) {
@@ -1043,6 +1090,7 @@ export class PGRBRouter {
         let kStart = 0;
         let kEnd = path.length - 1;
 
+        // 1. seg_start：判断首个 Dijkstra 节点对是否在 startSnap.edgeIdx 上
         if (startSnap && path.length >= 2) {
             const firstEdgeIdx = this.findEdgeIdxBetween(path[0], path[1]);
             if (firstEdgeIdx === startSnap.edgeIdx) {
@@ -1052,7 +1100,7 @@ export class PGRBRouter {
                         finalCoords.push(pt);
                     }
                 }
-                kStart = 1;
+                kStart = 1; // 跳过重复绘制的整条 startSnap 弧段
             } else {
                 const segStart = this.getStartSegCoords(startSnap, path[0]);
                 for (const pt of segStart) {
@@ -1070,12 +1118,13 @@ export class PGRBRouter {
             }
         }
 
+        // 2. seg_end 节点处理预判断
         let customEndSeg = null;
         if (endSnap && path.length >= 2) {
             const lastEdgeIdx = this.findEdgeIdxBetween(path[path.length - 2], path[path.length - 1]);
             if (lastEdgeIdx === endSnap.edgeIdx) {
                 customEndSeg = this.getEndSegCoords(endSnap, path[path.length - 2]);
-                kEnd = path.length - 2;
+                kEnd = path.length - 2; // 跳过重复绘制的整条 endSnap 弧段
             } else {
                 customEndSeg = this.getEndSegCoords(endSnap, path[path.length - 1]);
             }
@@ -1083,6 +1132,7 @@ export class PGRBRouter {
             customEndSeg = this.getEndSegCoords(endSnap, path[0]);
         }
 
+        // 3. dijkstra_edges：中间全量 Dijkstra 路径的几何弧段线段
         for (let k = kStart; k < kEnd; k++) {
             const u = path[k];
             const v = path[k + 1];
@@ -1123,6 +1173,7 @@ export class PGRBRouter {
             }
         }
 
+        // 4. 追加 seg_end 几何点
         if (customEndSeg) {
             for (const pt of customEndSeg) {
                 if (finalCoords.length === 0 || Math.hypot(finalCoords[finalCoords.length - 1][0] - pt[0], finalCoords[finalCoords.length - 1][1] - pt[1]) > 1e-7) {
@@ -1145,10 +1196,77 @@ export class PGRBRouter {
             ]
         };
     }
+
+    getPathCoordinates(path) {
+        if (!this.isLoaded || !path || path.length < 2) return [];
+
+        const coordinates = [];
+
+        for (let k = 0; k < path.length - 1; k++) {
+            const u = path[k];
+            const v = path[k + 1];
+
+            // 1. 先尝试查找正向出边 u -> v
+            let matchedEdgeIdx = -1;
+            let isReverse = false;
+
+            const edgeStartU = this._nodeOffsets[u];
+            const edgeEndU = this._nodeOffsets[u + 1];
+
+            for (let i = edgeStartU; i < edgeEndU; i++) {
+                if (this._edgesTarget[i] === v) {
+                    matchedEdgeIdx = i;
+                    isReverse = false;
+                    break;
+                }
+            }
+
+            // 2. 若正向边未查到，尝试查找反向出边 v -> u (即以 v 为源节点的边)
+            if (matchedEdgeIdx === -1) {
+                const edgeStartV = this._nodeOffsets[v];
+                const edgeEndV = this._nodeOffsets[v + 1];
+
+                for (let j = edgeStartV; j < edgeEndV; j++) {
+                    if (this._edgesTarget[j] === u) {
+                        matchedEdgeIdx = j;
+                        isReverse = true;
+                        break;
+                    }
+                }
+            }
+
+            if (matchedEdgeIdx !== -1) {
+                const cStart = this._edgesCoordStart[matchedEdgeIdx];
+                const cEnd = (matchedEdgeIdx + 1 < this.edgeCount)
+                    ? this._edgesCoordStart[matchedEdgeIdx + 1]
+                    : (this.pointCount);
+
+                const edgeCoords = [];
+                for (let p = cStart; p < cEnd; p++) {
+                    const lng = this._coordPool[p * 2] / 1e6;
+                    const lat = this._coordPool[p * 2 + 1] / 1e6;
+                    edgeCoords.push([lng, lat]);
+                }
+
+                // 如果沿反向边行走，需翻转该折线的点序
+                if (isReverse) {
+                    edgeCoords.reverse();
+                }
+
+                if (coordinates.length > 0 && edgeCoords.length > 0) {
+                    edgeCoords.shift();
+                }
+                coordinates.push(...edgeCoords);
+            }
+        }
+        return coordinates;
+    }
 }
 
 if (typeof window !== 'undefined') {
     window.PGRBRouter = PGRBRouter;
 }
 
+
+export { PGRBRouter };
 export default PGRBRouter;

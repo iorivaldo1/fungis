@@ -43,7 +43,11 @@
                   <div class="sub-dot"></div>
                   <span class="menu-text">PG A* 路径计算(原版)</span>
                 </router-link> -->
-                <router-link to="/algorithm/astar-route" class="menu-item sub" active-class="active">
+                <!-- <router-link to="/algorithm/astar-route" class="menu-item sub" active-class="active">
+                  <div class="sub-dot"></div>
+                  <span class="menu-text">PG A* 路径计算(2D)</span>
+                </router-link> -->
+                <router-link to="/algorithm/astar-3d-route" class="menu-item sub" active-class="active">
                   <div class="sub-dot"></div>
                   <span class="menu-text">PG A* 路径计算</span>
                 </router-link>
@@ -368,7 +372,8 @@ const currentRouteName = computed(() => {
     'EsriSbnKDTree': 'ESRI SBN KNN 查询(KD树)',
     'PostGisRTree': 'PG GIST KNN 查询(R树)',
     // 'AStarRouteCalc': 'astar路径计算(原版)',
-    'AStarRoute': 'astar路径计算(PGRB v2)',
+    // 'AStarRoute': 'astar路径计算(PGRB v2)',
+    'AStar3DRoute': '3D立体分层路径规划',
     // 'DijkstraRouteCalc': 'dijkstra路径计算',
     // 'Leaflet': 'Leaflet',
     // 'LeafletAStarRouteCalc': 'astar路径计算',
