@@ -1,262 +1,265 @@
 <template>
-  <div class="leaflet-container" :class="{ 'picking-cursor': pickingMode !== null || isContinuousPicking }">
+  <div class="leaflet-container" :class="{ 'picking-cursor': pickingMode !== null }">
     <!-- 纯净全屏地图容器 -->
     <div id="map" ref="mapContainer"></div>
 
     <!-- 路径规划控制面板 -->
     <div class="route-panel">
-      <!-- 顶部固定栏：面板标题与模式 Badge -->
-      <div class="route-panel-header">
-        <div class="panel-header">
-          <span class="panel-title">pgRouting A* 算法</span>
-          <span class="mode-badge" :class="paradigmBadgeClass">{{ paradigmBadgeText }}</span>
+      <div class="panel-header">
+        <span class="panel-title">🛣️ 3D 立体分层路径规划 (Layer-Aware)</span>
+      </div>
+
+      <!-- 算路引擎单选切换 -->
+      <div class="form-group">
+        <div class="form-label">
+          <span>⚡ 算路引擎与算法实现</span>
+        </div>
+        <div class="engine-radio-group">
+          <label
+            class="engine-radio-item"
+            :class="{ active: selectedEngine === 'astar_pgrb' }"
+          >
+            <div class="engine-radio-header">
+              <input
+                type="radio"
+                name="calcEngine"
+                value="astar_pgrb"
+                v-model="selectedEngine"
+              />
+              <span class="radio-dot"></span>
+              <span class="radio-title">Astar+pgRouting Binary (v2)</span>
+            </div>
+            <div class="engine-radio-desc">
+              采用 PGRB v2 二进制协议（集成矢量边界），在前端内存中进行 0 延迟 A* 启发式算路
+            </div>
+          </label>
+          <label
+            class="engine-radio-item"
+            :class="{ active: selectedEngine === 'dijkstra_pgrouting' }"
+          >
+            <div class="engine-radio-header">
+              <input
+                type="radio"
+                name="calcEngine"
+                value="dijkstra_pgrouting"
+                v-model="selectedEngine"
+              />
+              <span class="radio-dot"></span>
+              <span class="radio-title">Dijkstra + pgRouting后端实现</span>
+            </div>
+            <div class="engine-radio-desc">
+              使用pg进行拓扑计算及路网生成，将相关数据保存到数据库中，每次计算都需要进行后端通信获取相关的图
+            </div>
+          </label>
         </div>
       </div>
 
-      <!-- 主体滚动区 -->
-      <div class="route-panel-body">
-        <!-- 选择路网数据集 -->
-        <div class="form-group">
-          <div class="form-label">
-            <span>🌐 选择路网数据集</span>
-            <button type="button" class="pick-btn btn-manage-badge" @click="openManageModal">
-              ⚙️ 路网管理
-            </button>
-          </div>
-          <!-- 行政级别单选切换 (市级、区县、乡镇、街道) -->
-          <div class="level-radio-group">
-            <label class="level-radio-item" :class="{ active: selectedLevelFilter === 'city' }">
-              <input type="radio" name="levelFilter" value="city" v-model="selectedLevelFilter"
-                @change="onLevelFilterChange" />
-              <span class="radio-dot"></span>
-              <span class="radio-text">市级</span>
-            </label>
-            <label class="level-radio-item" :class="{ active: selectedLevelFilter === 'county' }">
-              <input type="radio" name="levelFilter" value="county" v-model="selectedLevelFilter"
-                @change="onLevelFilterChange" />
-              <span class="radio-dot"></span>
-              <span class="radio-text">区县</span>
-            </label>
-            <label class="level-radio-item" :class="{ active: selectedLevelFilter === 'town' }">
-              <input type="radio" name="levelFilter" value="town" v-model="selectedLevelFilter"
-                @change="onLevelFilterChange" />
-              <span class="radio-dot"></span>
-              <span class="radio-text">乡镇</span>
-            </label>
-            <label class="level-radio-item" :class="{ active: selectedLevelFilter === 'village' }">
-              <input type="radio" name="levelFilter" value="village" v-model="selectedLevelFilter"
-                @change="onLevelFilterChange" />
-              <span class="radio-dot"></span>
-              <span class="radio-text">街道</span>
-            </label>
-          </div>
-
-          <select v-model="selectedNetworkId" class="coord-input full-width-select" @change="onNetworkChange">
-            <option v-if="networksLoading" value="">加载路网配置中...</option>
-            <option v-else-if="filteredNetworksList.length === 0" value="">当前级别暂无 3D 立体路网配置</option>
-            <option v-for="net in filteredNetworksList" :key="net.id" :value="net.id">
-              {{ net.name }}
-            </option>
-          </select>
+      <div class="form-group">
+        <div class="form-label">
+          <span>🌐 选择路网数据集</span>
+          <button
+            type="button"
+            class="pick-btn btn-manage-badge"
+            @click="openManageModal"
+          >
+            ⚙️ 路网管理
+          </button>
+        </div>
+        <!-- 行政级别单选切换 (市级、区县、乡镇、街道) -->
+        <div class="level-radio-group">
+          <label
+            class="level-radio-item"
+            :class="{ active: selectedLevelFilter === 'city' }"
+          >
+            <input
+              type="radio"
+              name="levelFilter"
+              value="city"
+              v-model="selectedLevelFilter"
+              @change="onLevelFilterChange"
+            />
+            <span class="radio-dot"></span>
+            <span class="radio-text">市级</span>
+          </label>
+          <label
+            class="level-radio-item"
+            :class="{ active: selectedLevelFilter === 'county' }"
+          >
+            <input
+              type="radio"
+              name="levelFilter"
+              value="county"
+              v-model="selectedLevelFilter"
+              @change="onLevelFilterChange"
+            />
+            <span class="radio-dot"></span>
+            <span class="radio-text">区县</span>
+          </label>
+          <label
+            class="level-radio-item"
+            :class="{ active: selectedLevelFilter === 'town' }"
+          >
+            <input
+              type="radio"
+              name="levelFilter"
+              value="town"
+              v-model="selectedLevelFilter"
+              @change="onLevelFilterChange"
+            />
+            <span class="radio-dot"></span>
+            <span class="radio-text">乡镇</span>
+          </label>
+          <label
+            class="level-radio-item"
+            :class="{ active: selectedLevelFilter === 'village' }"
+          >
+            <input
+              type="radio"
+              name="levelFilter"
+              value="village"
+              v-model="selectedLevelFilter"
+              @change="onLevelFilterChange"
+            />
+            <span class="radio-dot"></span>
+            <span class="radio-text">街道</span>
+          </label>
         </div>
 
-        <!-- 寻路范式单选切换 (1:1 / 1:N / N:1) -->
-        <div class="form-group">
-          <div class="form-label">
-            <span>🎯 规划范式</span>
-          </div>
-          <div class="paradigm-selector-group">
-            <div class="paradigm-item" :class="{ active: currentParadigm === '1_to_1' }"
-              @click="switchParadigm('1_to_1')">
-              <span>1 对 1</span>
-              <span style="font-size: 10px; opacity: 0.8;">(点对点)</span>
-            </div>
-            <div class="paradigm-item" :class="{ active: currentParadigm === '1_to_n' }"
-              @click="switchParadigm('1_to_n')">
-              <span>1 对 N</span>
-              <span style="font-size: 10px; opacity: 0.8;">(1起多终)</span>
-            </div>
-            <div class="paradigm-item" :class="{ active: currentParadigm === 'n_to_1' }"
-              @click="switchParadigm('n_to_1')">
-              <span>N 对 1</span>
-              <span style="font-size: 10px; opacity: 0.8;">(多起1终)</span>
-            </div>
-          </div>
+        <select
+          v-model="selectedNetworkId"
+          class="coord-input full-width-select"
+          @change="onNetworkChange"
+        >
+          <option v-if="networksLoading" value="">加载路网配置中...</option>
+          <option v-else-if="filteredNetworksList.length === 0" value="">当前级别暂无 3D 立体路网配置</option>
+          <option
+            v-for="net in filteredNetworksList"
+            :key="net.id"
+            :value="net.id"
+          >
+            {{ net.name }}
+          </option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <div class="form-label">
+          <span>📍 起点 (经度, 纬度)</span>
+          <button
+            type="button"
+            class="pick-btn btn-manage-badge"
+            :class="{ active: pickingMode === 'start' }"
+            @click="togglePickMode('start')"
+          >
+            {{ pickingMode === 'start' ? '📍 正在选点...' : '🎯 地图选点' }}
+          </button>
         </div>
-
-        <!-- 单起点坐标输入与选点 (1:1 与 1:N 显示) -->
-        <div class="form-group" v-if="currentParadigm === '1_to_1' || currentParadigm === '1_to_n'">
-          <div class="form-label">
-            <span>📍 起点 (经度, 纬度)</span>
-            <button type="button" class="pick-btn btn-manage-badge" :class="{ active: pickingMode === 'start' }"
-              @click="togglePickMode('start')">
-              {{ pickingMode === 'start' ? '📍 正在选点...' : '🎯 地图选点' }}
-            </button>
+        <div class="coord-row">
+          <div class="coord-field">
+            <span class="coord-tag">经度</span>
+            <input
+              type="text"
+              inputmode="decimal"
+              v-model.number="startLng"
+              class="coord-input"
+              placeholder="例: 104.114"
+              @change="updateMarkers"
+            />
           </div>
-          <div class="coord-row">
-            <div class="coord-field">
-              <span class="coord-tag">经度</span>
-              <input type="text" inputmode="decimal" v-model.number="startLng" class="coord-input"
-                placeholder="例: 104.114" @change="updateMarkers" />
-            </div>
-            <div class="coord-field">
-              <span class="coord-tag">纬度</span>
-              <input type="text" inputmode="decimal" v-model.number="startLat" class="coord-input"
-                placeholder="例: 30.632" @change="updateMarkers" />
-            </div>
-          </div>
-        </div>
-
-        <!-- 多起点管理容器 (N:1 显示) -->
-        <div class="form-group" v-if="currentParadigm === 'n_to_1'">
-          <div class="form-label">
-            <span>📍 起点集合 (已选 <b style="color:#10b981;">{{ multiOrigPoints.length }}</b> 个)</span>
-          </div>
-          <div class="multi-action-bar">
-            <button type="button" class="btn-multi-pick" :class="{ active: isContinuousPicking === 'origins' }"
-              @click="toggleContinuousPicking('origins')">
-              <span>{{ isContinuousPicking === 'origins' ? '⏹️ 点击地图选点 (点击完成)' : '➕ 在地图上连续选起点' }}</span>
-            </button>
-            <button type="button" class="btn-multi-clear" @click="clearOrigPoints">清空</button>
-          </div>
-          <div class="multi-points-card">
-            <div v-if="multiOrigPoints.length === 0"
-              style="color: #64748b; font-size: 11px; text-align: center; padding: 10px 0;">
-              暂未添加起点，请点击上方按钮在地图选点
-            </div>
-            <div v-else v-for="(pt, idx) in multiOrigPoints" :key="pt.id" class="multi-point-row">
-              <div style="display: flex; align-items: center; gap: 6px;">
-                <span class="point-tag-badge" :style="{ background: pt.color }">S{{ idx + 1 }}</span>
-                <span class="point-coords-text">{{ pt.lng.toFixed(4) }}, {{ pt.lat.toFixed(4) }}</span>
-              </div>
-              <button type="button" class="btn-del-point" @click="removeOrigPoint(idx)" title="删除此起点">&times;</button>
-            </div>
-          </div>
-        </div>
-
-        <!-- 单终点坐标输入与选点 (1:1 与 N:1 显示) -->
-        <div class="form-group" v-if="currentParadigm === '1_to_1' || currentParadigm === 'n_to_1'">
-          <div class="form-label">
-            <span>🏁 终点 (经度, 纬度)</span>
-            <button type="button" class="pick-btn btn-manage-badge" :class="{ active: pickingMode === 'end' }"
-              @click="togglePickMode('end')">
-              {{ pickingMode === 'end' ? '🏁 正在选点...' : '🎯 地图选点' }}
-            </button>
-          </div>
-          <div class="coord-row">
-            <div class="coord-field">
-              <span class="coord-tag">经度</span>
-              <input type="text" inputmode="decimal" v-model.number="endLng" class="coord-input"
-                placeholder="例: 104.120" @change="updateMarkers" />
-            </div>
-            <div class="coord-field">
-              <span class="coord-tag">纬度</span>
-              <input type="text" inputmode="decimal" v-model.number="endLat" class="coord-input" placeholder="例: 30.638"
-                @change="updateMarkers" />
-            </div>
-          </div>
-        </div>
-
-        <!-- 多终点管理容器 (1:N 显示) -->
-        <div class="form-group" v-if="currentParadigm === '1_to_n'">
-          <div class="form-label">
-            <span>🏁 终点集合 (已选 <b style="color:#38bdf8;">{{ multiDestPoints.length }}</b> 个)</span>
-          </div>
-          <div class="multi-action-bar">
-            <button type="button" class="btn-multi-pick" :class="{ active: isContinuousPicking === 'dests' }"
-              @click="toggleContinuousPicking('dests')">
-              <span>{{ isContinuousPicking === 'dests' ? '⏹️ 点击地图选点 (点击完成)' : '➕ 在地图上连续选终点' }}</span>
-            </button>
-            <button type="button" class="btn-multi-clear" @click="clearDestPoints">清空</button>
-          </div>
-          <div class="multi-points-card">
-            <div v-if="multiDestPoints.length === 0"
-              style="color: #64748b; font-size: 11px; text-align: center; padding: 10px 0;">
-              暂未添加终点，请点击上方按钮在地图选点
-            </div>
-            <div v-else v-for="(pt, idx) in multiDestPoints" :key="pt.id" class="multi-point-row">
-              <div style="display: flex; align-items: center; gap: 6px;">
-                <span class="point-tag-badge" :style="{ background: pt.color }">D{{ idx + 1 }}</span>
-                <span class="point-coords-text">{{ pt.lng.toFixed(4) }}, {{ pt.lat.toFixed(4) }}</span>
-              </div>
-              <button type="button" class="btn-del-point" @click="removeDestPoint(idx)" title="删除此终点">&times;</button>
-            </div>
-          </div>
-        </div>
-
-        <label class="option-row">
-          <input type="checkbox" v-model="chkShowRoute" @change="updateRouteVisibility" />
-          <span>🛣️ 显示规划路径</span>
-        </label>
-
-        <label class="option-row">
-          <input type="checkbox" v-model="chkShowBaseMap" @change="toggleBaseMap" />
-          <span>🗺️ 显示天地图底图</span>
-        </label>
-
-        <label class="option-row">
-          <input type="checkbox" v-model="chkShowRoads" @change="toggleRoadLayer" />
-          <span>👁️ 显示数据源 (WMTS 瓦片)</span>
-        </label>
-
-        <!-- 结果反馈区域 -->
-        <div class="result-card" :class="{ show: showResultCard }">
-          <div class="result-item">
-            <span class="result-key">计算状态:</span>
-            <span class="result-val" :style="{ color: resStatusColor }">{{ resStatus }}</span>
-          </div>
-
-          <!-- 单路线结果项 (1:1) -->
-          <template v-if="currentParadigm === '1_to_1'">
-            <div class="result-item">
-              <span class="result-key">全线总里程:</span>
-              <span class="result-val">{{ resDistance }}</span>
-            </div>
-            <div class="result-item">
-              <span class="result-key">拓扑匹配节点:</span>
-              <span class="result-val">{{ resNodes }}</span>
-            </div>
-          </template>
-
-          <!-- 多路线汇总与列表 (1:N 与 N:1) -->
-          <div v-else style="border-top: 1px dashed rgba(255,255,255,0.15); margin-top: 8px; padding-top: 8px;">
-            <div class="result-item">
-              <span class="result-key">已规划路线数:</span>
-              <span class="result-val" style="color: #38bdf8;">{{ resMultiCount }}</span>
-            </div>
-            <div class="result-item">
-              <span class="result-key">最优 / 最远路线:</span>
-              <span class="result-val" style="color: #10b981;">{{ resMultiExtremes }}</span>
-            </div>
-            <div style="margin-top: 6px; font-size: 11px; color: #94a3b8;">
-              路线列表 (点击居中聚焦高亮):
-            </div>
-            <div class="multi-route-card-list">
-              <div v-for="rt in multiRouteListItems" :key="rt.id" class="multi-route-card-item"
-                :class="{ selected: selectedRouteIdx === rt.id }" @click="focusRoute(rt.id)">
-                <div style="display: flex; align-items: center; gap: 6px;">
-                  <span class="point-tag-badge" :style="{ background: rt.color }">{{ rt.label }}</span>
-                  <span style="color: #e2e8f0; font-weight: 600;">路线 {{ rt.id + 1 }}</span>
-                </div>
-                <div style="display: flex; align-items: center; gap: 6px;">
-                  <span style="color: #38bdf8; font-weight: 700; font-family: monospace;">{{ rt.distKm }} km</span>
-                  <span style="font-size: 10px; color: #94a3b8;">({{ rt.nodeCount }}节点)</span>
-                </div>
-              </div>
-            </div>
+          <div class="coord-field">
+            <span class="coord-tag">纬度</span>
+            <input
+              type="text"
+              inputmode="decimal"
+              v-model.number="startLat"
+              class="coord-input"
+              placeholder="例: 30.632"
+              @change="updateMarkers"
+            />
           </div>
         </div>
       </div>
 
-      <!-- 底部固定操作区：规划与重置按钮常驻可见 -->
-      <div class="route-panel-footer">
-        <div class="action-row">
-          <button type="button" class="btn-submit" :disabled="isPlanning" @click="planRoute">
-            {{ isPlanning ? '⏳ 计算中...' : '🚀 开始规划路径' }}
+      <div class="form-group">
+        <div class="form-label">
+          <span>🏁 终点 (经度, 纬度)</span>
+          <button
+            type="button"
+            class="pick-btn btn-manage-badge"
+            :class="{ active: pickingMode === 'end' }"
+            @click="togglePickMode('end')"
+          >
+            {{ pickingMode === 'end' ? '🏁 正在选点...' : '🎯 地图选点' }}
           </button>
-          <button type="button" class="btn-reset" @click="resetRoute">
-            🔄 重置
-          </button>
+        </div>
+        <div class="coord-row">
+          <div class="coord-field">
+            <span class="coord-tag">经度</span>
+            <input
+              type="text"
+              inputmode="decimal"
+              v-model.number="endLng"
+              class="coord-input"
+              placeholder="例: 104.120"
+              @change="updateMarkers"
+            />
+          </div>
+          <div class="coord-field">
+            <span class="coord-tag">纬度</span>
+            <input
+              type="text"
+              inputmode="decimal"
+              v-model.number="endLat"
+              class="coord-input"
+              placeholder="例: 30.638"
+              @change="updateMarkers"
+            />
+          </div>
+        </div>
+      </div>
+
+      <label class="option-row">
+        <input type="checkbox" v-model="chkShowBaseMap" @change="toggleBaseMap" />
+        <span>🗺️ 显示天地图底图</span>
+      </label>
+
+      <label class="option-row">
+        <input type="checkbox" v-model="chkShowRoads" @change="toggleRoadLayer" />
+        <span>👁️ 显示数据源 (WMTS 瓦片)</span>
+      </label>
+
+      <label class="option-row">
+        <input type="checkbox" v-model="chkDirected" />
+        <span>🧭 有向路径规划 (考虑单行道)</span>
+      </label>
+
+      <div class="action-row">
+        <button
+          type="button"
+          class="btn-submit"
+          :disabled="isPlanning"
+          @click="planRoute"
+        >
+          {{ isPlanning ? '⏳ 计算中...' : '🚀 开始规划路径' }}
+        </button>
+        <button type="button" class="btn-reset" @click="resetRoute">
+          🔄 重置
+        </button>
+      </div>
+
+      <!-- 结果反馈区域 -->
+      <div class="result-card" :class="{ show: showResultCard }">
+        <div class="result-item">
+          <span class="result-key">计算状态:</span>
+          <span class="result-val" :style="{ color: resStatusColor }">{{ resStatus }}</span>
+        </div>
+        <div class="result-item">
+          <span class="result-key">全线总里程:</span>
+          <span class="result-val">{{ resDistance }}</span>
+        </div>
+        <div class="result-item">
+          <span class="result-key">拓扑匹配节点:</span>
+          <span class="result-val">{{ resNodes }}</span>
         </div>
       </div>
     </div>
@@ -271,41 +274,85 @@
     <div v-if="showManageModal" class="modal-overlay" @click.self="showManageModal = false">
       <div class="modal-content manage-modal-width">
         <div class="modal-header">
-          <span class="modal-title">⚙️ 数据库路网数据集管理 (3D 立体分层)</span>
+          <span class="modal-title">⚙️ 数据库路网数据集管理</span>
           <span class="modal-close" @click="showManageModal = false">&times;</span>
         </div>
         <div class="modal-body max-modal-body">
           <div class="manage-sub-header">
             <span class="sub-header-desc">包含新建、名称修改与物理删除管理：</span>
-            <button type="button" class="btn-submit btn-sm" @click="openXzqFromManage">
+            <button
+              type="button"
+              class="btn-submit btn-sm"
+              @click="openXzqFromManage"
+            >
               🏛️ + 行政区划相交新建路网
             </button>
           </div>
 
           <!-- 行政级别单选切换 (全部、市级、区县、乡镇、街道) -->
           <div class="level-radio-group manage-level-radio">
-            <label class="level-radio-item" :class="{ active: manageLevelFilter === 'city' }">
-              <input type="radio" name="manageLevelFilter" value="city" v-model="manageLevelFilter" />
+            <label
+              class="level-radio-item"
+              :class="{ active: manageLevelFilter === 'city' }"
+            >
+              <input
+                type="radio"
+                name="manageLevelFilter"
+                value="city"
+                v-model="manageLevelFilter"
+              />
               <span class="radio-dot"></span>
               <span class="radio-text">市级 ({{ countByLevel('city') }})</span>
             </label>
-            <label class="level-radio-item" :class="{ active: manageLevelFilter === 'county' }">
-              <input type="radio" name="manageLevelFilter" value="county" v-model="manageLevelFilter" />
+            <label
+              class="level-radio-item"
+              :class="{ active: manageLevelFilter === 'county' }"
+            >
+              <input
+                type="radio"
+                name="manageLevelFilter"
+                value="county"
+                v-model="manageLevelFilter"
+              />
               <span class="radio-dot"></span>
               <span class="radio-text">区县 ({{ countByLevel('county') }})</span>
             </label>
-            <label class="level-radio-item" :class="{ active: manageLevelFilter === 'town' }">
-              <input type="radio" name="manageLevelFilter" value="town" v-model="manageLevelFilter" />
+            <label
+              class="level-radio-item"
+              :class="{ active: manageLevelFilter === 'town' }"
+            >
+              <input
+                type="radio"
+                name="manageLevelFilter"
+                value="town"
+                v-model="manageLevelFilter"
+              />
               <span class="radio-dot"></span>
               <span class="radio-text">乡镇 ({{ countByLevel('town') }})</span>
             </label>
-            <label class="level-radio-item" :class="{ active: manageLevelFilter === 'village' }">
-              <input type="radio" name="manageLevelFilter" value="village" v-model="manageLevelFilter" />
+            <label
+              class="level-radio-item"
+              :class="{ active: manageLevelFilter === 'village' }"
+            >
+              <input
+                type="radio"
+                name="manageLevelFilter"
+                value="village"
+                v-model="manageLevelFilter"
+              />
               <span class="radio-dot"></span>
               <span class="radio-text">街道 ({{ countByLevel('village') }})</span>
             </label>
-            <label class="level-radio-item" :class="{ active: manageLevelFilter === 'all' }">
-              <input type="radio" name="manageLevelFilter" value="all" v-model="manageLevelFilter" />
+            <label
+              class="level-radio-item"
+              :class="{ active: manageLevelFilter === 'all' }"
+            >
+              <input
+                type="radio"
+                name="manageLevelFilter"
+                value="all"
+                v-model="manageLevelFilter"
+              />
               <span class="radio-dot"></span>
               <span class="radio-text">全部 ({{ editableNetworks.length }})</span>
             </label>
@@ -326,19 +373,30 @@
               <tr v-for="net in filteredEditableNetworks" :key="net.id">
                 <td class="net-id-cell">
                   <div>{{ net.id }}</div>
-                  <div v-if="net.buildTime" style="font-size: 11px; color: #64748b; margin-top: 2px;">🕒 {{
-                    net.buildTime }}
-                  </div>
+                  <div v-if="net.buildTime" style="font-size: 11px; color: #64748b; margin-top: 2px;">🕒 {{ net.buildTime }}</div>
                 </td>
                 <td>
-                  <input type="text" v-model="net.editingName" class="coord-input edit-name-input" />
+                  <input
+                    type="text"
+                    v-model="net.editingName"
+                    class="coord-input edit-name-input"
+                  />
                 </td>
                 <td class="text-center">
-                  <button type="button" class="pick-btn btn-sm-action" @click="saveNetworkName(net)">
+                  <button
+                    type="button"
+                    class="pick-btn btn-sm-action"
+                    @click="saveNetworkName(net)"
+                  >
                     💾 保存名称
                   </button>
                   <span v-if="net.id === 'shjd_road'" class="protected-badge">系统保护</span>
-                  <button v-else type="button" class="pick-btn btn-del-net" @click="deleteNetwork(net)">
+                  <button
+                    v-else
+                    type="button"
+                    class="pick-btn btn-del-net"
+                    @click="deleteNetwork(net)"
+                  >
                     🗑️ 删除
                   </button>
                 </td>
@@ -358,15 +416,21 @@
     <div v-if="showXzqModal" class="modal-overlay" @click.self="showXzqModal = false">
       <div class="modal-content">
         <div class="modal-header">
-          <span class="modal-title">🏛️ 行政区划相交新建路网 (3D 立体分层)</span>
+          <span class="modal-title">🏛️ 行政区划相交新建路网</span>
           <span class="modal-close" @click="showXzqModal = false">&times;</span>
         </div>
         <div class="modal-body">
           <div class="form-group">
             <label class="form-label">🌐 选择行政区划级别</label>
             <div class="xzq-level-container">
-              <button v-for="lvl in xzqLevels" :key="lvl.key" type="button" class="pick-btn xzq-lvl-btn"
-                :class="{ active: currentLevel === lvl.key }" @click="switchXzqLevel(lvl.key)">
+              <button
+                v-for="lvl in xzqLevels"
+                :key="lvl.key"
+                type="button"
+                class="pick-btn xzq-lvl-btn"
+                :class="{ active: currentLevel === lvl.key }"
+                @click="switchXzqLevel(lvl.key)"
+              >
                 {{ lvl.name }}
               </button>
               <div v-if="xzqLevels.length === 0" class="loading-hint">⏳ 加载级别中...</div>
@@ -378,8 +442,12 @@
 
           <div class="form-group">
             <label class="form-label">🔍 搜索或选择要素</label>
-            <input type="text" v-model="xzqSearchKeyword" class="coord-input full-width-input"
-              placeholder="输入关键字快速多列模糊匹配过滤..." />
+            <input
+              type="text"
+              v-model="xzqSearchKeyword"
+              class="coord-input full-width-input"
+              placeholder="输入关键字快速多列模糊匹配过滤..."
+            />
             <div class="xzq-list-wrapper" @scroll="handleXzqScroll">
               <div v-if="xzqListLoading" class="loading-state">⏳ 正在加载行政区划列表中...</div>
               <template v-else-if="xzqList.length > 0">
@@ -390,9 +458,12 @@
                     </tr>
                   </thead>
                   <tbody>
-                    <tr v-for="item in xzqList" :key="item.id"
+                    <tr
+                      v-for="item in xzqList"
+                      :key="item.id"
                       :class="{ selected: selectedXzqItem && selectedXzqItem.id === item.id }"
-                      @click="onSelectXzqItem(item)">
+                      @click="onSelectXzqItem(item)"
+                    >
                       <td v-for="f in xzqFields" :key="f">
                         {{ (item.fields && item.fields[f]) || item[f] || item.name || item.id || '-' }}
                       </td>
@@ -417,12 +488,21 @@
             </div>
           </div>
 
-          <div v-if="xzqMsg.show" class="upload-msg" :style="{ color: xzqMsg.color }">
+          <div
+            v-if="xzqMsg.show"
+            class="upload-msg"
+            :style="{ color: xzqMsg.color }"
+          >
             {{ xzqMsg.text }}
           </div>
         </div>
         <div class="modal-footer">
-          <button type="button" class="btn-submit" :disabled="isXzqBuilding" @click="submitXzqBuild">
+          <button
+            type="button"
+            class="btn-submit"
+            :disabled="isXzqBuilding"
+            @click="submitXzqBuild"
+          >
             {{ isXzqBuilding ? '⏳ 构建中...' : '🚀 开始相交构建路网' }}
           </button>
         </div>
@@ -436,6 +516,7 @@ import { ref, reactive, computed, watch, onMounted, onUnmounted } from 'vue'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { PGRBRouter } from '@/utils/pgrb-router.js'
+import { PGRBGpuEngine } from '@/utils/pgrb-gpu-engine.js'
 
 const mapContainer = ref(null)
 
@@ -446,19 +527,15 @@ const networksList = ref([])
 const editableNetworks = ref([])
 const networksLoading = ref(true)
 
-const currentParadigm = ref('1_to_1') // '1_to_1' | '1_to_n' | 'n_to_1'
-const multiDestPoints = ref([]) // [{ id, lng, lat, color, marker }]
-const multiOrigPoints = ref([]) // [{ id, lng, lat, color, marker }]
-const isContinuousPicking = ref(false) // false | 'dests' | 'origins'
-
 const startLng = ref('')
 const startLat = ref('')
 const endLng = ref('')
 const endLat = ref('')
 
-const chkShowRoute = ref(true)
 const chkShowBaseMap = ref(false)
 const chkShowRoads = ref(true)
+const selectedEngine = ref('astar_pgrb') // 'astar_pgrb' | 'dijkstra_pgrouting'
+const chkDirected = ref(true)
 
 const pickingMode = ref(null) // 'start' | 'end' | null
 const isPlanning = ref(false)
@@ -468,11 +545,6 @@ const resStatus = ref('未运行')
 const resStatusColor = ref('#38bdf8')
 const resDistance = ref('-- km')
 const resNodes = ref('-- -> --')
-
-const resMultiCount = ref('0 条')
-const resMultiExtremes = ref('-- / --')
-const multiRouteListItems = ref([])
-const selectedRouteIdx = ref(null)
 
 const showManageModal = ref(false)
 const manageLevelFilter = ref('county') // 'city' | 'county' | 'town' | 'village' | 'all'
@@ -511,19 +583,13 @@ let endDashLayer = null
 let routeArrowLayer = null
 let xzqHighlightLayer = null
 let currentRouteCoords = null
-let multiRouteLayers = []
 
 let pgrbRouterInstance = null
+let gpuEngineInstance = null
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || ''
 const routeApiBase = `${apiBaseUrl}/get_geo_pg/geo/route`
 const tk = '73a87062ca36baaed0feebe7989f453a'
-
-const ROUTE_PALETTE = [
-  '#38bdf8', '#f59e0b', '#10b981', '#ec4899', '#a855f7',
-  '#06b6d4', '#84cc16', '#f97316', '#e11d48', '#14b8a6',
-  '#8b5cf6', '#eab308'
-]
 
 const iconStart = L.divIcon({
   className: 'pin-start',
@@ -535,40 +601,6 @@ const iconEnd = L.divIcon({
   className: 'pin-end',
   iconSize: [20, 20],
   iconAnchor: [10, 10]
-})
-
-function createPointIcon(label, color = '#38bdf8') {
-  return L.divIcon({
-    className: 'custom-multi-pin',
-    html: `<div style="
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: 24px;
-      height: 24px;
-      background: ${color};
-      border: 2px solid #ffffff;
-      border-radius: 50%;
-      color: #ffffff;
-      font-size: 10.5px;
-      font-weight: 800;
-      box-shadow: 0 0 10px ${color}, 0 2px 5px rgba(0,0,0,0.6);
-    ">${label}</div>`,
-    iconSize: [24, 24],
-    iconAnchor: [12, 12]
-  })
-}
-
-const paradigmBadgeText = computed(() => {
-  if (currentParadigm.value === '1_to_n') return '1 对 N'
-  if (currentParadigm.value === 'n_to_1') return 'N 对 1'
-  return '1 对 1'
-})
-
-const paradigmBadgeClass = computed(() => {
-  if (currentParadigm.value === '1_to_n') return 'badge-1ton'
-  if (currentParadigm.value === 'n_to_1') return 'badge-nto1'
-  return 'badge-3d'
 })
 
 function getXzqItemFullName(item) {
@@ -628,6 +660,7 @@ const filteredEditableNetworks = computed(() => {
   return editableNetworks.value.filter(net => getNetworkLevel(net) === manageLevelFilter.value)
 })
 
+// 获取指定级别已在 sys_road_network_by_xzq 中构建过的行政区 ID 集合
 function getExistingXzqIdSet(level) {
   const idSet = new Set()
   if (!Array.isArray(networksList.value)) return idSet
@@ -645,6 +678,7 @@ function getExistingXzqIdSet(level) {
   return idSet
 }
 
+// 获取指定级别已在 sys_road_network_by_xzq 中构建过的行政区名称集合
 function getExistingXzqNameSet(level) {
   const nameSet = new Set()
   if (!Array.isArray(networksList.value)) return nameSet
@@ -735,6 +769,9 @@ function renderRouteArrows(coords, targetMap) {
   }
 }
 
+/**
+ * 射线法（Ray-Casting）快速判断坐标点是否落在当前路网边界多边形内
+ */
 function isPointInCurrentBoundary(lng, lat) {
   if (pgrbRouterInstance) {
     return pgrbRouterInstance.isPointInBoundary(lng, lat)
@@ -813,7 +850,6 @@ function togglePickMode(mode) {
   if (pickingMode.value === mode) {
     resetPickingMode()
   } else {
-    stopContinuousPicking()
     pickingMode.value = mode
   }
 }
@@ -822,102 +858,11 @@ function resetPickingMode() {
   pickingMode.value = null
 }
 
-function switchParadigm(newParadigm) {
-  if (currentParadigm.value === newParadigm) return
-  currentParadigm.value = newParadigm
-  resetPickingMode()
-  stopContinuousPicking()
-  clearMultiRoutes()
-  clearSingleRouteLayers()
-  showResultCard.value = false
-}
-
-function toggleContinuousPicking(type) {
-  if (isContinuousPicking.value === type) {
-    stopContinuousPicking()
-  } else {
-    isContinuousPicking.value = type
-    resetPickingMode()
-  }
-}
-
-function stopContinuousPicking() {
-  isContinuousPicking.value = false
-}
-
-function removeDestPoint(idx) {
-  if (multiDestPoints.value[idx] && multiDestPoints.value[idx].marker && map) {
-    map.removeLayer(multiDestPoints.value[idx].marker)
-  }
-  multiDestPoints.value.splice(idx, 1)
-  multiDestPoints.value.forEach((pt, i) => {
-    pt.color = ROUTE_PALETTE[i % ROUTE_PALETTE.length]
-    if (pt.marker) {
-      pt.marker.setIcon(createPointIcon(`D${i + 1}`, pt.color))
-    }
-  })
-  clearMultiRoutes()
-}
-
-function clearDestPoints() {
-  multiDestPoints.value.forEach(pt => {
-    if (pt.marker && map) map.removeLayer(pt.marker)
-  })
-  multiDestPoints.value = []
-  clearMultiRoutes()
-}
-
-function removeOrigPoint(idx) {
-  if (multiOrigPoints.value[idx] && multiOrigPoints.value[idx].marker && map) {
-    map.removeLayer(multiOrigPoints.value[idx].marker)
-  }
-  multiOrigPoints.value.splice(idx, 1)
-  multiOrigPoints.value.forEach((pt, i) => {
-    pt.color = ROUTE_PALETTE[i % ROUTE_PALETTE.length]
-    if (pt.marker) {
-      pt.marker.setIcon(createPointIcon(`S${i + 1}`, pt.color))
-    }
-  })
-  clearMultiRoutes()
-}
-
-function clearOrigPoints() {
-  multiOrigPoints.value.forEach(pt => {
-    if (pt.marker && map) map.removeLayer(pt.marker)
-  })
-  multiOrigPoints.value = []
-  clearMultiRoutes()
-}
-
 function handleMapClick(e) {
+  if (!pickingMode.value) return
+
   const lon = parseFloat(e.latlng.lng.toFixed(6))
   const lat = parseFloat(e.latlng.lat.toFixed(6))
-
-  // 1. 连续选点模式
-  if (isContinuousPicking.value) {
-    if (!isPointInCurrentBoundary(lon, lat)) {
-      showBoundaryWarningPopup(e.latlng, '不能超出边界范围选点')
-      return
-    }
-
-    if (isContinuousPicking.value === 'dests') {
-      const idx = multiDestPoints.value.length
-      const color = ROUTE_PALETTE[idx % ROUTE_PALETTE.length]
-      const marker = L.marker([lat, lon], { icon: createPointIcon(`D${idx + 1}`, color) }).addTo(map)
-      marker.bindTooltip(`终点 D${idx + 1}: [${lon}, ${lat}]`, { direction: 'top', offset: [0, -12] })
-      multiDestPoints.value.push({ id: idx + 1, lng: lon, lat: lat, color, marker })
-    } else if (isContinuousPicking.value === 'origins') {
-      const idx = multiOrigPoints.value.length
-      const color = ROUTE_PALETTE[idx % ROUTE_PALETTE.length]
-      const marker = L.marker([lat, lon], { icon: createPointIcon(`S${idx + 1}`, color) }).addTo(map)
-      marker.bindTooltip(`起点 S${idx + 1}: [${lon}, ${lat}]`, { direction: 'top', offset: [0, -12] })
-      multiOrigPoints.value.push({ id: idx + 1, lng: lon, lat: lat, color, marker })
-    }
-    return
-  }
-
-  // 2. 经典 1:1 单选模式
-  if (!pickingMode.value) return
 
   if (!isPointInCurrentBoundary(lon, lat)) {
     const pointName = pickingMode.value === 'start' ? '起点' : '终点'
@@ -936,39 +881,6 @@ function handleMapClick(e) {
 
   updateMarkers()
   resetPickingMode()
-}
-
-function updateRouteVisibility() {
-  const isVisible = chkShowRoute.value
-    // 1:1 单路线图层
-    ;[routeGlowLayer, routeCoreLayer, startDashLayer, endDashLayer, routeArrowLayer].forEach(layer => {
-      if (layer && map) {
-        if (isVisible) {
-          if (!map.hasLayer(layer)) map.addLayer(layer)
-        } else {
-          if (map.hasLayer(layer)) map.removeLayer(layer)
-        }
-      }
-    })
-  // 1:N 与 N:1 多路线图层
-  if (Array.isArray(multiRouteLayers)) {
-    multiRouteLayers.forEach(r => {
-      if (r.glowLayer && map) {
-        if (isVisible) {
-          if (!map.hasLayer(r.glowLayer)) map.addLayer(r.glowLayer)
-        } else {
-          if (map.hasLayer(r.glowLayer)) map.removeLayer(r.glowLayer)
-        }
-      }
-      if (r.coreLayer && map) {
-        if (isVisible) {
-          if (!map.hasLayer(r.coreLayer)) map.addLayer(r.coreLayer)
-        } else {
-          if (map.hasLayer(r.coreLayer)) map.removeLayer(r.coreLayer)
-        }
-      }
-    })
-  }
 }
 
 function toggleBaseMap() {
@@ -1048,14 +960,18 @@ function flyMapToCenter(lat, lng, zoom = 15, duration = 0.8) {
   })
 }
 
+/**
+ * 核心升级：通过单个二进制流同时加载拓扑与矢量边界，完全消除对 /xzq/detail 明文接口的依赖
+ */
 async function loadRoadNetworkRange(networkId) {
   const loadSeq = ++currentNetworkLoadSeq
   pgrbRouterInstance = null
+  gpuEngineInstance = null
 
   // 1. 切换区域/路网时立即重置并清除已有路径、起终点标注与结果面板
   resetRoute()
 
-  // 2. 切换路网时立即移除旧边界
+  // 2. 切换路网时立即移除旧边界，避免移动时残留漂移
   if (xzqHighlightLayer && map) {
     map.removeLayer(xzqHighlightLayer)
     xzqHighlightLayer = null
@@ -1073,7 +989,7 @@ async function loadRoadNetworkRange(networkId) {
     pgrbRouterInstance = router
     console.log(`[PGRB v${router.version || 2}] 内存离线图就绪: ${router.nodeCount} 节点, ${router.edgeCount} 边${router.boundaryPointCount > 0 ? `, 边界点: ${router.boundaryPointCount}` : ''} ⚡`)
 
-    // 3. 计算最佳视角 Bounds
+    // 3. 计算最佳视角 Bounds（优先根据矢量边界 GeoJSON 计算全域包围盒，次选路网 BBOX，最后兜底中心点+默认zoom）
     let bounds = null
     const boundaryGeo = router.getBoundaryGeoJSON()
     if (boundaryGeo) {
@@ -1098,7 +1014,7 @@ async function loadRoadNetworkRange(networkId) {
 
     if (loadSeq !== currentNetworkLoadSeq || selectedNetworkId.value !== networkId) return
 
-    // 4. 渲染边界虚线高亮
+    // 4. 待地图平移完全到位后，直接从二进制解析出的边界坐标渲染高亮虚线框
     if (map && selectedNetworkId.value === networkId && boundaryGeo) {
       if (xzqHighlightLayer) {
         map.removeLayer(xzqHighlightLayer)
@@ -1115,6 +1031,14 @@ async function loadRoadNetworkRange(networkId) {
           fillOpacity: 0
         }
       }).addTo(map)
+    }
+
+    // 5. WebGPU 显存并行算路引擎异步就绪
+    const gpuEngine = new PGRBGpuEngine()
+    const supported = await gpuEngine.init()
+    if (supported && loadSeq === currentNetworkLoadSeq) {
+      await gpuEngine.uploadGraph(router)
+      gpuEngineInstance = gpuEngine
     }
   } catch (err) {
     console.error('[PGRB] 二进制图预加载失败:', err)
@@ -1210,6 +1134,7 @@ async function fetchRoadNetworks(targetSelectId = null, autoSwitchMap = true) {
         }))
 
         if (!autoSwitchMap) {
+          // 静默更新路网元数据列表，不切换地图当前路网与视野
           return
         }
 
@@ -1281,47 +1206,26 @@ function onNetworkChange() {
   loadRoadNetworkRange(selectedNetworkId.value)
 }
 
-function clearSingleRouteLayers() {
-  if (map) {
-    if (routeGlowLayer) { map.removeLayer(routeGlowLayer); routeGlowLayer = null }
-    if (routeCoreLayer) { map.removeLayer(routeCoreLayer); routeCoreLayer = null }
-    if (startDashLayer) { map.removeLayer(startDashLayer); startDashLayer = null }
-    if (endDashLayer) { map.removeLayer(endDashLayer); endDashLayer = null }
-    if (routeArrowLayer) { map.removeLayer(routeArrowLayer); routeArrowLayer = null }
-  }
-  currentRouteCoords = null
-}
-
-function clearMultiRoutes() {
-  if (multiRouteLayers && multiRouteLayers.length > 0) {
-    multiRouteLayers.forEach(r => {
-      if (r.glowLayer && map) map.removeLayer(r.glowLayer)
-      if (r.coreLayer && map) map.removeLayer(r.coreLayer)
-    })
-    multiRouteLayers = []
-  }
-  multiRouteListItems.value = []
-  selectedRouteIdx.value = null
-}
-
 function renderRouteResult(res, engineType = '') {
   isPlanning.value = false
-  clearMultiRoutes()
-
   if (res.code === 200 && res.data && res.data.geometry) {
     resStatusColor.value = '#10b981'
-    resStatus.value = engineType ? `计算成功 (${engineType})` : '计算成功'
+    resStatus.value = `计算成功 (${engineType})`
     resDistance.value = `${(res.data.totalDistance / 1000).toFixed(2)} km`
     resNodes.value = `${res.data.startNode || '-'} -> ${res.data.endNode || '-'}`
 
-    clearSingleRouteLayers()
+    if (routeGlowLayer && map) map.removeLayer(routeGlowLayer)
+    if (routeCoreLayer && map) map.removeLayer(routeCoreLayer)
+    if (startDashLayer && map) map.removeLayer(startDashLayer)
+    if (endDashLayer && map) map.removeLayer(endDashLayer)
+    if (routeArrowLayer && map) map.removeLayer(routeArrowLayer)
 
     const geojson = res.data.geometry
     currentRouteCoords = (geojson.type === 'FeatureCollection' && geojson.features && geojson.features[0])
       ? geojson.features[0].geometry.coordinates
       : (geojson.geometry ? geojson.geometry.coordinates : geojson.coordinates)
 
-    // 1. 底层霓虹发光光晕层
+    // 1. 底层霓虹发光光晕层 (Neon Glow Effect)
     routeGlowLayer = L.geoJSON(geojson, {
       style: {
         color: '#f43f5e',
@@ -1343,7 +1247,7 @@ function renderRouteResult(res, engineType = '') {
       }
     }).addTo(map)
 
-    // 3. 绘制起止点引线
+    // 3. 绘制起止点与吸附路网顶点的引线 (Dash Connector)
     if (currentRouteCoords && currentRouteCoords.length > 0) {
       const firstCoord = currentRouteCoords[0]
       const lastCoord = currentRouteCoords[currentRouteCoords.length - 1]
@@ -1377,7 +1281,6 @@ function renderRouteResult(res, engineType = '') {
         map.fitBounds(L.latLngBounds(validPoints), { padding: [60, 60] })
       }
     }
-    updateRouteVisibility()
   } else {
     resStatusColor.value = '#ef4444'
     resStatus.value = `计算失败: ${res.msg || '无连通路径'}`
@@ -1386,241 +1289,16 @@ function renderRouteResult(res, engineType = '') {
   }
 }
 
-function renderMultiRoutesResult(routes, calcCostStr, paradigm) {
-  isPlanning.value = false
-  clearSingleRouteLayers()
-  clearMultiRoutes()
-
-  if (!Array.isArray(routes) || routes.length === 0) {
-    resStatusColor.value = '#ef4444'
-    resStatus.value = '未找到有效连通路径'
-    return
-  }
-
-  resStatusColor.value = '#10b981'
-  resStatus.value = calcCostStr ? `规划成功 (${calcCostStr})` : '规划成功'
-
-  resMultiCount.value = `${routes.length} 条有效路径`
-
-  let minDist = Infinity
-  let maxDist = -Infinity
-  let allLatLngs = []
-  const listItems = []
-
-  routes.forEach((rt, idx) => {
-    const color = ROUTE_PALETTE[idx % ROUTE_PALETTE.length]
-    const distKm = (rt.totalDistance / 1000).toFixed(2)
-    if (rt.totalDistance < minDist) minDist = rt.totalDistance
-    if (rt.totalDistance > maxDist) maxDist = rt.totalDistance
-
-    const geojson = rt.geometry
-    const coords = (geojson.type === 'FeatureCollection' && geojson.features && geojson.features[0])
-      ? geojson.features[0].geometry.coordinates
-      : (geojson.geometry ? geojson.geometry.coordinates : (geojson.coordinates || []))
-
-    // 1. 发光外轮廓
-    const glow = L.geoJSON(geojson, {
-      style: { color: color, weight: 10, opacity: 0.35, lineCap: 'round', lineJoin: 'round' }
-    }).addTo(map)
-
-    // 2. 核心流光层
-    const core = L.geoJSON(geojson, {
-      style: { color: color, weight: 4.5, opacity: 0.95, lineCap: 'round', lineJoin: 'round' }
-    }).addTo(map)
-
-    const tooltipText = paradigm === '1_to_n'
-      ? `中心起点 ➔ 终点 D${idx + 1}: ${distKm} km`
-      : `起点 S${idx + 1} ➔ 汇聚终点: ${distKm} km`
-    core.bindTooltip(tooltipText, { sticky: true })
-
-    coords.forEach(c => allLatLngs.push([c[1], c[0]]))
-    multiRouteLayers.push({ id: idx, glowLayer: glow, coreLayer: core, coords: coords, totalDistance: rt.totalDistance })
-
-    const label = paradigm === '1_to_n' ? `D${idx + 1}` : `S${idx + 1}`
-    listItems.push({
-      id: idx,
-      label,
-      color,
-      distKm,
-      nodeCount: rt.path ? rt.path.length : '-'
-    })
-  })
-
-  const minKm = (minDist / 1000).toFixed(2)
-  const maxKm = (maxDist / 1000).toFixed(2)
-  resMultiExtremes.value = `${minKm} km / ${maxKm} km`
-  multiRouteListItems.value = listItems
-
-  if (allLatLngs.length > 0) {
-    map.fitBounds(L.latLngBounds(allLatLngs), { padding: [50, 50] })
-  }
-  updateRouteVisibility()
-}
-
-function focusRoute(idx) {
-  selectedRouteIdx.value = idx
-  multiRouteLayers.forEach((r, i) => {
-    if (i === idx) {
-      r.glowLayer.setStyle({ weight: 16, opacity: 0.8 })
-      r.coreLayer.setStyle({ weight: 7, opacity: 1.0 })
-      if (r.coords && r.coords.length > 0) {
-        const bounds = L.latLngBounds(r.coords.map(c => [c[1], c[0]]))
-        map.fitBounds(bounds, { padding: [60, 60] })
-      }
-    } else {
-      r.glowLayer.setStyle({ weight: 6, opacity: 0.2 })
-      r.coreLayer.setStyle({ weight: 3, opacity: 0.4 })
-    }
-  })
-}
-
 async function planRoute() {
-  resetPickingMode()
-  stopContinuousPicking()
-
-  const isDirected = true
-  const router = pgrbRouterInstance
-
-  if (!router || !router.isLoaded) {
-    alert('路网二进制图尚未加载完成，请稍候再试！')
-    return
-  }
-
-  // ========================================================
-  // 规划范式 1: 1 对 N (单起点 -> 多终点)
-  // ========================================================
-  if (currentParadigm.value === '1_to_n') {
-    const sLng = parseFloat(startLng.value)
-    const sLat = parseFloat(startLat.value)
-
-    if (isNaN(sLng) || isNaN(sLat)) {
-      alert('请先在地图上选定或输入有效的中心起点坐标！')
-      return
-    }
-
-    if (!isPointInCurrentBoundary(sLng, sLat)) {
-      showBoundaryWarningPopup([sLat, sLng], '起点坐标超出路网边界范围')
-      return
-    }
-
-    if (!multiDestPoints.value || multiDestPoints.value.length === 0) {
-      alert('请点击“➕ 在地图上连续选终点”，至少添加 1 个目标终点！')
-      return
-    }
-
-    clearSingleRouteLayers()
-    clearMultiRoutes()
-
-    showResultCard.value = true
-    resStatusColor.value = '#38bdf8'
-    resStatus.value = '1对N 多目标规划中...'
-    isPlanning.value = true
-
-    const t0 = performance.now()
-    const routes = []
-    for (let i = 0; i < multiDestPoints.value.length; i++) {
-      const d = multiDestPoints.value[i]
-      const planRes = router.planRouteWithSnap(sLng, sLat, d.lng, d.lat, isDirected)
-      if (planRes && planRes.path && planRes.path.length > 0) {
-        const geojson = router.getPathGeoJSONWithSnap(planRes.path, planRes.startSnap, planRes.endSnap, isDirected)
-        routes.push({
-          destId: d.id,
-          destIdx: i,
-          destPoint: d,
-          totalDistance: planRes.distance,
-          startNode: router.getOriginalNodeId(planRes.path[0]),
-          endNode: router.getOriginalNodeId(planRes.path[planRes.path.length - 1]),
-          geometry: geojson,
-          path: planRes.path
-        })
-      }
-    }
-    const t1 = performance.now()
-    const calcCostMs = (t1 - t0).toFixed(1)
-    renderMultiRoutesResult(routes, `${calcCostMs} ms CPU A* ⚡`, '1_to_n')
-    return
-  }
-
-  // ========================================================
-  // 规划范式 2: N 对 1 (多起点 -> 单终点)
-  // ========================================================
-  if (currentParadigm.value === 'n_to_1') {
-    const eLng = parseFloat(endLng.value)
-    const eLat = parseFloat(endLat.value)
-
-    if (isNaN(eLng) || isNaN(eLat)) {
-      alert('请先在地图上选定或输入有效的目标终点坐标！')
-      return
-    }
-
-    if (!isPointInCurrentBoundary(eLng, eLat)) {
-      showBoundaryWarningPopup([eLat, eLng], '终点坐标超出路网边界范围')
-      return
-    }
-
-    if (!multiOrigPoints.value || multiOrigPoints.value.length === 0) {
-      alert('请点击“➕ 在地图上连续选起点”，至少添加 1 个起点！')
-      return
-    }
-
-    clearSingleRouteLayers()
-    clearMultiRoutes()
-
-    showResultCard.value = true
-    resStatusColor.value = '#38bdf8'
-    resStatus.value = 'N对1 多起点汇聚中...'
-    isPlanning.value = true
-
-    const t0 = performance.now()
-    const routes = []
-    for (let i = 0; i < multiOrigPoints.value.length; i++) {
-      const o = multiOrigPoints.value[i]
-      const planRes = router.planRouteWithSnap(o.lng, o.lat, eLng, eLat, isDirected)
-      if (planRes && planRes.path && planRes.path.length > 0) {
-        const geojson = router.getPathGeoJSONWithSnap(planRes.path, planRes.startSnap, planRes.endSnap, isDirected)
-        routes.push({
-          origId: o.id,
-          origIdx: i,
-          origPoint: o,
-          totalDistance: planRes.distance,
-          startNode: router.getOriginalNodeId(planRes.path[0]),
-          endNode: router.getOriginalNodeId(planRes.path[planRes.path.length - 1]),
-          geometry: geojson,
-          path: planRes.path
-        })
-      }
-    }
-    const t1 = performance.now()
-    const calcCostMs = (t1 - t0).toFixed(1)
-    renderMultiRoutesResult(routes, `${calcCostMs} ms CPU A* ⚡`, 'n_to_1')
-    return
-  }
-
-  // ========================================================
-  // 规划范式 3: 经典 1 对 1 (单起点 -> 单终点)
-  // ========================================================
   const sLng = parseFloat(startLng.value)
   const sLat = parseFloat(startLat.value)
   const eLng = parseFloat(endLng.value)
   const eLat = parseFloat(endLat.value)
 
   if (isNaN(sLng) || isNaN(sLat) || isNaN(eLng) || isNaN(eLat)) {
-    alert('请先在地图上点击选点或输入有效的起点与终点经纬度坐标！')
+    alert('请先在地图上选点或手动输入完整的起点和终点坐标！')
     return
   }
-
-  if (!isPointInCurrentBoundary(sLng, sLat)) {
-    showBoundaryWarningPopup([sLat, sLng], '起点坐标超出边界范围')
-    return
-  }
-
-  if (!isPointInCurrentBoundary(eLng, eLat)) {
-    showBoundaryWarningPopup([eLat, eLng], '终点坐标超出边界范围')
-    return
-  }
-
-  clearSingleRouteLayers()
-  clearMultiRoutes()
 
   showResultCard.value = true
   resStatusColor.value = '#38bdf8'
@@ -1629,45 +1307,78 @@ async function planRoute() {
   resNodes.value = '-- -> --'
   isPlanning.value = true
 
-  const t0 = performance.now()
-  const planRes = router.planRouteWithSnap(sLng, sLat, eLng, eLat, isDirected)
-  const t1 = performance.now()
-  const calcCostMs = (t1 - t0).toFixed(1)
+  // 1. Astar + pgRouting Binary 前端内存零延迟算路 (CPU A*)
+  if (selectedEngine.value === 'astar_pgrb') {
+    if (pgrbRouterInstance && pgrbRouterInstance.isLoaded) {
+      console.log('[PGRB] 执行 Astar+pgRouting Binary 前端零延迟算路...')
+      const t0 = performance.now()
+      const router = pgrbRouterInstance
+      const isDirected = chkDirected.value
 
-  if (planRes && planRes.path && planRes.path.length > 0) {
-    const geojson = router.getPathGeoJSONWithSnap(planRes.path, planRes.startSnap, planRes.endSnap, isDirected)
-    renderRouteResult({
-      code: 200,
-      data: {
-        totalDistance: planRes.distance,
-        startNode: router.getOriginalNodeId(planRes.path[0]),
-        endNode: router.getOriginalNodeId(planRes.path[planRes.path.length - 1]),
-        geometry: geojson
+      const planRes = router.planRouteWithSnap(sLng, sLat, eLng, eLat, isDirected)
+      const path = planRes.path
+      const distance = planRes.distance
+      const startSnap = planRes.startSnap
+      const endSnap = planRes.endSnap
+      const startIdx = path && path.length > 0 ? path[0] : -1
+      const endIdx = path && path.length > 0 ? path[path.length - 1] : -1
+
+      const t1 = performance.now()
+      const calcCostMs = (t1 - t0).toFixed(1)
+
+      if (path && path.length > 0) {
+        const geojson = router.getPathGeoJSONWithSnap(path, startSnap, endSnap, isDirected)
+        const startOrigId = router.getOriginalNodeId(startIdx)
+        const endOrigId = router.getOriginalNodeId(endIdx)
+
+        renderRouteResult({
+          code: 200,
+          data: {
+            totalDistance: distance,
+            startNode: startOrigId,
+            endNode: endOrigId,
+            geometry: geojson
+          }
+        }, `${calcCostMs} ms CPU ⚡`)
+      } else {
+        isPlanning.value = false
+        resStatusColor.value = '#ef4444'
+        resStatus.value = '起点与终点之间未找到连通路径 (Astar前端算路)'
       }
-    }, `${calcCostMs} ms CPU ⚡`)
-  } else {
+      return
+    } else {
+      console.warn('[PGRB] 二进制图尚未加载完成，尝试通过后端接口规划...')
+    }
+  }
+
+  // 2. Dijkstra + pgRouting 后端实现
+  console.log('[pgRouting] 执行 Dijkstra + pgRouting 后端算路...')
+  const t0 = performance.now()
+  const payload = {
+    networkId: selectedNetworkId.value || null,
+    startLng: sLng,
+    startLat: sLat,
+    endLng: eLng,
+    endLat: eLat,
+    directed: chkDirected.value
+  }
+
+  try {
+    const response = await fetch(`${routeApiBase}/plan`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    })
+    const t1 = performance.now()
+    const calcCostMs = (t1 - t0).toFixed(1)
+    const res = await response.json()
+    renderRouteResult(res, `${calcCostMs} ms pgRouting 🌐`)
+  } catch (err) {
     isPlanning.value = false
     resStatusColor.value = '#ef4444'
-    resStatus.value = '起点与终点之间未找到连通路径 (CPU A* 算路)'
+    resStatus.value = `请求异常: ${err.message}`
+    console.error('Route API error:', err)
   }
-}
-
-function resetRoute() {
-  resetPickingMode()
-  stopContinuousPicking()
-  startLng.value = ''
-  startLat.value = ''
-  endLng.value = ''
-  endLat.value = ''
-  updateMarkers()
-  clearDestPoints()
-  clearOrigPoints()
-  clearSingleRouteLayers()
-  clearMultiRoutes()
-
-  showResultCard.value = false
-  resStatus.value = '已重置'
-  resStatusColor.value = '#38bdf8'
 }
 
 function openManageModal() {
@@ -1775,6 +1486,7 @@ async function loadXzqList(level, isAppend = false) {
       const existingIdSet = getExistingXzqIdSet(level)
       const existingNameSet = getExistingXzqNameSet(level)
 
+      // 严格去重：过滤已建图的行政区，防止重复建图
       const deduplicatedList = rawList.filter(item => {
         const itemId = String(item.id || '').trim().toLowerCase()
         if (itemId && existingIdSet.has(itemId)) return false
@@ -1843,6 +1555,7 @@ async function onSelectXzqItem(item) {
   }
 }
 
+// 辅助轮询检测后台建网状态（应对大型市级路网可能触发的 Nginx 504 等代理超时）
 async function pollCheckNetworkBuilt(targetNetId, maxAttempts = 16, intervalMs = 5000) {
   for (let i = 0; i < maxAttempts; i++) {
     await new Promise(r => setTimeout(r, intervalMs))
@@ -1855,7 +1568,9 @@ async function pollCheckNetworkBuilt(targetNetId, maxAttempts = 16, intervalMs =
           if (found) return true
         }
       }
-    } catch (e) { }
+    } catch (e) {
+      // 忽略轮询网络抖动
+    }
   }
   return false
 }
@@ -1868,6 +1583,7 @@ async function submitXzqBuild() {
   const netId = `xzq_${currentLevel.value}_${selectedXzqItem.value.id}_3d`
   const netName = (getXzqItemFullName(selectedXzqItem.value) || selectedXzqItem.value.name || selectedXzqItem.value.id) + ' (3D立体分层)'
 
+  // 重复建图前端二次防错
   const alreadyExists = networksList.value.some(net => net.id === netId || (getNetworkLevel(net) === currentLevel.value && net.name === netName))
   if (alreadyExists) {
     alert(`⚠️ 该行政区【${netName}】已在数据库中构建为路网，请勿重复构建！`)
@@ -1903,6 +1619,7 @@ async function submitXzqBuild() {
     } else {
       const rawText = await response.text()
       if (response.status === 504 || rawText.includes('504') || rawText.includes('Gateway Time-out')) {
+        // 市级路网因为数据量巨大，可能触发代理超时（504），但后台可能仍在继续建网
         xzqMsg.color = '#f59e0b'
         xzqMsg.text = '⚠️ 请求等待超时（504）：市级3D路网数据量庞大，后台仍在继续构建中！正在自动轮询检测构建结果...'
         const builtSuccess = await pollCheckNetworkBuilt(netId, 16, 5000)
@@ -1949,6 +1666,27 @@ async function submitXzqBuild() {
     xzqMsg.text = `❌ 请求异常: ${err.message}`
     console.error('Build Error:', err)
   }
+}
+
+function resetRoute() {
+  startLng.value = ''
+  startLat.value = ''
+  endLng.value = ''
+  endLat.value = ''
+  showResultCard.value = false
+  resStatus.value = '未运行'
+  resDistance.value = '-- km'
+  resNodes.value = '-- -> --'
+
+  if (startMarker && map) { map.removeLayer(startMarker); startMarker = null }
+  if (endMarker && map) { map.removeLayer(endMarker); endMarker = null }
+  if (routeGlowLayer && map) { map.removeLayer(routeGlowLayer); routeGlowLayer = null }
+  if (routeCoreLayer && map) { map.removeLayer(routeCoreLayer); routeCoreLayer = null }
+  if (startDashLayer && map) { map.removeLayer(startDashLayer); startDashLayer = null }
+  if (endDashLayer && map) { map.removeLayer(endDashLayer); endDashLayer = null }
+  if (routeArrowLayer && map) { map.removeLayer(routeArrowLayer); routeArrowLayer = null }
+  currentRouteCoords = null
+  resetPickingMode()
 }
 
 onMounted(() => {
@@ -2049,108 +1787,31 @@ onUnmounted(() => {
 /* 路径规划浮动控制面板 */
 .route-panel {
   position: absolute;
-  top: 16px;
-  bottom: 16px;
-  right: 16px;
+  top: 20px;
+  right: 20px;
   z-index: 1000;
-  width: 350px;
-  max-height: calc(100vh - 32px);
-  background: rgba(15, 23, 42, 0.94);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  width: 340px;
+  background: rgba(15, 23, 42, 0.88);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 14px;
-  display: flex;
-  flex-direction: column;
-  padding: 0;
+  padding: 18px;
   color: #f8fafc;
-  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.6);
-  overflow: hidden;
-}
-
-.route-panel-header {
-  padding: 14px 16px 12px 16px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(15, 23, 42, 0.92);
-  flex-shrink: 0;
-}
-
-.route-panel-header .panel-header {
-  margin-bottom: 0;
-  padding-bottom: 0;
-  border-bottom: none;
-}
-
-.route-panel-body {
-  flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding: 12px 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.route-panel-body::-webkit-scrollbar {
-  width: 5px;
-}
-
-.route-panel-body::-webkit-scrollbar-track {
-  background: rgba(15, 23, 42, 0.4);
-}
-
-.route-panel-body::-webkit-scrollbar-thumb {
-  background: rgba(56, 189, 248, 0.28);
-  border-radius: 10px;
-}
-
-.route-panel-body::-webkit-scrollbar-thumb:hover {
-  background: rgba(56, 189, 248, 0.55);
-}
-
-.route-panel-footer {
-  padding: 10px 16px 12px 16px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(15, 23, 42, 0.98);
-  flex-shrink: 0;
-  box-shadow: 0 -6px 16px rgba(0, 0, 0, 0.4);
-}
-
-.mode-badge {
-  font-size: 10.5px;
-  padding: 2px 7px;
-  border-radius: 9999px;
-  font-weight: 600;
-  letter-spacing: 0.3px;
-  transition: all 0.25s ease;
-}
-
-.mode-badge.badge-3d {
-  color: #38bdf8;
-  background: rgba(56, 189, 248, 0.12);
-  border: 1px solid rgba(56, 189, 248, 0.35);
-}
-
-.mode-badge.badge-1ton {
-  color: #f59e0b;
-  background: rgba(245, 158, 11, 0.12);
-  border: 1px solid rgba(245, 158, 11, 0.35);
-}
-
-.mode-badge.badge-nto1 {
-  color: #10b981;
-  background: rgba(16, 185, 129, 0.12);
-  border: 1px solid rgba(16, 185, 129, 0.35);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
 }
 
 .panel-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .panel-title {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 700;
   color: #38bdf8;
   display: flex;
@@ -2159,7 +1820,7 @@ onUnmounted(() => {
 }
 
 .form-group {
-  margin-bottom: 4px;
+  margin-bottom: 12px;
 }
 
 .form-label {
@@ -2171,210 +1832,6 @@ onUnmounted(() => {
   justify-content: space-between;
   align-items: center;
   line-height: 1.2;
-}
-
-/* 寻路范式切换 (1:1 / 1:N / N:1) */
-.paradigm-selector-group {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 6px;
-  background: rgba(15, 23, 42, 0.75);
-  padding: 4px;
-  border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  margin: 4px 0 6px 0;
-}
-
-.paradigm-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 6px 4px;
-  font-size: 11.5px;
-  color: #94a3b8;
-  border-radius: 7px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  font-weight: 500;
-  border: 1px solid transparent;
-  user-select: none;
-  text-align: center;
-}
-
-.paradigm-item:hover {
-  color: #f1f5f9;
-  background: rgba(255, 255, 255, 0.05);
-}
-
-.paradigm-item.active {
-  color: #38bdf8;
-  background: rgba(14, 165, 233, 0.18);
-  border-color: rgba(56, 189, 248, 0.4);
-  font-weight: 700;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-}
-
-/* 多点动态列表卡片 */
-.multi-points-card {
-  background: rgba(15, 23, 42, 0.5);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 8px;
-  padding: 6px 8px;
-  margin-top: 6px;
-  max-height: 120px;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-
-.multi-points-card::-webkit-scrollbar {
-  width: 4px;
-}
-
-.multi-points-card::-webkit-scrollbar-thumb {
-  background: rgba(56, 189, 248, 0.25);
-  border-radius: 6px;
-}
-
-.multi-point-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: rgba(30, 41, 59, 0.6);
-  border-radius: 6px;
-  padding: 4px 8px;
-  font-size: 11.5px;
-  border: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-.point-tag-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 10px;
-  font-weight: 700;
-  padding: 1px 6px;
-  border-radius: 4px;
-  color: #ffffff;
-  min-width: 24px;
-}
-
-.point-coords-text {
-  color: #cbd5e1;
-  font-family: 'Courier New', monospace;
-  font-size: 11px;
-}
-
-.btn-del-point {
-  background: none;
-  border: none;
-  color: #ef4444;
-  cursor: pointer;
-  font-size: 14px;
-  padding: 1px 4px;
-  border-radius: 4px;
-  transition: all 0.15s ease;
-  line-height: 1;
-}
-
-.btn-del-point:hover {
-  background: rgba(239, 68, 68, 0.25);
-  color: #fca5a5;
-}
-
-.multi-action-bar {
-  display: flex;
-  gap: 6px;
-  margin-top: 4px;
-}
-
-.btn-multi-pick {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  padding: 6px 8px;
-  font-size: 11.5px;
-  background: rgba(14, 165, 233, 0.15);
-  border: 1px solid rgba(56, 189, 248, 0.3);
-  border-radius: 6px;
-  color: #38bdf8;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.btn-multi-pick.active {
-  background: #38bdf8;
-  color: #0f172a;
-  font-weight: 700;
-  box-shadow: 0 0 10px rgba(56, 189, 248, 0.6);
-  animation: pulsePicking 1.5s infinite;
-}
-
-@keyframes pulsePicking {
-
-  0%,
-  100% {
-    box-shadow: 0 0 10px rgba(56, 189, 248, 0.6);
-  }
-
-  50% {
-    box-shadow: 0 0 18px rgba(56, 189, 248, 0.9);
-  }
-}
-
-.btn-multi-clear {
-  background: rgba(239, 68, 68, 0.1);
-  border: 1px solid rgba(239, 68, 68, 0.25);
-  color: #f87171;
-  padding: 6px 10px;
-  font-size: 11px;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.btn-multi-clear:hover {
-  background: rgba(239, 68, 68, 0.25);
-  color: #ffffff;
-}
-
-/* 多路线结果卡片列表 */
-.multi-route-card-list {
-  margin-top: 6px;
-  max-height: 180px;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.multi-route-card-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 6px 8px;
-  background: rgba(15, 23, 42, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 11px;
-  transition: all 0.18s ease;
-}
-
-.multi-route-card-item:hover {
-  background: rgba(56, 189, 248, 0.15);
-  border-color: rgba(56, 189, 248, 0.4);
-  transform: translateX(2px);
-}
-
-.multi-route-card-item.selected {
-  border-color: #38bdf8;
-  background: rgba(14, 165, 233, 0.22);
-  box-shadow: 0 0 8px rgba(56, 189, 248, 0.35);
 }
 
 .coord-row {
@@ -2446,6 +1903,110 @@ onUnmounted(() => {
 .full-width-select {
   width: 100%;
   cursor: pointer;
+}
+
+/* 算路引擎单选圆点与卡片样式 */
+.engine-radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 4px 0 8px 0;
+}
+
+.engine-radio-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  cursor: pointer;
+  user-select: none;
+  padding: 8px 10px;
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.engine-radio-item:hover {
+  border-color: rgba(56, 189, 248, 0.35);
+  background: rgba(30, 41, 59, 0.6);
+}
+
+.engine-radio-item.active {
+  border-color: rgba(56, 189, 248, 0.55);
+  background: rgba(14, 165, 233, 0.12);
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.15);
+}
+
+.engine-radio-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.engine-radio-header input[type="radio"] {
+  display: none;
+}
+
+.engine-radio-item .radio-title {
+  font-size: 12.5px;
+  color: #94a3b8;
+  font-weight: 600;
+  transition: color 0.2s ease;
+}
+
+.engine-radio-item:hover .radio-title {
+  color: #e2e8f0;
+}
+
+.engine-radio-item.active .radio-title {
+  color: #38bdf8;
+}
+
+.engine-radio-desc {
+  font-size: 11px;
+  color: #64748b;
+  line-height: 1.45;
+  padding-left: 21px;
+  transition: color 0.2s ease;
+}
+
+.engine-radio-item:hover .engine-radio-desc {
+  color: #94a3b8;
+}
+
+.engine-radio-item.active .engine-radio-desc {
+  color: #93c5fd;
+}
+
+.engine-radio-item .radio-dot {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.35);
+  background: rgba(15, 23, 42, 0.85);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.engine-radio-item:hover .radio-dot {
+  border-color: rgba(56, 189, 248, 0.7);
+}
+
+.engine-radio-item.active .radio-dot {
+  border-color: #38bdf8;
+  background: rgba(14, 165, 233, 0.15);
+  box-shadow: 0 0 8px rgba(56, 189, 248, 0.5);
+}
+
+.engine-radio-item.active .radio-dot::after {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #38bdf8;
 }
 
 /* 行政级别单选圆点样式 */
@@ -2563,7 +2124,7 @@ select.coord-input option {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 4px 0;
+  margin: 8px 0;
   font-size: 12px;
   color: #cbd5e1;
   cursor: pointer;
@@ -2577,7 +2138,7 @@ select.coord-input option {
 .action-row {
   display: flex;
   gap: 10px;
-  margin-top: 0;
+  margin-top: 12px;
 }
 
 .btn-submit {
@@ -2624,7 +2185,7 @@ select.coord-input option {
 
 /* 结果展示卡片 */
 .result-card {
-  margin-top: 6px;
+  margin-top: 14px;
   background: rgba(30, 41, 59, 0.6);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 8px;
