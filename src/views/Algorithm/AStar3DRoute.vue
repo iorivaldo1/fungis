@@ -1555,6 +1555,26 @@ async function onSelectXzqItem(item) {
   }
 }
 
+// 辅助轮询检测后台建网状态（应对大型市级路网可能触发的 Nginx 504 等代理超时）
+async function pollCheckNetworkBuilt(targetNetId, maxAttempts = 16, intervalMs = 5000) {
+  for (let i = 0; i < maxAttempts; i++) {
+    await new Promise(r => setTimeout(r, intervalMs))
+    try {
+      const resp = await fetch(`${routeApiBase}/networks?mode=3d`)
+      if (resp.ok) {
+        const data = await resp.json()
+        if (data.code === 200 && Array.isArray(data.data)) {
+          const found = data.data.some(n => n.id === targetNetId)
+          if (found) return true
+        }
+      }
+    } catch (e) {
+      // 忽略轮询网络抖动
+    }
+  }
+  return false
+}
+
 async function submitXzqBuild() {
   if (!selectedXzqItem.value) {
     alert('请先在列表中点击选中具体的要素！')
@@ -1582,14 +1602,51 @@ async function submitXzqBuild() {
   formData.append('networkName', netName)
 
   try {
-    const res = await fetch(`${routeApiBase}/xzq/build-with-level`, {
+    const response = await fetch(`${routeApiBase}/xzq/build-with-level`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Accept': 'application/json'
+      },
       body: formData
-    }).then(r => r.json())
+    })
+
+    const contentType = response.headers.get('content-type') || ''
+    let res = null
+
+    if (contentType.includes('application/json')) {
+      res = await response.json()
+    } else {
+      const rawText = await response.text()
+      if (response.status === 504 || rawText.includes('504') || rawText.includes('Gateway Time-out')) {
+        // 市级路网因为数据量巨大，可能触发代理超时（504），但后台可能仍在继续建网
+        xzqMsg.color = '#f59e0b'
+        xzqMsg.text = '⚠️ 请求等待超时（504）：市级3D路网数据量庞大，后台仍在继续构建中！正在自动轮询检测构建结果...'
+        const builtSuccess = await pollCheckNetworkBuilt(netId, 16, 5000)
+        if (builtSuccess) {
+          isXzqBuilding.value = false
+          if (PGRBRouter && typeof PGRBRouter.clearCache === 'function') {
+            try { await PGRBRouter.clearCache(netId) } catch (e) { }
+          }
+          xzqMsg.color = '#10b981'
+          xzqMsg.text = `✅【${netName}】市级3D路网后台构建完成！已自动同步。`
+          setTimeout(() => {
+            showXzqModal.value = false
+            fetchRoadNetworks(netId)
+          }, 1500)
+          return
+        } else {
+          throw new Error('市级3D立体路网构建耗时较长，已转入后台继续处理。稍候在路网列表中刷新即可查看。')
+        }
+      } else if (response.status === 502) {
+        throw new Error('网关错误 (502 Bad Gateway)，后端服务不可用或正在重启')
+      } else {
+        throw new Error(`服务端响应异常 (HTTP ${response.status})`)
+      }
+    }
 
     isXzqBuilding.value = false
-    if (res.code === 200) {
+    if (res && res.code === 200) {
       if (PGRBRouter && typeof PGRBRouter.clearCache === 'function') {
         try { await PGRBRouter.clearCache(netId) } catch (e) { }
       }
@@ -1601,7 +1658,7 @@ async function submitXzqBuild() {
       }, 1500)
     } else {
       xzqMsg.color = '#ef4444'
-      xzqMsg.text = '❌ ' + (res.msg || '构建失败')
+      xzqMsg.text = '❌ ' + ((res && res.msg) || '构建失败')
     }
   } catch (err) {
     isXzqBuilding.value = false

@@ -65,8 +65,22 @@
             ⚙️ 路网管理
           </button>
         </div>
-        <!-- 行政级别单选切换 (区县、乡镇、街道) -->
+        <!-- 行政级别单选切换 (市级、区县、乡镇、街道) -->
         <div class="level-radio-group">
+          <label
+            class="level-radio-item"
+            :class="{ active: selectedLevelFilter === 'city' }"
+          >
+            <input
+              type="radio"
+              name="levelFilter"
+              value="city"
+              v-model="selectedLevelFilter"
+              @change="onLevelFilterChange"
+            />
+            <span class="radio-dot"></span>
+            <span class="radio-text">市级</span>
+          </label>
           <label
             class="level-radio-item"
             :class="{ active: selectedLevelFilter === 'county' }"
@@ -535,11 +549,13 @@ function getNetworkLevel(net) {
   if (!net) return 'county'
   if (net.level) {
     const l = String(net.level).toLowerCase()
+    if (l === 'city' || l.includes('市级') || l === '市') return 'city'
     if (l === 'county' || l.includes('区') || l.includes('县')) return 'county'
     if (l === 'town' || l.includes('镇') || l.includes('乡')) return 'town'
     if (l === 'village' || l === 'street' || l.includes('街') || l.includes('村')) return 'village'
   }
   const id = (net.id || '').toLowerCase()
+  if (id.startsWith('xzq_city_') || id.includes('city')) return 'city'
   if (id.startsWith('xzq_county_') || id.includes('county')) return 'county'
   if (id.startsWith('xzq_town_') || id.includes('town')) return 'town'
   if (id.startsWith('xzq_village_') || id.startsWith('xzq_street_') || id.includes('village') || id.includes('street') || id.startsWith('shjd')) return 'village'
@@ -547,7 +563,8 @@ function getNetworkLevel(net) {
   const name = (net.name || '')
   if (name.includes('街道') || name.includes('村') || name.includes('社区')) return 'village'
   if (name.includes('镇') || name.includes('乡')) return 'town'
-  if (name.includes('区') || name.includes('县') || name.includes('市')) return 'county'
+  if (name.includes('区') || name.includes('县')) return 'county'
+  if (name.includes('市') || name.includes('州') || name.includes('盟')) return 'city'
 
   return 'county'
 }
@@ -876,7 +893,10 @@ async function loadXzqBoundary(networkId) {
   if (!networkId) return
 
   let url = ''
-  if (networkId.startsWith('xzq_county_')) {
+  if (networkId.startsWith('xzq_city_')) {
+    const featureId = networkId.replace('xzq_city_', '')
+    url = `${routeApiBase}/xzq/detail?level=city&featureId=${featureId}`
+  } else if (networkId.startsWith('xzq_county_')) {
     const featureId = networkId.replace('xzq_county_', '')
     url = `${routeApiBase}/xzq/detail?level=county&featureId=${featureId}`
   } else if (networkId.startsWith('xzq_town_')) {
@@ -1488,6 +1508,26 @@ async function onSelectXzqItem(item) {
   }
 }
 
+// 辅助轮询检测后台建网状态（应对大型市级路网可能触发的 Nginx 504 等代理超时）
+async function pollCheckNetworkBuilt(targetNetId, maxAttempts = 16, intervalMs = 5000) {
+  for (let i = 0; i < maxAttempts; i++) {
+    await new Promise(r => setTimeout(r, intervalMs))
+    try {
+      const resp = await fetch(`${routeApiBase}/networks`)
+      if (resp.ok) {
+        const data = await resp.json()
+        if (data.code === 200 && Array.isArray(data.data)) {
+          const found = data.data.some(n => n.id === targetNetId)
+          if (found) return true
+        }
+      }
+    } catch (e) {
+      // 忽略轮询网络抖动
+    }
+  }
+  return false
+}
+
 async function submitXzqBuild() {
   if (!selectedXzqItem.value) {
     alert('请先在列表中点击选中具体的要素！')
@@ -1508,14 +1548,48 @@ async function submitXzqBuild() {
   formData.append('networkName', netName)
 
   try {
-    const res = await fetch(`${routeApiBase}/xzq/build`, {
+    const response = await fetch(`${routeApiBase}/xzq/build`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Accept': 'application/json'
+      },
       body: formData
-    }).then(r => r.json())
+    })
+
+    const contentType = response.headers.get('content-type') || ''
+    let res = null
+
+    if (contentType.includes('application/json')) {
+      res = await response.json()
+    } else {
+      const rawText = await response.text()
+      if (response.status === 504 || rawText.includes('504') || rawText.includes('Gateway Time-out')) {
+        // 市级路网因为数据量巨大，可能触发代理超时（504），但后台可能仍在继续建网
+        xzqMsg.color = '#f59e0b'
+        xzqMsg.text = '⚠️ 请求等待超时（504）：市级路网数据量庞大，后台仍在继续构建中！正在自动轮询检测构建结果...'
+        const builtSuccess = await pollCheckNetworkBuilt(netId, 16, 5000)
+        if (builtSuccess) {
+          isXzqBuilding.value = false
+          xzqMsg.color = '#10b981'
+          xzqMsg.text = `✅【${netName}】市级路网后台构建完成！已自动同步。`
+          setTimeout(() => {
+            showXzqModal.value = false
+            fetchRoadNetworks(netId)
+          }, 1500)
+          return
+        } else {
+          throw new Error('市级路网构建耗时较长，已转入后台继续处理。稍候在路网列表中刷新即可查看。')
+        }
+      } else if (response.status === 502) {
+        throw new Error('网关错误 (502 Bad Gateway)，后端服务不可用或正在重启')
+      } else {
+        throw new Error(`服务端响应异常 (HTTP ${response.status})`)
+      }
+    }
 
     isXzqBuilding.value = false
-    if (res.code === 200) {
+    if (res && res.code === 200) {
       xzqMsg.color = '#10b981'
       xzqMsg.text = '✅ ' + (res.data ? res.data.msg : '路网相交构建成功！')
       setTimeout(() => {
@@ -1524,7 +1598,7 @@ async function submitXzqBuild() {
       }, 1500)
     } else {
       xzqMsg.color = '#ef4444'
-      xzqMsg.text = '❌ ' + (res.msg || '构建失败')
+      xzqMsg.text = '❌ ' + ((res && res.msg) || '构建失败')
     }
   } catch (err) {
     isXzqBuilding.value = false

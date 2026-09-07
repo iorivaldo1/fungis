@@ -94,7 +94,8 @@ export default defineConfig(({ mode }) => {
 
         '/get_geo_pg': {
           target: proxyTarget,
-          changeOrigin: true
+          changeOrigin: true,
+          timeout: 600000
         }
       }
     }
