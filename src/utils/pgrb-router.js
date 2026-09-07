@@ -594,7 +594,7 @@ class PGRBRouter {
         }
         if (this.bbox) {
             return (lng >= this.bbox.minLng && lng <= this.bbox.maxLng &&
-                    lat >= this.bbox.minLat && lat <= this.bbox.maxLat);
+                lat >= this.bbox.minLat && lat <= this.bbox.maxLat);
         }
         return true;
     }
@@ -686,7 +686,7 @@ class PGRBRouter {
     // 高速 A* / Dijkstra 算路 (0-GC 内存复用)
     // ==========================================
 
-    dijkstra(startIdx, endIdx, directed = true) {
+    astar(startIdx, endIdx, directed = true) {
         if (!this.isLoaded || startIdx < 0 || endIdx < 0 || startIdx >= this.nodeCount || endIdx >= this.nodeCount) {
             return { path: [], distance: 0 };
         }
@@ -888,7 +888,7 @@ class PGRBRouter {
         const existingPathKeys = new Set();
 
         // 1. 计算第 1 条全局最短路径 A[0]
-        const firstRes = this.dijkstra(startIdx, endIdx, directed);
+        const firstRes = this.astar(startIdx, endIdx, directed);
         if (!firstRes.path || firstRes.path.length === 0) {
             return [];
         }
@@ -1212,7 +1212,7 @@ class PGRBRouter {
 
         for (const sCand of startCandidates) {
             for (const eCand of endCandidates) {
-                const res = this.dijkstra(sCand.node, eCand.node, directed);
+                const res = this.astar(sCand.node, eCand.node, directed);
                 if (res && res.path && res.path.length > 0) {
                     const totalDist = sCand.partialCost + res.distance + eCand.partialCost;
                     if (totalDist < minTotalDist) {
@@ -1224,7 +1224,7 @@ class PGRBRouter {
         }
 
         if (bestPath.length === 0) {
-            const cpuRes = this.dijkstra(startSnap.bestNode, endSnap.bestNode, directed);
+            const cpuRes = this.astar(startSnap.bestNode, endSnap.bestNode, directed);
             bestPath = cpuRes.path;
             minTotalDist = cpuRes.distance;
         }
@@ -1339,7 +1339,7 @@ class PGRBRouter {
 
         for (const sCand of startCandidates) {
             for (const eCand of endCandidates) {
-                const res = this.dijkstra(sCand.node, eCand.node, directed);
+                const res = this.astar(sCand.node, eCand.node, directed);
                 if (res && res.path && res.path.length > 0) {
                     const totalDist = sCand.partialCost + res.distance + eCand.partialCost;
                     if (totalDist < minBaseDist) {
@@ -1353,7 +1353,7 @@ class PGRBRouter {
         if (!bestPair) {
             const sNode = startSnap.bestNode;
             const eNode = endSnap.bestNode;
-            const res = this.dijkstra(sNode, eNode, directed);
+            const res = this.astar(sNode, eNode, directed);
             if (res && res.path && res.path.length > 0) {
                 bestPair = {
                     sCand: { node: sNode, partialCost: 0 },
@@ -1508,7 +1508,7 @@ class PGRBRouter {
         }
 
         const isForward = (startSnap.segIdx < endSnap.segIdx) ||
-                          (startSnap.segIdx === endSnap.segIdx && startSnap.t <= endSnap.t);
+            (startSnap.segIdx === endSnap.segIdx && startSnap.t <= endSnap.t);
 
         // 有向图模式下的单行道合法通行检测
         if (directed) {

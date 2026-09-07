@@ -51,7 +51,7 @@
                   <div class="sub-dot"></div>
                   <span class="menu-text">PG A* 路径计算</span>
                 </router-link>
-                <!-- <router-link to="/algorithm/dijkstra-route-calc" class="menu-item sub" active-class="active">
+                <!-- <router-link to="/algorithm/astar-route-calc" class="menu-item sub" active-class="active">
                   <div class="sub-dot"></div>
                   <span class="menu-text">dijkstra路径计算-上传shp建立路网</span>
                 </router-link> -->

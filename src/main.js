@@ -195,11 +195,11 @@ const router = createRouter({
           name: 'AStar3DRoute',
           component: () => import('./views/Algorithm/AStar3DRoute.vue')
         },
-        {
-          path: 'dijkstra-route-calc',
-          name: 'DijkstraRouteCalc',
-          component: () => import('./views/Algorithm/DijkstraRouteCalc.vue')
-        }
+        // {
+        //   path: 'astar-route-calc',
+        //   name: 'DijkstraRouteCalc',
+        //   component: () => import('./views/Algorithm/DijkstraRouteCalc.vue')
+        // }
       ]
     },
     {
