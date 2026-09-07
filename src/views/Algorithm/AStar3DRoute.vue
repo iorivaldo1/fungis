@@ -432,7 +432,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, computed, watch, onMounted, onUnmounted, markRaw } from 'vue'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { PGRBRouter } from '@/utils/pgrb-router.js'
@@ -735,8 +735,46 @@ function renderRouteArrows(coords, targetMap) {
   }
 }
 
+function isPointInGeoJSONPolygon(pt, ring) {
+  const x = pt[0], y = pt[1]
+  let inside = false
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i][0], yi = ring[i][1]
+    const xj = ring[j][0], yj = ring[j][1]
+    const intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)
+    if (intersect) inside = !inside
+  }
+  return inside
+}
+
+function isPointInGeoJSONBoundary(lng, lat, geojson) {
+  if (!geojson) return true
+  const geom = geojson.type === 'Feature' ? geojson.geometry : (geojson.type === 'FeatureCollection' ? (geojson.features[0] && geojson.features[0].geometry) : geojson)
+  if (!geom) return true
+
+  const pt = [lng, lat]
+  if (geom.type === 'Polygon') {
+    for (const ring of geom.coordinates) {
+      if (isPointInGeoJSONPolygon(pt, ring)) return true
+    }
+    return false
+  } else if (geom.type === 'MultiPolygon') {
+    for (const poly of geom.coordinates) {
+      for (const ring of poly) {
+        if (isPointInGeoJSONPolygon(pt, ring)) return true
+      }
+    }
+    return false
+  }
+  return true
+}
+
 function isPointInCurrentBoundary(lng, lat) {
   if (pgrbRouterInstance) {
+    const geo = pgrbRouterInstance.getBoundaryGeoJSON()
+    if (geo) {
+      return isPointInGeoJSONBoundary(lng, lat, geo)
+    }
     return pgrbRouterInstance.isPointInBoundary(lng, lat)
   }
   return true
@@ -783,13 +821,17 @@ function updateMarkers() {
       showBoundaryWarningPopup([sLat, sLon], '起点坐标超出路网边界范围')
       startLng.value = ''
       startLat.value = ''
-      if (startMarker) { map.removeLayer(startMarker); startMarker = null }
+      if (startMarker) { startMarker.remove(); startMarker = null }
     } else {
-      if (startMarker) map.removeLayer(startMarker)
-      startMarker = L.marker([sLat, sLon], { icon: iconStart }).addTo(map)
+      if (startMarker) {
+        startMarker.setLatLng([sLat, sLon])
+        if (!map.hasLayer(startMarker)) startMarker.addTo(map)
+      } else {
+        startMarker = markRaw(L.marker([sLat, sLon], { icon: iconStart }).addTo(map))
+      }
     }
   } else if (startMarker) {
-    map.removeLayer(startMarker)
+    startMarker.remove()
     startMarker = null
   }
 
@@ -798,13 +840,17 @@ function updateMarkers() {
       showBoundaryWarningPopup([eLat, eLon], '终点坐标超出路网边界范围')
       endLng.value = ''
       endLat.value = ''
-      if (endMarker) { map.removeLayer(endMarker); endMarker = null }
+      if (endMarker) { endMarker.remove(); endMarker = null }
     } else {
-      if (endMarker) map.removeLayer(endMarker)
-      endMarker = L.marker([eLat, eLon], { icon: iconEnd }).addTo(map)
+      if (endMarker) {
+        endMarker.setLatLng([eLat, eLon])
+        if (!map.hasLayer(endMarker)) endMarker.addTo(map)
+      } else {
+        endMarker = markRaw(L.marker([eLat, eLon], { icon: iconEnd }).addTo(map))
+      }
     }
   } else if (endMarker) {
-    map.removeLayer(endMarker)
+    endMarker.remove()
     endMarker = null
   }
 }
@@ -825,11 +871,7 @@ function resetPickingMode() {
 function switchParadigm(newParadigm) {
   if (currentParadigm.value === newParadigm) return
   currentParadigm.value = newParadigm
-  resetPickingMode()
-  stopContinuousPicking()
-  clearMultiRoutes()
-  clearSingleRouteLayers()
-  showResultCard.value = false
+  resetRoute()
 }
 
 function toggleContinuousPicking(type) {
@@ -846,47 +888,57 @@ function stopContinuousPicking() {
 }
 
 function removeDestPoint(idx) {
-  if (multiDestPoints.value[idx] && multiDestPoints.value[idx].marker && map) {
-    map.removeLayer(multiDestPoints.value[idx].marker)
+  const target = multiDestPoints.value[idx]
+  if (target && target.marker) {
+    target.marker.remove()
   }
   multiDestPoints.value.splice(idx, 1)
   multiDestPoints.value.forEach((pt, i) => {
     pt.color = ROUTE_PALETTE[i % ROUTE_PALETTE.length]
     if (pt.marker) {
+      pt.marker.setLatLng([pt.lat, pt.lng])
       pt.marker.setIcon(createPointIcon(`D${i + 1}`, pt.color))
+      pt.marker.bindTooltip(`终点 D${i + 1}: [${pt.lng}, ${pt.lat}]`, { direction: 'top', offset: [0, -12] })
     }
   })
   clearMultiRoutes()
+  showResultCard.value = false
 }
 
 function clearDestPoints() {
   multiDestPoints.value.forEach(pt => {
-    if (pt.marker && map) map.removeLayer(pt.marker)
+    if (pt && pt.marker) pt.marker.remove()
   })
   multiDestPoints.value = []
   clearMultiRoutes()
+  showResultCard.value = false
 }
 
 function removeOrigPoint(idx) {
-  if (multiOrigPoints.value[idx] && multiOrigPoints.value[idx].marker && map) {
-    map.removeLayer(multiOrigPoints.value[idx].marker)
+  const target = multiOrigPoints.value[idx]
+  if (target && target.marker) {
+    target.marker.remove()
   }
   multiOrigPoints.value.splice(idx, 1)
   multiOrigPoints.value.forEach((pt, i) => {
     pt.color = ROUTE_PALETTE[i % ROUTE_PALETTE.length]
     if (pt.marker) {
+      pt.marker.setLatLng([pt.lat, pt.lng])
       pt.marker.setIcon(createPointIcon(`S${i + 1}`, pt.color))
+      pt.marker.bindTooltip(`起点 S${i + 1}: [${pt.lng}, ${pt.lat}]`, { direction: 'top', offset: [0, -12] })
     }
   })
   clearMultiRoutes()
+  showResultCard.value = false
 }
 
 function clearOrigPoints() {
   multiOrigPoints.value.forEach(pt => {
-    if (pt.marker && map) map.removeLayer(pt.marker)
+    if (pt && pt.marker) pt.marker.remove()
   })
   multiOrigPoints.value = []
   clearMultiRoutes()
+  showResultCard.value = false
 }
 
 function handleMapClick(e) {
@@ -903,15 +955,19 @@ function handleMapClick(e) {
     if (isContinuousPicking.value === 'dests') {
       const idx = multiDestPoints.value.length
       const color = ROUTE_PALETTE[idx % ROUTE_PALETTE.length]
-      const marker = L.marker([lat, lon], { icon: createPointIcon(`D${idx + 1}`, color) }).addTo(map)
+      const marker = markRaw(L.marker([lat, lon], { icon: createPointIcon(`D${idx + 1}`, color) }).addTo(map))
       marker.bindTooltip(`终点 D${idx + 1}: [${lon}, ${lat}]`, { direction: 'top', offset: [0, -12] })
-      multiDestPoints.value.push({ id: idx + 1, lng: lon, lat: lat, color, marker })
+      multiDestPoints.value.push({ id: Date.now() + Math.random(), lng: lon, lat: lat, color, marker })
+      clearMultiRoutes()
+      showResultCard.value = false
     } else if (isContinuousPicking.value === 'origins') {
       const idx = multiOrigPoints.value.length
       const color = ROUTE_PALETTE[idx % ROUTE_PALETTE.length]
-      const marker = L.marker([lat, lon], { icon: createPointIcon(`S${idx + 1}`, color) }).addTo(map)
+      const marker = markRaw(L.marker([lat, lon], { icon: createPointIcon(`S${idx + 1}`, color) }).addTo(map))
       marker.bindTooltip(`起点 S${idx + 1}: [${lon}, ${lat}]`, { direction: 'top', offset: [0, -12] })
-      multiOrigPoints.value.push({ id: idx + 1, lng: lon, lat: lat, color, marker })
+      multiOrigPoints.value.push({ id: Date.now() + Math.random(), lng: lon, lat: lat, color, marker })
+      clearMultiRoutes()
+      showResultCard.value = false
     }
     return
   }
@@ -966,6 +1022,17 @@ function updateRouteVisibility() {
         } else {
           if (map.hasLayer(r.coreLayer)) map.removeLayer(r.coreLayer)
         }
+      }
+      if (Array.isArray(r.dashLayers)) {
+        r.dashLayers.forEach(d => {
+          if (d && map) {
+            if (isVisible) {
+              if (!map.hasLayer(d)) map.addLayer(d)
+            } else {
+              if (map.hasLayer(d)) map.removeLayer(d)
+            }
+          }
+        })
       }
     })
   }
@@ -1295,8 +1362,13 @@ function clearSingleRouteLayers() {
 function clearMultiRoutes() {
   if (multiRouteLayers && multiRouteLayers.length > 0) {
     multiRouteLayers.forEach(r => {
-      if (r.glowLayer && map) map.removeLayer(r.glowLayer)
-      if (r.coreLayer && map) map.removeLayer(r.coreLayer)
+      if (r.glowLayer && map && map.hasLayer(r.glowLayer)) map.removeLayer(r.glowLayer)
+      if (r.coreLayer && map && map.hasLayer(r.coreLayer)) map.removeLayer(r.coreLayer)
+      if (Array.isArray(r.dashLayers)) {
+        r.dashLayers.forEach(d => {
+          if (d && map && map.hasLayer(d)) map.removeLayer(d)
+        })
+      }
     })
     multiRouteLayers = []
   }
@@ -1408,7 +1480,8 @@ function renderMultiRoutesResult(routes, calcCostStr, paradigm) {
   const listItems = []
 
   routes.forEach((rt, idx) => {
-    const color = ROUTE_PALETTE[idx % ROUTE_PALETTE.length]
+    const color = rt.color || ROUTE_PALETTE[idx % ROUTE_PALETTE.length]
+    const label = rt.label || (paradigm === '1_to_n' ? `D${idx + 1}` : `S${idx + 1}`)
     const distKm = (rt.totalDistance / 1000).toFixed(2)
     if (rt.totalDistance < minDist) minDist = rt.totalDistance
     if (rt.totalDistance > maxDist) maxDist = rt.totalDistance
@@ -1429,14 +1502,48 @@ function renderMultiRoutesResult(routes, calcCostStr, paradigm) {
     }).addTo(map)
 
     const tooltipText = paradigm === '1_to_n'
-      ? `中心起点 ➔ 终点 D${idx + 1}: ${distKm} km`
-      : `起点 S${idx + 1} ➔ 汇聚终点: ${distKm} km`
+      ? `中心起点 ➔ 终点 ${label}: ${distKm} km`
+      : `起点 ${label} ➔ 汇聚终点: ${distKm} km`
     core.bindTooltip(tooltipText, { sticky: true })
 
-    coords.forEach(c => allLatLngs.push([c[1], c[0]]))
-    multiRouteLayers.push({ id: idx, glowLayer: glow, coreLayer: core, coords: coords, totalDistance: rt.totalDistance })
+    // 绘制起终点虚线引线
+    const dashLayers = []
+    if (coords && coords.length > 0) {
+      const firstCoord = [coords[0][1], coords[0][0]]
+      const lastCoord = [coords[coords.length - 1][1], coords[coords.length - 1][0]]
 
-    const label = paradigm === '1_to_n' ? `D${idx + 1}` : `S${idx + 1}`
+      if (paradigm === '1_to_n') {
+        const sLngVal = parseFloat(startLng.value)
+        const sLatVal = parseFloat(startLat.value)
+        if (!isNaN(sLngVal) && !isNaN(sLatVal)) {
+          allLatLngs.push([sLatVal, sLngVal])
+          const sDash = L.polyline([[sLatVal, sLngVal], firstCoord], { color: '#10b981', weight: 2.5, dashArray: '4, 6', opacity: 0.85 }).addTo(map)
+          dashLayers.push(sDash)
+        }
+        if (rt.destPoint && !isNaN(rt.destPoint.lat) && !isNaN(rt.destPoint.lng)) {
+          allLatLngs.push([rt.destPoint.lat, rt.destPoint.lng])
+          const dDash = L.polyline([[rt.destPoint.lat, rt.destPoint.lng], lastCoord], { color: color, weight: 2.5, dashArray: '4, 6', opacity: 0.85 }).addTo(map)
+          dashLayers.push(dDash)
+        }
+      } else if (paradigm === 'n_to_1') {
+        const eLngVal = parseFloat(endLng.value)
+        const eLatVal = parseFloat(endLat.value)
+        if (rt.origPoint && !isNaN(rt.origPoint.lat) && !isNaN(rt.origPoint.lng)) {
+          allLatLngs.push([rt.origPoint.lat, rt.origPoint.lng])
+          const oDash = L.polyline([[rt.origPoint.lat, rt.origPoint.lng], firstCoord], { color: color, weight: 2.5, dashArray: '4, 6', opacity: 0.85 }).addTo(map)
+          dashLayers.push(oDash)
+        }
+        if (!isNaN(eLngVal) && !isNaN(eLatVal)) {
+          allLatLngs.push([eLatVal, eLngVal])
+          const eDash = L.polyline([lastCoord, [eLatVal, eLngVal]], { color: '#ef4444', weight: 2.5, dashArray: '4, 6', opacity: 0.85 }).addTo(map)
+          dashLayers.push(eDash)
+        }
+      }
+    }
+
+    coords.forEach(c => allLatLngs.push([c[1], c[0]]))
+    multiRouteLayers.push({ id: idx, glowLayer: glow, coreLayer: core, dashLayers: dashLayers, coords: coords, totalDistance: rt.totalDistance })
+
     listItems.push({
       id: idx,
       label,
@@ -1508,6 +1615,16 @@ async function planRoute() {
       return
     }
 
+    for (let i = 0; i < multiDestPoints.value.length; i++) {
+      const d = multiDestPoints.value[i]
+      if (!isPointInCurrentBoundary(d.lng, d.lat)) {
+        alert(`⚠️ 终点 D${i + 1} (${d.lng.toFixed(4)}, ${d.lat.toFixed(4)}) 超出当前路网边界范围，请删除或修改！`)
+        isPlanning.value = false
+        showResultCard.value = false
+        return
+      }
+    }
+
     clearSingleRouteLayers()
     clearMultiRoutes()
 
@@ -1527,6 +1644,8 @@ async function planRoute() {
           destId: d.id,
           destIdx: i,
           destPoint: d,
+          color: d.color,
+          label: `D${i + 1}`,
           totalDistance: planRes.distance,
           startNode: router.getOriginalNodeId(planRes.path[0]),
           endNode: router.getOriginalNodeId(planRes.path[planRes.path.length - 1]),
@@ -1563,6 +1682,16 @@ async function planRoute() {
       return
     }
 
+    for (let i = 0; i < multiOrigPoints.value.length; i++) {
+      const o = multiOrigPoints.value[i]
+      if (!isPointInCurrentBoundary(o.lng, o.lat)) {
+        alert(`⚠️ 起点 S${i + 1} (${o.lng.toFixed(4)}, ${o.lat.toFixed(4)}) 超出当前路网边界范围，请删除或修改！`)
+        isPlanning.value = false
+        showResultCard.value = false
+        return
+      }
+    }
+
     clearSingleRouteLayers()
     clearMultiRoutes()
 
@@ -1582,6 +1711,8 @@ async function planRoute() {
           origId: o.id,
           origIdx: i,
           origPoint: o,
+          color: o.color,
+          label: `S${i + 1}`,
           totalDistance: planRes.distance,
           startNode: router.getOriginalNodeId(planRes.path[0]),
           endNode: router.getOriginalNodeId(planRes.path[planRes.path.length - 1]),
@@ -1967,7 +2098,7 @@ onMounted(() => {
     maxBoundsViscosity: 1.0,
     zoomControl: true,
     attributionControl: false,
-    preferCanvas: true
+    preferCanvas: false
   })
 
   // 1. 天地图底图
