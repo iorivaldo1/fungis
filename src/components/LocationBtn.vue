@@ -2,18 +2,21 @@
   <button
     id="locationBtn"
     class="location-btn"
-    :class="{ loading: isLocating }"
+    :class="{ 
+      active: isActive, 
+      loading: isLocating 
+    }"
     :style="buttonStyle"
-    @click="handleLocation"
-    :title="title"
+    @click="handleLocationToggle"
+    :title="buttonTitle"
     type="button"
   >
-    <IconLocation width="28" height="28" />
+    <IconLocation class="location-icon" width="28" height="28" />
   </button>
 </template>
 
 <script setup>
-import { ref, computed, onUnmounted } from 'vue'
+import { ref, computed, watch, onUnmounted } from 'vue'
 import * as Cesium from 'cesium'
 import L from 'leaflet'
 import IconLocation from '@/components/icons/IconLocation.vue'
@@ -55,13 +58,43 @@ const props = defineProps({
   zoom: {
     type: Number,
     default: 15
+  },
+  active: {
+    type: Boolean,
+    default: undefined
+  },
+  modelValue: {
+    type: Boolean,
+    default: undefined
   }
 })
 
-const emit = defineEmits(['locate', 'error'])
+const emit = defineEmits(['locate', 'error', 'clear', 'change', 'update:active', 'update:modelValue'])
 
+// 是否处于压下/激活状态
+const internalActive = ref(false)
+
+const isActive = computed({
+  get() {
+    if (props.active !== undefined) return props.active
+    if (props.modelValue !== undefined) return props.modelValue
+    return internalActive.value
+  },
+  set(val) {
+    internalActive.value = val
+    emit('update:active', val)
+    emit('update:modelValue', val)
+    emit('change', val)
+  }
+})
+
+// 定位加载中动画状态
 const isLocating = ref(false)
 
+// 递增请求版本号，防止异步定位冲突
+let locateRequestId = 0
+
+// 标记对象引用
 let leafletMarker = null
 let baiduMarker = null
 let tiandituMarker = null
@@ -74,6 +107,12 @@ const buttonStyle = computed(() => {
     bottom: b,
     right: r
   }
+})
+
+const buttonTitle = computed(() => {
+  if (isLocating.value) return '正在重新定位中...'
+  if (isActive.value) return '已显示定位点 (再次点击取消定位)'
+  return props.title || '定位到当前位置'
 })
 
 const resolveMap = () => {
@@ -99,20 +138,94 @@ const wgs84ToBd09 = (lng, lat) => {
   return gcj02ToBd09(gcjLng, gcjLat)
 }
 
-const handleLocation = () => {
+/**
+ * 清除地图上的定位点
+ */
+const clearLocationFromMap = () => {
+  const m = resolveMap()
+  if (!m) return
+  const currentMapType = detectMapType(m)
+
+  if (currentMapType === 'cesium' && m.entities) {
+    try {
+      m.entities.removeById('currentLocation')
+    } catch (_) {}
+  } else if (currentMapType === 'leaflet') {
+    if (leafletMarker) {
+      try {
+        leafletMarker.remove()
+      } catch (_) {}
+      leafletMarker = null
+    }
+  } else if (currentMapType === 'baidu') {
+    if (baiduMarker && m.removeOverlay) {
+      try {
+        m.removeOverlay(baiduMarker)
+      } catch (_) {}
+      baiduMarker = null
+    }
+  } else if (currentMapType === 'tianditu') {
+    if (tiandituMarker && m.removeOverLay) {
+      try {
+        m.removeOverLay(tiandituMarker)
+      } catch (_) {}
+      tiandituMarker = null
+    }
+    if (tiandituLabel && m.removeOverLay) {
+      try {
+        m.removeOverLay(tiandituLabel)
+      } catch (_) {}
+      tiandituLabel = null
+    }
+  }
+}
+
+/**
+ * 按钮主点击事件处理
+ * 点击后：如果在弹起状态，切换为压下状态并重新定位；
+ * 如果已是压下状态，切换为弹起状态并清除地图上的定位点。
+ */
+const handleLocationToggle = () => {
+  if (isActive.value) {
+    // 当前已处于压下状态 -> 切换为弹起状态，清除定位点，取消当前定位
+    locateRequestId++
+    isLocating.value = false
+    isActive.value = false
+    clearLocationFromMap()
+    emit('clear')
+  } else {
+    // 当前处于弹起状态 -> 切换为压下状态，并重新执行定位
+    isActive.value = true
+    // 每次按下都重新执行定位
+    startLocation()
+  }
+}
+
+/**
+ * 发起全新定位
+ */
+const startLocation = () => {
   const isSecureContext = window.isSecureContext || location.protocol === 'https:' || location.hostname === 'localhost'
+  const currentRequestId = ++locateRequestId
+
+  // 先清理可能存在的旧定位点
+  clearLocationFromMap()
 
   if (!navigator.geolocation) {
     alert('您的浏览器不支持地理定位功能')
+    isActive.value = false
+    isLocating.value = false
     emit('error', new Error('浏览器不支持地理定位'))
     return
   }
 
   if (!isSecureContext) {
     if (confirm('当前为HTTP环境，浏览器限制了GPS定位。\n\n是否使用IP定位？（精度较低，误差可能在城市级别）')) {
-      useIPLocation()
+      useIPLocation(currentRequestId)
     } else {
       alert('提示：请使用HTTPS协议访问以启用精确GPS定位')
+      isActive.value = false
+      isLocating.value = false
     }
     return
   }
@@ -121,17 +234,28 @@ const handleLocation = () => {
 
   navigator.geolocation.getCurrentPosition(
     (position) => {
+      // 检查请求是否过期或者已被用户取消（弹起）
+      if (currentRequestId !== locateRequestId || !isActive.value) {
+        return
+      }
+
       const longitude = position.coords.longitude
       const latitude = position.coords.latitude
+
       applyLocationToMap({
         longitude,
         latitude,
         isIp: false
       })
+
       isLocating.value = false
     },
     (error) => {
-      isLocating.value = false
+      // 检查请求是否过期或者已被用户取消
+      if (currentRequestId !== locateRequestId || !isActive.value) {
+        return
+      }
+
       let errorMsg = ''
       switch (error.code) {
         case error.PERMISSION_DENIED:
@@ -147,28 +271,38 @@ const handleLocation = () => {
           errorMsg = '未知错误'
           break
       }
-      alert('定位失败：' + errorMsg + '\n\n正在尝试IP定位...')
-      useIPLocation()
+
+      console.warn('GPS定位失败: ' + errorMsg + '，正在尝试IP定位...')
+      useIPLocation(currentRequestId)
       emit('error', error)
     },
     {
       enableHighAccuracy: true,
       timeout: 10000,
-      maximumAge: 0
+      maximumAge: 0 // 保证获取实时位置，不使用缓存
     }
   )
 }
 
-const useIPLocation = () => {
+/**
+ * IP 定位回退
+ */
+const useIPLocation = (currentRequestId) => {
   isLocating.value = true
 
   fetch('https://ipapi.co/json/')
     .then((res) => res.json())
     .then((data) => {
+      // 检查请求是否过期或者已被用户取消（弹起）
+      if (currentRequestId !== locateRequestId || !isActive.value) {
+        return
+      }
+
       if (data.latitude && data.longitude) {
         const longitude = data.longitude
         const latitude = data.latitude
         const city = data.city || '未知城市'
+
         applyLocationToMap({
           longitude,
           latitude,
@@ -180,15 +314,30 @@ const useIPLocation = () => {
       }
     })
     .catch((err) => {
-      alert('IP定位服务不可用。\n\n请检查网络连接或使用HTTPS以获得GPS定位。')
+      if (currentRequestId !== locateRequestId || !isActive.value) {
+        return
+      }
+      alert('定位服务暂不可用。\n\n请检查网络连接或使用HTTPS环境重试。')
+      isActive.value = false
+      clearLocationFromMap()
       emit('error', err)
     })
     .finally(() => {
-      isLocating.value = false
+      if (currentRequestId === locateRequestId) {
+        isLocating.value = false
+      }
     })
 }
 
+/**
+ * 将定位渲染并聚焦至地图
+ */
 const applyLocationToMap = ({ longitude, latitude, isIp, city }) => {
+  // 如果此时已变成弹起状态，则不渲染
+  if (!isActive.value) {
+    return
+  }
+
   const m = resolveMap()
   const currentMapType = detectMapType(m)
   const isBaiduCrs = props.crs === 'bd09' || currentMapType === 'baidu'
@@ -215,7 +364,10 @@ const applyLocationToMap = ({ longitude, latitude, isIp, city }) => {
   if (!m) return
 
   if (currentMapType === 'cesium') {
-    m.entities.removeById('currentLocation')
+    try {
+      m.entities.removeById('currentLocation')
+    } catch (_) {}
+
     m.entities.add({
       id: 'currentLocation',
       position: Cesium.Cartesian3.fromDegrees(longitude, latitude),
@@ -245,7 +397,7 @@ const applyLocationToMap = ({ longitude, latitude, isIp, city }) => {
 
     m.camera.flyTo({
       destination: Cesium.Cartesian3.fromDegrees(longitude, offsetLat, isIp ? 20000 : 1500),
-      duration: 2,
+      duration: 1.5,
       orientation: {
         heading: Cesium.Math.toRadians(0),
         pitch: Cesium.Math.toRadians(-60),
@@ -341,32 +493,46 @@ const applyLocationToMap = ({ longitude, latitude, isIp, city }) => {
   }
 }
 
-onUnmounted(() => {
-  const m = resolveMap()
-  if (!m) return
-  const currentMapType = detectMapType(m)
-  if (currentMapType === 'cesium') {
-    try {
-      m.entities.removeById('currentLocation')
-    } catch (_) {}
-  } else if (currentMapType === 'leaflet' && leafletMarker) {
-    try {
-      leafletMarker.remove()
-    } catch (_) {}
-  } else if (currentMapType === 'baidu' && baiduMarker) {
-    try {
-      m.removeOverlay(baiduMarker)
-    } catch (_) {}
-  } else if (currentMapType === 'tianditu') {
-    if (tiandituMarker) {
-      try {
-        m.removeOverLay(tiandituMarker)
-      } catch (_) {}
+// 外部如果主动更改 active 状态
+watch(
+  () => props.active ?? props.modelValue,
+  (newVal) => {
+    if (newVal !== undefined && newVal !== internalActive.value) {
+      if (newVal) {
+        internalActive.value = true
+        startLocation()
+      } else {
+        internalActive.value = false
+        locateRequestId++
+        isLocating.value = false
+        clearLocationFromMap()
+      }
     }
-    if (tiandituLabel) {
-      try {
-        m.removeOverLay(tiandituLabel)
-      } catch (_) {}
+  }
+)
+
+onUnmounted(() => {
+  locateRequestId++
+  isLocating.value = false
+  clearLocationFromMap()
+})
+
+// 暴露操作方法供外部直接调用
+defineExpose({
+  isActive,
+  isLocating,
+  locate: () => {
+    if (!isActive.value) {
+      handleLocationToggle()
+    } else {
+      startLocation()
+    }
+  },
+  clear: () => {
+    if (isActive.value) {
+      handleLocationToggle()
+    } else {
+      clearLocationFromMap()
     }
   }
 })
@@ -377,7 +543,7 @@ onUnmounted(() => {
   position: absolute;
   width: 56px;
   height: 56px;
-  background-color: #fff;
+  background-color: #ffffff;
   border: 2px solid #3085d6;
   border-radius: 50%;
   cursor: pointer;
@@ -385,42 +551,80 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  transition: all 0.3s ease;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25), 0 2px 6px rgba(48, 133, 214, 0.2);
+  transition: all 0.22s cubic-bezier(0.4, 0, 0.2, 1);
   color: #3085d6;
   padding: 0;
+  outline: none;
+  user-select: none;
 }
 
+/* 默认弹起状态下的悬浮状态 */
 .location-btn:hover {
-  background-color: #3085d6;
-  color: white;
-  transform: scale(1.1);
+  background-color: #f0f7ff;
+  color: #2563eb;
+  transform: translateY(-2px) scale(1.05);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28), 0 4px 10px rgba(48, 133, 214, 0.3);
 }
 
-.location-btn svg {
+/* 压下状态（激活状态）：凹陷内阴影、深色背景、白色图标、轻微下沉 */
+.location-btn.active {
+  background-color: #2563eb;
+  border-color: #1d4ed8;
+  color: #ffffff;
+  transform: translateY(2px) scale(0.94);
+  box-shadow: 
+    inset 0 4px 8px rgba(0, 0, 0, 0.45),
+    inset 0 1px 3px rgba(0, 0, 0, 0.3),
+    0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+/* 压下状态下的悬停状态：保持凹陷质感与下沉感，微加深背景色 */
+.location-btn.active:hover {
+  background-color: #1d4ed8;
+  border-color: #1e40af;
+  color: #ffffff;
+  transform: translateY(2px) scale(0.94);
+  box-shadow: 
+    inset 0 5px 10px rgba(0, 0, 0, 0.55),
+    inset 0 2px 4px rgba(0, 0, 0, 0.35),
+    0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+/* 图标过渡与样式 */
+.location-icon {
   width: 28px;
   height: 28px;
-  fill: #3085d6;
-  transition: fill 0.3s ease;
+  stroke: currentColor;
+  transition: transform 0.2s ease, stroke 0.2s ease;
 }
 
-.location-btn:hover svg {
-  fill: #ffffff;
-}
-
+/* 定位中加载动画（旋转 + 脉冲呼吸效果） */
 .location-btn.loading {
-  animation: pulse 1.5s infinite;
+  animation: pulse-active 1.4s infinite ease-in-out;
 }
 
-@keyframes pulse {
-  0%,
-  100% {
+.location-btn.loading .location-icon {
+  animation: spin-icon 1.2s infinite linear;
+}
+
+@keyframes pulse-active {
+  0%, 100% {
+    filter: drop-shadow(0 0 2px rgba(37, 99, 235, 0.5));
     opacity: 1;
-    transform: scale(1);
   }
   50% {
-    opacity: 0.5;
-    transform: scale(1.06);
+    filter: drop-shadow(0 0 10px rgba(37, 99, 235, 0.85));
+    opacity: 0.82;
+  }
+}
+
+@keyframes spin-icon {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
   }
 }
 </style>
