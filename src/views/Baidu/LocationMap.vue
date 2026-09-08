@@ -2,6 +2,10 @@
   <div class="location-page">
     <div id="baiduMapContainer"></div>
 
+    <!-- 右下角照片上传与定位公共组件 -->
+    <UploadBtn :map="mapInstance" map-type="baidu" crs="bd09" :bottom="75" :right="100" />
+    <LocationBtn :map="mapInstance" map-type="baidu" crs="bd09" :bottom="75" :right="30" />
+
     <!-- 顶部控制面板区域 -->
     <div class="top-panels-container">
       <!-- 点击信息面板 -->
@@ -52,8 +56,10 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, shallowRef, onMounted, onUnmounted } from 'vue'
 import { loadBaiduMapScript, wgs84ToGcj02, gcj02ToBd09 } from '@/utils/baiduUtils'
+import UploadBtn from '@/components/UploadBtn.vue'
+import LocationBtn from '@/components/LocationBtn.vue'
 import ClickInfoPanel from '@/components/ClickInfoPanel.vue'
 import LocatePanel from '@/components/LocatePanel.vue'
 import LocationTablePanel from '@/components/LocationTablePanel.vue'
@@ -63,6 +69,7 @@ import { renderGeoJsonToBaidu, flashFeatureBaidu, renderGeoJsonLabelsBaidu } fro
 
 const BAIDU_AK = 'MUBHlQKKLvig0Ia3QEAOzio46qq6foiT'
 
+const mapInstance = shallowRef(null)
 const clickPoint = ref(null)
 const isClickChecked = ref(false)
 const locationList = ref([])
@@ -110,6 +117,7 @@ const initMap = async () => {
   await loadBaiduMapScript(BAIDU_AK)
   const BMap = window.BMap || window.BMapGL
   map = new BMap.Map("baiduMapContainer")
+  mapInstance.value = map
 
   const initGcj = wgs84ToGcj02(103.064, 30.01)
   const [initBdLng, initBdLat] = gcj02ToBd09(initGcj[0], initGcj[1])

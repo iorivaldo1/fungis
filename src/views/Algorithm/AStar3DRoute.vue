@@ -3,6 +3,10 @@
     <!-- 纯净全屏地图容器 -->
     <div id="map" ref="mapContainer"></div>
 
+    <!-- 右下角照片上传与定位公共组件 -->
+    <UploadBtn :map="mapInstance" map-type="leaflet" :bottom="30" :right="450" />
+    <LocationBtn :map="mapInstance" map-type="leaflet" :bottom="30" :right="380" />
+
     <!-- 左侧浮动智能导航指引抽屉面板 -->
     <div id="navDrawerPanel" class="nav-drawer-panel" :class="{ open: isNavDrawerOpen }">
       <div class="nav-drawer-header">
@@ -557,12 +561,15 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, watch, onMounted, onUnmounted, markRaw } from 'vue'
+import { ref, reactive, computed, watch, shallowRef, onMounted, onUnmounted, markRaw } from 'vue'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { PGRBRouter } from '@/utils/pgrb-router.js'
+import UploadBtn from '@/components/UploadBtn.vue'
+import LocationBtn from '@/components/LocationBtn.vue'
 
 const mapContainer = ref(null)
+const mapInstance = shallowRef(null)
 
 const zoomValue = ref('--')
 const selectedLevelFilter = ref('county') // 'city' | 'county' | 'town' | 'village'
@@ -2687,6 +2694,8 @@ onMounted(() => {
     attributionControl: false,
     preferCanvas: false
   })
+
+  mapInstance.value = map
 
   // 1. 天地图底图
   const vecUrl = `https://t{s}.tianditu.gov.cn/vec_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=vec&STYLE=default&TILEMATRIXSET=w&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=tiles&tk=${tk}`

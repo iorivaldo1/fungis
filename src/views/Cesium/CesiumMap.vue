@@ -1,20 +1,7 @@
 <template>
   <div class="cesium-page">
-    <div class="preview-container" :class="{ active: previewActive }">
-      <div class="preview-info" v-html="previewInfo"></div>
-      <img :src="previewSrc" class="preview-img-item" alt="图片预览">
-    </div>
-
-    <input type="file" id="fileInput" ref="fileInput" @change="handleFileChange" accept=".jpg,.jpeg,.png" multiple
-      style="display: none;">
-
-    <button id="uploadBtn" @click="triggerFileInput" title="打开照片">
-      <IconPhoto width="24" height="24" />
-    </button>
-
-    <button id="locationBtn" :class="{ loading: isLocating }" @click="handleLocation" title="定位到当前位置">
-      <IconLocation width="24" height="24" />
-    </button>
+    <UploadBtn :map="viewerInstance" />
+    <LocationBtn :map="viewerInstance" />
 
     <div id="cesiumContainer">
       <div class="top-panels-container">
@@ -145,17 +132,16 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, shallowRef, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import * as Cesium from 'cesium'
 import proj4 from 'proj4'
-import exifr from 'exifr'
 import { api } from '@/utils/request.js'
 import { getTiandituToken } from '@/utils/tiandituToken.js'
 import 'cesium/Build/Cesium/Widgets/widgets.css'
 import IconChevronDown from '../../components/icons/IconChevronDown.vue'
-import IconPhoto from '../../components/icons/IconPhoto.vue'
-import IconLocation from '../../components/icons/IconLocation.vue'
+import UploadBtn from '@/components/UploadBtn.vue'
+import LocationBtn from '@/components/LocationBtn.vue'
 import ClickInfoPanel from '@/components/ClickInfoPanel.vue'
 import LocatePanel from '@/components/LocatePanel.vue'
 import LocationTablePanel from '@/components/LocationTablePanel.vue'
@@ -165,11 +151,7 @@ import { renderGeoJsonToCesium, flashFeatureCesium, renderGeoJsonLabelsCesium, c
 
 
 const router = useRouter()
-const fileInput = ref(null)
-const previewActive = ref(false)
-const previewInfo = ref('')
-const previewSrc = ref('')
-const isLocating = ref(false)
+const viewerInstance = shallowRef(null)
 
 const cameraInfo = ref({
   heading: '0.00',
@@ -250,8 +232,6 @@ const showScPeak = ref(false)
 let viewer = null
 let yaRiverLayer = null
 let scPeakLayer = null
-let photosData = {}
-let currentPhotoId = null
 let handler = null
 let clickRedDotEntity = null
 
@@ -651,9 +631,6 @@ const toggleScPeak = () => {
   }
 }
 
-const triggerFileInput = () => {
-  fileInput.value.click()
-}
 
 
 
@@ -674,6 +651,8 @@ const initCesium = () => {
     fullscreenButton: false,
     skyAtmosphere: false,
   })
+
+  viewerInstance.value = viewer
 
   // 设置初始视角
   viewer.camera.setView({
@@ -730,33 +709,6 @@ const initCesium = () => {
         clickPoint.value = { lng: longitude, lat: latitude }
         updateClickMarker(cartesian)
       }
-    }
-
-    const pickedObject = viewer.scene.pick(click.position)
-
-    if (!Cesium.defined(pickedObject) || !pickedObject.id) {
-      previewActive.value = false
-      currentPhotoId = null
-      return
-    }
-
-    const entity = pickedObject.id
-    const photoId = entity.id || entity._id
-
-    if (!photosData[photoId]) {
-      return
-    }
-
-    const photo = photosData[photoId]
-
-    if (currentPhotoId === photoId && previewActive.value) {
-      previewActive.value = false
-      currentPhotoId = null
-    } else {
-      previewSrc.value = photo.src
-      previewInfo.value = `<div>文件: ${photo.fileName}</div><div>坐标: (${photo.longitude.toFixed(6)},${photo.latitude.toFixed(6)} )</div><div>时间: ${photo.timestamp}</div>`
-      previewActive.value = true
-      currentPhotoId = photoId
     }
   }, Cesium.ScreenSpaceEventType.LEFT_CLICK)
 }
@@ -832,244 +784,6 @@ const addToomapLayer = () => {
   viewer.baseLayerPicker.viewModel.imageryProviderViewModels.push(toomapModel)
 }
 
-const handleFileChange = (event) => {
-  viewer.entities.removeAll()
-  previewActive.value = false
-  photosData = {}
-  currentPhotoId = null
-
-  const files = event.target.files
-  if (!files || files.length === 0) return
-
-  let processedCount = 0
-
-  for (let i = 0; i < files.length; i++) {
-    const file = files[i]
-
-    // Use exifr to parse GPS data asynchronously
-    exifr.parse(file, {
-      gps: true,  // Extract GPS data
-      xmp: false,  // Skip XMP data for performance
-      icc: false,  // Skip ICC profile for performance
-      iptc: false  // Skip IPTC data for performance
-    }).then(exifData => {
-      if (!exifData || !exifData.latitude || !exifData.longitude) {
-        console.warn(`图片 ${file.name} 没有GPS信息，已跳过`)
-        processedCount++
-        return
-      }
-
-      // exifr already converts GPS coordinates to decimal degrees
-      const jd = exifData.longitude
-      const wd = exifData.latitude
-
-      // Read file as data URL for preview
-      const fileReader = new FileReader()
-
-      fileReader.onload = function (fileEvent) {
-        const photoId = `photo_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-
-        photosData[photoId] = {
-          src: fileEvent.target.result,
-          fileName: file.name,
-          latitude: wd,
-          longitude: jd,
-          timestamp: new Date().toLocaleString()
-        }
-
-        const positions = [Cesium.Cartographic.fromDegrees(jd, wd)]
-        Cesium.sampleTerrainMostDetailed(viewer.terrainProvider, positions)
-          .then(updated => {
-            const h = updated[0].height ?? 0
-            viewer.entities.add({
-              id: photoId,
-              position: Cesium.Cartesian3.fromDegrees(jd, wd, h),
-              point: {
-                color: Cesium.Color.FIREBRICK,
-                pixelSize: 8,
-                outlineColor: Cesium.Color.DARKSLATEGREY,
-                outlineWidth: 3,
-                disableDepthTestDistance: Number.POSITIVE_INFINITY,
-              }
-            })
-          })
-
-        processedCount++
-
-        if (processedCount === files.length) {
-          const firstPhotoId = Object.keys(photosData)[0]
-          if (firstPhotoId) {
-            const photo = photosData[firstPhotoId]
-            viewer.camera.setView({
-              destination: Cesium.Cartesian3.fromDegrees(photo.longitude, photo.latitude, 9400),
-            })
-          }
-        }
-      }
-
-      fileReader.readAsDataURL(file)
-    }).catch(error => {
-      console.warn(`读取图片 ${file.name} 的EXIF信息失败:`, error)
-      processedCount++
-    })
-
-  }
-}
-
-const handleLocation = () => {
-  const isSecureContext = window.isSecureContext || location.protocol === 'https:' || location.hostname === 'localhost'
-
-  if (!navigator.geolocation) {
-    alert('您的浏览器不支持地理定位功能')
-    return
-  }
-
-  if (!isSecureContext) {
-    if (confirm('当前为HTTP环境，浏览器限制了GPS定位。\n\n是否使用IP定位？（精度较低，误差可能在城市级别）')) {
-      useIPLocation()
-    } else {
-      alert('提示：请使用HTTPS协议访问以启用精确GPS定位')
-    }
-    return
-  }
-
-  isLocating.value = true
-
-  navigator.geolocation.getCurrentPosition(
-    (position) => {
-      const longitude = position.coords.longitude
-      const latitude = position.coords.latitude
-
-      viewer.entities.removeById('currentLocation')
-
-      viewer.entities.add({
-        id: 'currentLocation',
-        position: Cesium.Cartesian3.fromDegrees(longitude, latitude),
-        point: {
-          color: Cesium.Color.BLUE,
-          pixelSize: 10,
-          outlineColor: Cesium.Color.WHITE,
-          outlineWidth: 3,
-          heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
-          disableDepthTestDistance: Number.POSITIVE_INFINITY,
-        },
-        label: {
-          text: '当前位置',
-          font: '14px sans-serif',
-          fillColor: Cesium.Color.WHITE,
-          style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-          outlineWidth: 2,
-          verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
-          pixelOffset: new Cesium.Cartesian2(0, -15),
-          heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
-          disableDepthTestDistance: Number.POSITIVE_INFINITY,
-        }
-      })
-
-      // 计算镜头偏移位置，让定位点显示在视框中心
-      const offsetDistance = 800 // 向南偏移800米
-      const offsetLat = latitude - (offsetDistance / 111320) // 纬度减小=向南移动
-
-      viewer.camera.flyTo({
-        destination: Cesium.Cartesian3.fromDegrees(longitude, offsetLat, 1500),
-        duration: 2,
-        orientation: {
-          heading: Cesium.Math.toRadians(0),
-          pitch: Cesium.Math.toRadians(-60),
-          roll: 0.0
-        }
-      })
-
-      isLocating.value = false
-    },
-    (error) => {
-      isLocating.value = false
-      let errorMsg = ''
-      switch (error.code) {
-        case error.PERMISSION_DENIED:
-          errorMsg = '用户拒绝了地理定位请求'
-          break
-        case error.POSITION_UNAVAILABLE:
-          errorMsg = '位置信息不可用'
-          break
-        case error.TIMEOUT:
-          errorMsg = '获取位置信息超时'
-          break
-        default:
-          errorMsg = '未知错误'
-          break
-      }
-      alert('定位失败：' + errorMsg)
-    },
-    {
-      enableHighAccuracy: true,
-      timeout: 10000,
-      maximumAge: 0
-    }
-  )
-}
-
-const useIPLocation = () => {
-  isLocating.value = true
-
-  fetch('https://ipapi.co/json/')
-    .then(response => response.json())
-    .then(data => {
-      if (data.latitude && data.longitude) {
-        const longitude = data.longitude
-        const latitude = data.latitude
-        const city = data.city || '未知城市'
-
-        viewer.entities.removeById('currentLocation')
-
-        viewer.entities.add({
-          id: 'currentLocation',
-          position: Cesium.Cartesian3.fromDegrees(longitude, latitude),
-          point: {
-            color: Cesium.Color.ORANGE,
-            pixelSize: 10,
-            outlineColor: Cesium.Color.WHITE,
-            outlineWidth: 3,
-            heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
-            disableDepthTestDistance: Number.POSITIVE_INFINITY,
-          },
-          label: {
-            text: `IP定位: ${city}`,
-            font: '14px sans-serif',
-            fillColor: Cesium.Color.WHITE,
-            style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-            outlineWidth: 2,
-            verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
-            pixelOffset: new Cesium.Cartesian2(0, -15),
-            heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
-            disableDepthTestDistance: Number.POSITIVE_INFINITY,
-          }
-        })
-
-        // 计算镜头偏移位置，让定位点显示在视框中心
-        const offsetDistance = 10000 // 向南偏移10公里
-        const offsetLat = latitude - (offsetDistance / 111320) // 纬度减小=向南移动
-
-        viewer.camera.flyTo({
-          destination: Cesium.Cartesian3.fromDegrees(longitude, offsetLat, 20000),
-          duration: 2,
-          orientation: {
-            heading: Cesium.Math.toRadians(0),
-            pitch: Cesium.Math.toRadians(-60),
-            roll: 0.0
-          }
-        })
-
-        isLocating.value = false
-      } else {
-        throw new Error('IP定位数据不完整')
-      }
-    })
-    .catch(() => {
-      alert('IP定位服务不可用。\n\n请联系管理员配置HTTPS以使用GPS精确定位。')
-      isLocating.value = false
-    })
-}
 
 onMounted(() => {
   initCesium()
@@ -1436,130 +1150,6 @@ onUnmounted(() => {
   opacity: 0;
 }
 
-#uploadBtn,
-#locationBtn {
-  position: absolute;
-  bottom: 30px;
-  width: 56px;
-  height: 56px;
-  background-color: #fff;
-  border: 2px solid #3085d6;
-  border-radius: 50%;
-  cursor: pointer;
-  z-index: 999;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  transition: all 0.3s ease;
-  color: #3085d6;
-}
-
-#uploadBtn {
-  right: 100px;
-}
-
-#locationBtn {
-  right: 30px;
-}
-
-#uploadBtn:hover,
-#locationBtn:hover {
-  background-color: #3085d6;
-  color: white;
-  transform: scale(1.1);
-}
-
-#uploadBtn svg,
-#locationBtn svg {
-  width: 24px;
-  height: 24px;
-  transition: all 0.3s ease;
-}
-
-.preview-container {
-  position: absolute;
-  bottom: 30px;
-  left: 20px;
-  background-color: rgba(0, 0, 0, 0.8);
-  padding: 15px;
-  border-radius: 10px;
-  display: none;
-  z-index: 999;
-  width: fit-content;
-  max-width: 330px;
-}
-
-.preview-container.active {
-  display: block;
-}
-
-.preview-img-item {
-  width: 300px;
-  height: 300px;
-  margin-top: 10px;
-  border: 2px solid #3085d6;
-  border-radius: 5px;
-  display: block;
-  object-fit: contain;
-  background-color: #000;
-}
-
-.preview-info {
-  color: white;
-  font-size: 13px;
-  line-height: 1.5;
-}
-
-#locationBtn {
-  position: absolute;
-  bottom: 30px;
-  right: 30px;
-  width: 56px;
-  height: 56px;
-  background-color: #fff;
-  border: 2px solid #3085d6;
-  border-radius: 50%;
-  cursor: pointer;
-  z-index: 999;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  transition: all 0.3s ease;
-}
-
-#locationBtn:hover {
-  background-color: #3085d6;
-  transform: scale(1.1);
-}
-
-#locationBtn:hover svg {
-  fill: #fff;
-}
-
-#locationBtn svg {
-  width: 28px;
-  height: 28px;
-  fill: #3085d6;
-  transition: fill 0.3s ease;
-}
-
-#locationBtn.loading {
-  animation: pulse 1.5s infinite;
-}
-
-@keyframes pulse {
-
-  0%,
-  100% {
-    opacity: 1;
-  }
-
-  50% {
-    opacity: 0.5;
-  }
-}
 
 
 

@@ -2,6 +2,10 @@
   <div class="location-page">
     <div id="mapDiv"></div>
 
+    <!-- 右下角照片上传与定位公共组件 -->
+    <UploadBtn :map="mapInstance" map-type="tianditu" crs="wgs84" :bottom="75" :right="100" />
+    <LocationBtn :map="mapInstance" map-type="tianditu" crs="wgs84" :bottom="75" :right="30" />
+
     <!-- 顶部控制面板区域 -->
     <div class="top-panels-container">
       <!-- 点击信息面板 -->
@@ -57,6 +61,8 @@
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
 import { loadTiandituScript } from '@/utils/tiandituToken.js'
+import UploadBtn from '@/components/UploadBtn.vue'
+import LocationBtn from '@/components/LocationBtn.vue'
 import ClickInfoPanel from '@/components/ClickInfoPanel.vue'
 import LocatePanel from '@/components/LocatePanel.vue'
 import LocationTablePanel from '@/components/LocationTablePanel.vue'
