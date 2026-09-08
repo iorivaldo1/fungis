@@ -683,7 +683,7 @@ class PGRBRouter {
     }
 
     // ==========================================
-    // 高速 A* / Dijkstra 算路 (0-GC 内存复用)
+    // 高速 A* 算路 (0-GC 内存复用)
     // ==========================================
 
     astar(startIdx, endIdx, directed = true) {
@@ -756,14 +756,21 @@ class PGRBRouter {
     }
 
     /**
-     * 带节点/弧段屏蔽掩码的 A* / Dijkstra 最短路计算 (用于 Yen 偏离分支探索)
+     * 兼容历史别名：dijkstra -> astar
+     */
+    dijkstra(startIdx, endIdx, directed = true) {
+        return this.astar(startIdx, endIdx, directed);
+    }
+
+    /**
+     * 带节点/弧段屏蔽掩码的 A* 最短路计算 (用于 Yen 偏离分支探索)
      * @param {number} startIdx 起点
      * @param {number} endIdx 终点
      * @param {boolean} directed 是否有向
      * @param {Set<number>|null} disabledNodes 临时屏蔽的节点集合
      * @param {Set<string>|null} disabledEdges 临时屏蔽的弧段集合 (格式: "u->v")
      */
-    dijkstraWithMask(startIdx, endIdx, directed = true, disabledNodes = null, disabledEdges = null) {
+    astarWithMask(startIdx, endIdx, directed = true, disabledNodes = null, disabledEdges = null) {
         if (!this.isLoaded || startIdx < 0 || endIdx < 0 || startIdx >= this.nodeCount || endIdx >= this.nodeCount) {
             return { path: [], distance: 0 };
         }
@@ -838,6 +845,13 @@ class PGRBRouter {
         path.reverse();
 
         return { path, distance: dist[endIdx] };
+    }
+
+    /**
+     * 兼容历史别名：dijkstraWithMask -> astarWithMask
+     */
+    dijkstraWithMask(startIdx, endIdx, directed = true, disabledNodes = null, disabledEdges = null) {
+        return this.astarWithMask(startIdx, endIdx, directed, disabledNodes, disabledEdges);
     }
 
     _getEdgeCostBetween(u, v, directed = true) {
@@ -936,7 +950,7 @@ class PGRBRouter {
                 }
 
                 // 计算从 spurNode 到 endIdx 的偏离路径
-                const spurRes = this.dijkstraWithMask(spurNode, endIdx, directed, disabledNodes, disabledEdges);
+                const spurRes = this.astarWithMask(spurNode, endIdx, directed, disabledNodes, disabledEdges);
 
                 if (spurRes.path && spurRes.path.length > 0) {
                     const totalPath = rootPath.slice(0, i).concat(spurRes.path);
@@ -1168,7 +1182,7 @@ class PGRBRouter {
                     endSnap
                 };
             }
-            // 若不能同边直达（如单行道禁止逆行），不要返回假 path，继续向下走候选节点 Dijkstra 搜索绕行！
+            // 若不能同边直达（如单行道禁止逆行），不要返回假 path，继续向下走候选节点 A* 搜索绕行！
         }
 
         // 构建起点候选节点（考虑单行道通行方向）
@@ -1572,7 +1586,7 @@ class PGRBRouter {
     }
 
     /**
-     * 100% 对标 PostGIS pgRouting 的全线段几何合成算法 (seg_start + dijkstra_edges + seg_end)
+     * 100% 对标 PostGIS pgRouting 的全线段几何合成算法 (seg_start + astar_edges + seg_end)
      */
     getPathGeoJSONWithSnap(path, startSnap, endSnap, directed = true) {
         if (!path || path.length === 0) return { type: "FeatureCollection", features: [] };
@@ -1596,7 +1610,7 @@ class PGRBRouter {
         let kStart = 0;
         let kEnd = path.length - 1;
 
-        // 1. seg_start：判断首个 Dijkstra 节点对是否在 startSnap.edgeIdx 上
+        // 1. seg_start：判断首个 A* 节点对是否在 startSnap.edgeIdx 上
         if (startSnap && path.length >= 2) {
             const firstEdgeIdx = this.findEdgeIdxBetween(path[0], path[1]);
             if (firstEdgeIdx === startSnap.edgeIdx) {
@@ -1638,7 +1652,7 @@ class PGRBRouter {
             customEndSeg = this.getEndSegCoords(endSnap, path[0]);
         }
 
-        // 3. dijkstra_edges：中间全量 Dijkstra 路径的几何弧段线段
+        // 3. astar_edges：中间全量 A* 路径的几何弧段线段
         for (let k = kStart; k < kEnd; k++) {
             const u = path[k];
             const v = path[k + 1];
@@ -1767,6 +1781,393 @@ class PGRBRouter {
         }
         return coordinates;
     }
+
+    // ==========================================
+    // 导航转换判断与指引生成算法模块
+    // ==========================================
+
+    /**
+     * 计算两经纬度点之间的球面距离 (米)
+     * @param {Array<number>} p1 [lng, lat]
+     * @param {Array<number>} p2 [lng, lat]
+     * @returns {number} 距离 (米)
+     */
+    static calculateDistance(p1, p2) {
+        if (!p1 || !p2) return 0;
+        const R = 6371000; // 地球半径 (米)
+        const rad = Math.PI / 180;
+        const lat1 = p1[1] * rad;
+        const lat2 = p2[1] * rad;
+        const dLat = (p2[1] - p1[1]) * rad;
+        const dLng = (p2[0] - p1[0]) * rad;
+        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(lat1) * Math.cos(lat2) *
+            Math.sin(dLng / 2) * Math.sin(dLng / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return R * c;
+    }
+
+    /**
+     * 计算向量 p1 -> p2 的正北航向角 (0°~360°)
+     * @param {Array<number>} p1 [lng, lat]
+     * @param {Array<number>} p2 [lng, lat]
+     * @returns {number} 航向角 (度)
+     */
+    static calculateBearing(p1, p2) {
+        if (!p1 || !p2) return 0;
+        const rad = Math.PI / 180;
+        const lat1 = p1[1] * rad;
+        const lat2 = p2[1] * rad;
+        const dLng = (p2[0] - p1[0]) * rad;
+        const y = Math.sin(dLng) * Math.cos(lat2);
+        const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
+        return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+    }
+
+    /**
+     * 核心转换判断函数：根据前一节点、当前拐点、后一节点判断转向动作与转向角
+     * @param {Array<number>} pPrev 入向点 [lng, lat]
+     * @param {Array<number>} pCurr 当前转换路口点 [lng, lat]
+     * @param {Array<number>} pNext 出向点 [lng, lat]
+     * @returns {object} { maneuver, maneuverName, turnAngle, icon, description }
+     */
+    static determineManeuver(pPrev, pCurr, pNext) {
+        if (!pPrev || !pCurr || !pNext) {
+            return {
+                maneuver: 'straight',
+                maneuverName: '直行',
+                turnAngle: 0,
+                icon: 'straight',
+                description: '沿当前道路继续直行'
+            };
+        }
+
+        const bearingIn = PGRBRouter.calculateBearing(pPrev, pCurr);
+        const bearingOut = PGRBRouter.calculateBearing(pCurr, pNext);
+
+        let deltaAngle = bearingOut - bearingIn;
+        while (deltaAngle > 180) deltaAngle -= 360;
+        while (deltaAngle <= -180) deltaAngle += 360;
+
+        const absDelta = Math.abs(deltaAngle);
+
+        if (absDelta <= 18) {
+            return {
+                maneuver: 'straight',
+                maneuverName: '直行',
+                turnAngle: deltaAngle,
+                icon: 'straight',
+                description: '沿道路继续直行'
+            };
+        } else if (absDelta >= 162) {
+            return {
+                maneuver: 'u-turn',
+                maneuverName: '掉头',
+                turnAngle: deltaAngle,
+                icon: 'u-turn',
+                description: '在前方允许掉头处掉头行驶'
+            };
+        } else if (deltaAngle > 0) {
+            // 右转向系列
+            if (deltaAngle <= 55) {
+                return {
+                    maneuver: 'slight-right',
+                    maneuverName: '偏右转',
+                    turnAngle: deltaAngle,
+                    icon: 'slight-right',
+                    description: '向右前方偏右行驶'
+                };
+            } else if (deltaAngle <= 135) {
+                return {
+                    maneuver: 'turn-right',
+                    maneuverName: '右转',
+                    turnAngle: deltaAngle,
+                    icon: 'turn-right',
+                    description: '路口右转'
+                };
+            } else {
+                return {
+                    maneuver: 'sharp-right',
+                    maneuverName: '向右后方转',
+                    turnAngle: deltaAngle,
+                    icon: 'sharp-right',
+                    description: '向右后方转弯'
+                };
+            }
+        } else {
+            // 左转向系列 (deltaAngle < 0)
+            const negAngle = deltaAngle;
+            if (negAngle >= -55) {
+                return {
+                    maneuver: 'slight-left',
+                    maneuverName: '偏左转',
+                    turnAngle: deltaAngle,
+                    icon: 'slight-left',
+                    description: '向左前方偏左行驶'
+                };
+            } else if (negAngle >= -135) {
+                return {
+                    maneuver: 'turn-left',
+                    maneuverName: '左转',
+                    turnAngle: deltaAngle,
+                    icon: 'turn-left',
+                    description: '路口左转'
+                };
+            } else {
+                return {
+                    maneuver: 'sharp-left',
+                    maneuverName: '向左后方转',
+                    turnAngle: deltaAngle,
+                    icon: 'sharp-left',
+                    description: '向左后方转弯'
+                };
+            }
+        }
+    }
+
+    /**
+     * 格式化距离显示 (米 / 公里)
+     */
+    static formatDistance(meters) {
+        if (meters == null || isNaN(meters)) return '0米';
+        if (meters < 1000) {
+            return Math.round(meters) + '米';
+        }
+        return (meters / 1000).toFixed(1) + '公里';
+    }
+
+    /**
+     * 核心导航步骤组装算法：融合路线几何坐标与后端沿途路名数据，生成结构化 Turn-by-turn 导航指引
+     * @param {Array<Array<number>>} coordinates 路线完整经纬度点集 [[lng, lat], ...]
+     * @param {object} roadData 后端 /geo/route/road-names 返回的沿途路名数据
+     * @returns {object} { totalDistance, distanceText, estimatedMinutes, totalSteps, mainRoads, steps: [...] }
+     */
+    static generateNavigationGuide(coordinates, roadData) {
+        if (!coordinates || coordinates.length < 2) {
+            return {
+                totalDistance: 0,
+                distanceText: '0米',
+                estimatedMinutes: 0,
+                totalSteps: 0,
+                mainRoads: [],
+                steps: []
+            };
+        }
+
+        // 1. 计算每个折线点到起点的累计距离与各段距离
+        const ptCount = coordinates.length;
+        const cumDists = new Float64Array(ptCount);
+        for (let i = 1; i < ptCount; i++) {
+            cumDists[i] = cumDists[i - 1] + PGRBRouter.calculateDistance(coordinates[i - 1], coordinates[i]);
+        }
+        const totalDistance = cumDists[ptCount - 1];
+
+        // 2. 解析道路区间数据 (由后端 /geo/route/road-names 提供)
+        let sections = (roadData && Array.isArray(roadData.sections) && roadData.sections.length > 0)
+            ? roadData.sections
+            : null;
+
+        // 若无后端路名数据，构造默认未知路名全段
+        if (!sections) {
+            sections = [{
+                roadName: '未名道路',
+                startIndex: 0,
+                endIndex: ptCount - 1,
+                length: totalDistance
+            }];
+        }
+
+        // 构建每个折线点对应的路名查询表
+        const ptRoadNameMap = new Array(ptCount).fill('未名道路');
+        sections.forEach(sec => {
+            const sIdx = Math.max(0, Math.min(ptCount - 1, sec.startIndex != null ? sec.startIndex : 0));
+            const eIdx = Math.max(sIdx, Math.min(ptCount - 1, sec.endIndex != null ? sec.endIndex : ptCount - 1));
+            const name = (sec.roadName && sec.roadName.trim() !== '') ? sec.roadName.trim() : '未名道路';
+            for (let k = sIdx; k <= eIdx; k++) {
+                ptRoadNameMap[k] = name;
+            }
+        });
+
+        // 辅助：获取平滑窗口转向信息 (~15米跨度，抗细碎折线微小抖动，准确定位路口转角)
+        function getWindowedTurnInfo(idx) {
+            if (idx <= 0 || idx >= ptCount - 1) return { turnAngle: 0, maneuver: 'straight', maneuverName: '直行', icon: 'straight' };
+            let prevI = idx - 1;
+            while (prevI > 0 && (cumDists[idx] - cumDists[prevI] < 15)) prevI--;
+            let nextI = idx + 1;
+            while (nextI < ptCount - 1 && (cumDists[nextI] - cumDists[idx] < 15)) nextI++;
+            return PGRBRouter.determineManeuver(coordinates[prevI], coordinates[idx], coordinates[nextI]);
+        }
+
+        // 3. 扫描识别候选决策点 (起点、路名发生切换的边界点、转弯角度显著的拐点)
+        const rawDecisionPoints = [0]; // 起点必为决策点
+        for (let i = 1; i < ptCount - 1; i++) {
+            const roadPrev = ptRoadNameMap[i - 1];
+            const roadNext = ptRoadNameMap[i];
+            const isRoadChanged = (roadPrev !== roadNext);
+
+            const mInfo = getWindowedTurnInfo(i);
+            const isSharpTurn = Math.abs(mInfo.turnAngle) >= 28;
+
+            if (isRoadChanged || isSharpTurn) {
+                rawDecisionPoints.push(i);
+            }
+        }
+        rawDecisionPoints.push(ptCount - 1); // 终点必为决策点
+
+        // 决策点聚类合并：若相邻候选点距离过近 (< 30米)，合并并吸附至转角峰值最大处的真实路口顶点
+        const decisionIndices = [0];
+        let lastPushedIdx = 0;
+        for (let j = 1; j < rawDecisionPoints.length - 1; j++) {
+            const pIdx = rawDecisionPoints[j];
+            const distFromLast = cumDists[pIdx] - cumDists[lastPushedIdx];
+
+            if (distFromLast < 30) {
+                const prevM = getWindowedTurnInfo(lastPushedIdx);
+                const currM = getWindowedTurnInfo(pIdx);
+                if (lastPushedIdx > 0 && Math.abs(currM.turnAngle) > Math.abs(prevM.turnAngle)) {
+                    decisionIndices[decisionIndices.length - 1] = pIdx;
+                    lastPushedIdx = pIdx;
+                }
+            } else {
+                decisionIndices.push(pIdx);
+                lastPushedIdx = pIdx;
+            }
+        }
+        if (decisionIndices[decisionIndices.length - 1] !== ptCount - 1) {
+            decisionIndices.push(ptCount - 1);
+        }
+
+        // 4. 组装导航步骤数据列表
+        const steps = [];
+        let stepCounter = 1;
+
+        for (let d = 0; d < decisionIndices.length - 1; d++) {
+            const curIdx = decisionIndices[d];
+            const nextIdx = decisionIndices[d + 1];
+
+            const stepCoords = coordinates.slice(curIdx, nextIdx + 1);
+            const stepDist = cumDists[nextIdx] - cumDists[curIdx];
+
+            // 当前步骤所行驶的道路名称 (在 curIdx 到 nextIdx 区间行驶)
+            let curSegmentRoad = ptRoadNameMap[curIdx];
+            if (curSegmentRoad === '未名道路' && curIdx + 1 <= nextIdx) {
+                curSegmentRoad = ptRoadNameMap[curIdx + 1] || '未名道路';
+            }
+
+            // 上一步所驶离的道路名称
+            const prevRoadName = curIdx > 0 ? ptRoadNameMap[curIdx - 1] : '';
+
+            let maneuver = 'straight';
+            let maneuverName = '直行';
+            let icon = 'straight';
+            let turnAngle = 0;
+            let instruction = '';
+
+            if (d === 0) {
+                // 起点出发步骤
+                maneuver = 'depart';
+                maneuverName = '出发';
+                icon = 'depart';
+                instruction = `从起点出发，沿【${curSegmentRoad}】行驶 ${PGRBRouter.formatDistance(stepDist)}`;
+            } else {
+                // 中途转弯或道路切换步骤：在决策点 curIdx 处评估转向动作
+                const mRes = getWindowedTurnInfo(curIdx);
+                maneuver = mRes.maneuver;
+                maneuverName = mRes.maneuverName;
+                icon = mRes.icon;
+                turnAngle = mRes.turnAngle;
+
+                const isEnteringNewNamedRoad = (curSegmentRoad !== prevRoadName) && (curSegmentRoad !== '未名道路');
+                const isEnteringUnnamedRoad = (curSegmentRoad !== prevRoadName) && (curSegmentRoad === '未名道路') && (prevRoadName !== '');
+
+                if (isEnteringNewNamedRoad) {
+                    if (maneuver === 'straight') {
+                        instruction = `直行，进入【${curSegmentRoad}】行驶 ${PGRBRouter.formatDistance(stepDist)}`;
+                    } else {
+                        instruction = `${maneuverName}，进入【${curSegmentRoad}】行驶 ${PGRBRouter.formatDistance(stepDist)}`;
+                    }
+                } else if (isEnteringUnnamedRoad) {
+                    if (maneuver === 'straight') {
+                        instruction = `直行，驶入【未名道路】行驶 ${PGRBRouter.formatDistance(stepDist)}`;
+                    } else {
+                        instruction = `${maneuverName}，驶入【未名道路】行驶 ${PGRBRouter.formatDistance(stepDist)}`;
+                    }
+                } else {
+                    if (maneuver === 'straight') {
+                        instruction = `沿【${curSegmentRoad}】继续直行 ${PGRBRouter.formatDistance(stepDist)}`;
+                    } else {
+                        instruction = `${maneuverName}，继续沿【${curSegmentRoad}】行驶 ${PGRBRouter.formatDistance(stepDist)}`;
+                    }
+                }
+            }
+
+            steps.push({
+                stepIndex: stepCounter++,
+                maneuver,
+                maneuverName,
+                icon,
+                roadName: curSegmentRoad,
+                nextRoadName: (nextIdx < ptCount ? ptRoadNameMap[nextIdx] : ''),
+                distance: stepDist,
+                distanceText: PGRBRouter.formatDistance(stepDist),
+                cumulativeDistance: cumDists[nextIdx],
+                turnAngle: Math.round(turnAngle),
+                coordinate: coordinates[curIdx],
+                endCoordinate: coordinates[nextIdx],
+                instruction,
+                coords: stepCoords
+            });
+        }
+
+        // 追加到达终点步骤
+        steps.push({
+            stepIndex: stepCounter,
+            maneuver: 'arrive',
+            maneuverName: '到达',
+            icon: 'arrive',
+            roadName: ptRoadNameMap[ptCount - 1] || '目的地',
+            nextRoadName: '',
+            distance: 0,
+            distanceText: '0米',
+            cumulativeDistance: totalDistance,
+            turnAngle: 0,
+            coordinate: coordinates[ptCount - 1],
+            endCoordinate: coordinates[ptCount - 1],
+            instruction: '到达目的地附近，导航结束',
+            coords: [coordinates[ptCount - 1]]
+        });
+
+        // 统计沿途主要干道（去重保序）
+        const mainRoads = [];
+        const seenRoads = new Set();
+        steps.forEach(s => {
+            if (s.roadName && s.roadName !== '未名道路' && !seenRoads.has(s.roadName)) {
+                seenRoads.add(s.roadName);
+                mainRoads.push(s.roadName);
+            }
+        });
+
+        // 估计车行耗时（按城市平均 35km/h 计算）
+        const estimatedMinutes = Math.max(1, Math.round(totalDistance / (35 * 1000 / 60)));
+
+        return {
+            totalDistance: Math.round(totalDistance * 10) / 10,
+            distanceText: PGRBRouter.formatDistance(totalDistance),
+            estimatedMinutes,
+            totalSteps: steps.length,
+            mainRoads,
+            steps
+        };
+    }
+
+    // 实例方法代理绑定
+    determineManeuver(pPrev, pCurr, pNext) {
+        return PGRBRouter.determineManeuver(pPrev, pCurr, pNext);
+    }
+
+    generateNavigationGuide(coordinates, roadData) {
+        return PGRBRouter.generateNavigationGuide(coordinates, roadData);
+    }
 }
 
 if (typeof window !== 'undefined') {
@@ -1775,4 +2176,3 @@ if (typeof window !== 'undefined') {
 
 export { PGRBRouter };
 export default PGRBRouter;
-

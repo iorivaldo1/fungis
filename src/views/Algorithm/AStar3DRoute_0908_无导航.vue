@@ -3,123 +3,6 @@
     <!-- 纯净全屏地图容器 -->
     <div id="map" ref="mapContainer"></div>
 
-    <!-- 左侧浮动智能导航指引抽屉面板 -->
-    <div id="navDrawerPanel" class="nav-drawer-panel" :class="{ open: isNavDrawerOpen }">
-      <div class="nav-drawer-header">
-        <div class="nav-header-left">
-          <span class="nav-drawer-icon">🧭</span>
-          <div>
-            <div class="nav-drawer-title">路径导航指引</div>
-            <div class="nav-drawer-subtitle">{{ navTripSubtitle }}</div>
-          </div>
-        </div>
-        <button type="button" class="nav-close-btn" @click="closeNavDrawer" title="收起导航面板">&times;</button>
-      </div>
-
-      <div class="nav-drawer-body">
-        <!-- 分步指引头部与步骤指示器 -->
-        <div class="nav-steps-header">
-          <span>分步指引详情</span>
-          <span class="nav-step-counter">{{ navStepProgressText }}</span>
-        </div>
-
-        <!-- 三个功能控制按钮 (前一步 - 当前步 - 后一步) -->
-        <div class="nav-step-ctrl-bar">
-          <button type="button" class="nav-ctrl-btn btn-prev" :disabled="currentNavStepIdx <= 0" @click="prevNavStep" title="切换到上一步">
-            <span>◀ 前一步</span>
-          </button>
-          <button type="button" class="nav-ctrl-btn btn-curr" :disabled="!currentNavGuideCache || !currentNavGuideCache.steps" @click="currNavStep" title="地图定位当前步骤">
-            <span>🎯 当前步</span>
-          </button>
-          <button type="button" class="nav-ctrl-btn btn-next" :disabled="!currentNavGuideCache || !currentNavGuideCache.steps || currentNavStepIdx >= currentNavGuideCache.steps.length - 1" @click="nextNavStep" title="切换到下一步">
-            <span>后一步 ▶</span>
-          </button>
-        </div>
-
-        <!-- 三个节点容器：前一步 - 当前步 - 后一步 -->
-        <div class="nav-three-steps-list">
-          <div v-if="isNavLoading" class="nav-loading-placeholder">
-            <div class="nav-spinner"></div>
-            <div>正在解析沿途路名与转向节点...</div>
-          </div>
-          <div v-else-if="!currentNavGuideCache || !currentNavGuideCache.steps || currentNavGuideCache.steps.length === 0" class="nav-loading-placeholder">
-            <div style="font-size: 26px; margin-bottom: 6px;">🧭</div>
-            <div style="font-weight: 600; color: #cbd5e1; margin-bottom: 4px;">暂无分步指引内容</div>
-            <div style="color: #64748b; font-size: 11.5px;">请完成路径规划后点击“查看详细导航指引”</div>
-          </div>
-          <template v-else>
-            <!-- 前一步卡片 -->
-            <div v-if="currentNavStepIdx > 0 && prevStep" class="nav-three-node-item" @click="prevNavStep">
-              <div class="node-header">
-                <span class="step-role-tag prev">◀ 前一步</span>
-                <span class="node-click-hint">点击回退</span>
-              </div>
-              <div class="node-body">
-                <div class="maneuver-badge" :class="getManeuverBadge(prevStep.maneuver, prevStep.icon).cls">
-                  {{ getManeuverBadge(prevStep.maneuver, prevStep.icon).emoji }}
-                </div>
-                <div class="nav-step-content">
-                  <div class="nav-step-main" v-html="formatStepInstruction(prevStep.instruction)"></div>
-                  <div class="nav-step-sub">
-                    <span class="nav-step-dist">{{ prevStep.distanceText || '' }}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div v-else class="nav-three-node-item empty-node">
-              <div class="empty-hint">🏁 已是路线起点，无前置步骤</div>
-            </div>
-
-            <!-- 当前步卡片 -->
-            <div v-if="currStep" class="nav-three-node-item role-curr active" @click="currNavStep">
-              <div class="node-header">
-                <span class="step-role-tag curr">🎯 当前步</span>
-                <span class="node-click-hint">正在指引</span>
-              </div>
-              <div class="node-body">
-                <div class="maneuver-badge" :class="getManeuverBadge(currStep.maneuver, currStep.icon).cls">
-                  {{ getManeuverBadge(currStep.maneuver, currStep.icon).emoji }}
-                </div>
-                <div class="nav-step-content">
-                  <div class="nav-step-main" v-html="formatStepInstruction(currStep.instruction)"></div>
-                  <div class="nav-step-sub">
-                    <span class="nav-step-dist">{{ currStep.distanceText || '' }}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- 后一步卡片 -->
-            <div v-if="currentNavStepIdx < currentNavGuideCache.steps.length - 1 && nextStep" class="nav-three-node-item" @click="nextNavStep">
-              <div class="node-header">
-                <span class="step-role-tag next">后一步 ▶</span>
-                <span class="node-click-hint">点击前进</span>
-              </div>
-              <div class="node-body">
-                <div class="maneuver-badge" :class="getManeuverBadge(nextStep.maneuver, nextStep.icon).cls">
-                  {{ getManeuverBadge(nextStep.maneuver, nextStep.icon).emoji }}
-                </div>
-                <div class="nav-step-content">
-                  <div class="nav-step-main" v-html="formatStepInstruction(nextStep.instruction)"></div>
-                  <div class="nav-step-sub">
-                    <span class="nav-step-dist">{{ nextStep.distanceText || '' }}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div v-else class="nav-three-node-item empty-node">
-              <div class="empty-hint">🏁 已到达目的地，无后续步骤</div>
-            </div>
-          </template>
-        </div>
-      </div>
-
-      <div class="nav-drawer-footer">
-        <button type="button" class="nav-footer-btn btn-fit-route" @click="fitCurrentRouteBounds">🔍 全览整条路线</button>
-        <button type="button" class="nav-footer-btn btn-close-nav" @click="closeNavDrawer(false)">收起指引</button>
-      </div>
-    </div>
-
     <!-- 路径规划控制面板 -->
     <div class="route-panel">
       <!-- 顶部固定栏：面板标题与模式 Badge -->
@@ -361,14 +244,6 @@
                 </div>
               </div>
             </div>
-          </div>
-
-          <!-- 查看详细导航指引按钮入口 -->
-          <div class="result-action-row" v-if="currentRouteData" style="margin-top: 10px;">
-            <button type="button" class="btn-nav-guide" @click="openAndTriggerNavGuide">
-              <span>🧭 查看详细导航指引</span>
-              <span class="nav-guide-arrow">➔</span>
-            </button>
           </div>
         </div>
       </div>
@@ -629,7 +504,6 @@ let baseMapGroup = null
 let wmtsRoadLayer = null
 let startMarker = null
 let endMarker = null
-let routeCasingLayer = null
 let routeGlowLayer = null
 let routeCoreLayer = null
 let startDashLayer = null
@@ -638,37 +512,6 @@ let routeArrowLayer = null
 let xzqHighlightLayer = null
 let currentRouteCoords = null
 let multiRouteLayers = []
-
-let navSegmentLayer = null
-let navHighlightMarker = null
-let navHighlightSeq = 0
-
-// 导航指引响应式状态
-const isNavDrawerOpen = ref(false)
-const isNavLoading = ref(false)
-const navTripSubtitle = ref('暂无分步指引数据')
-const navStepProgressText = ref('步骤 1 / --')
-const currentRouteData = ref(null)
-const currentNavGuideCache = ref(null)
-const currentNavStepIdx = ref(0)
-
-const prevStep = computed(() => {
-  if (!currentNavGuideCache.value || !currentNavGuideCache.value.steps) return null
-  const idx = currentNavStepIdx.value - 1
-  return (idx >= 0 && idx < currentNavGuideCache.value.steps.length) ? currentNavGuideCache.value.steps[idx] : null
-})
-
-const currStep = computed(() => {
-  if (!currentNavGuideCache.value || !currentNavGuideCache.value.steps) return null
-  const idx = currentNavStepIdx.value
-  return (idx >= 0 && idx < currentNavGuideCache.value.steps.length) ? currentNavGuideCache.value.steps[idx] : null
-})
-
-const nextStep = computed(() => {
-  if (!currentNavGuideCache.value || !currentNavGuideCache.value.steps) return null
-  const idx = currentNavStepIdx.value + 1
-  return (idx >= 0 && idx < currentNavGuideCache.value.steps.length) ? currentNavGuideCache.value.steps[idx] : null
-})
 
 let pgrbRouterInstance = null
 
@@ -1507,7 +1350,6 @@ function onNetworkChange() {
 
 function clearSingleRouteLayers() {
   if (map) {
-    if (routeCasingLayer) { map.removeLayer(routeCasingLayer); routeCasingLayer = null }
     if (routeGlowLayer) { map.removeLayer(routeGlowLayer); routeGlowLayer = null }
     if (routeCoreLayer) { map.removeLayer(routeCoreLayer); routeCoreLayer = null }
     if (startDashLayer) { map.removeLayer(startDashLayer); startDashLayer = null }
@@ -1534,305 +1376,6 @@ function clearMultiRoutes() {
   selectedRouteIdx.value = null
 }
 
-// ==========================================
-// 智能路径导航与分步指引核心逻辑
-// ==========================================
-function openNavDrawer() {
-  isNavDrawerOpen.value = true
-}
-
-function closeNavDrawer(skipClearHighlight = false) {
-  isNavDrawerOpen.value = false
-  if (!skipClearHighlight) {
-    clearNavHighlight()
-  }
-}
-
-function openAndTriggerNavGuide() {
-  if (currentRouteData.value) {
-    triggerNavigationGuide(currentRouteData.value)
-  } else if (currentRouteCoords && currentRouteCoords.length > 1) {
-    triggerNavigationGuide({ coordinates: currentRouteCoords, totalDistance: 0 })
-  } else {
-    alert('请先完成路径规划！')
-  }
-}
-
-function clearNavHighlight() {
-  navHighlightSeq++
-  if (navSegmentLayer && map) {
-    map.removeLayer(navSegmentLayer)
-    navSegmentLayer = null
-  }
-  if (navHighlightMarker && map) {
-    map.removeLayer(navHighlightMarker)
-    navHighlightMarker = null
-  }
-}
-
-function clearNavGuideContent() {
-  currentNavGuideCache.value = null
-  currentNavStepIdx.value = 0
-  navTripSubtitle.value = '暂无分步指引数据'
-  navStepProgressText.value = '步骤 1 / --'
-}
-
-async function triggerNavigationGuide(routeInfo) {
-  console.log('🧭 触发导航指引, routeInfo:', routeInfo)
-  if (!routeInfo || !routeInfo.coordinates || routeInfo.coordinates.length < 2) {
-    alert('未检测到有效的路线几何折线，无法生成导航指引！')
-    return
-  }
-
-  clearNavHighlight()
-  currentRouteData.value = routeInfo
-  currentNavGuideCache.value = null
-  currentNavStepIdx.value = 0
-  openNavDrawer()
-
-  navTripSubtitle.value = '正在获取沿途路段路名与转向拓扑...'
-  navStepProgressText.value = '准备中...'
-  isNavLoading.value = true
-
-  let roadData = null
-  try {
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 3000)
-    const resp = await fetch(`${routeApiBase}/road-names`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        networkId: selectedNetworkId.value || '',
-        coordinates: routeInfo.coordinates
-      }),
-      signal: controller.signal
-    })
-    clearTimeout(timeoutId)
-    if (resp.ok) {
-      const json = await resp.json()
-      if (json.code === 200 && json.data) {
-        roadData = json.data
-      }
-    }
-  } catch (err) {
-    console.warn('请求后端路名接口失败或超时，采用前端几何转角分析:', err)
-  }
-
-  isNavLoading.value = false
-
-  try {
-    const guide = PGRBRouter.generateNavigationGuide(routeInfo.coordinates, roadData)
-    currentNavGuideCache.value = guide
-    currentNavStepIdx.value = 0
-
-    const totalDistKm = guide.distanceText || `${(guide.totalDistance / 1000).toFixed(1)}公里`
-    const mainRoadsCount = guide.mainRoads ? guide.mainRoads.length : 0
-    let tripSub = `全程 ${totalDistKm} · 预计用时 ${guide.estimatedMinutes}分钟`
-    if (mainRoadsCount > 0) {
-      tripSub += ` · 途经 ${mainRoadsCount}条主要道路`
-    }
-    navTripSubtitle.value = tripSub
-    navStepProgressText.value = `步骤 1 / ${guide.totalSteps}`
-
-    if (guide.steps && guide.steps.length > 0) {
-      highlightNavStep(guide.steps[0], false)
-    }
-  } catch (e) {
-    console.error('PGRBRouter.generateNavigationGuide 异常:', e)
-  }
-}
-
-function highlightNavStep(step, panTo = true) {
-  if (!step || !map) return
-
-  clearNavHighlight()
-  const currentSeq = ++navHighlightSeq
-
-  const coords = step.coords && step.coords.length > 0 ? step.coords : (step.coordinate ? [step.coordinate] : null)
-  const latlngs = coords ? coords.map(c => [c[1], c[0]]) : []
-  const targetLatLng = step.coordinate ? [step.coordinate[1], step.coordinate[0]] : (latlngs.length > 0 ? latlngs[0] : null)
-
-  const doRender = () => {
-    if (currentSeq !== navHighlightSeq || !map) return
-
-    if (latlngs.length > 1) {
-      // (a) 底层柔和发光外晕 (20px)
-      const halo = L.polyline(latlngs, {
-        color: '#38bdf8',
-        weight: 20,
-        opacity: 0.38,
-        lineCap: 'round',
-        lineJoin: 'round',
-        className: 'nav-step-halo'
-      })
-
-      // (b) 深色高对比隔离描边 (13px)
-      const casing = L.polyline(latlngs, {
-        color: '#020617',
-        weight: 13,
-        opacity: 0.95,
-        lineCap: 'round',
-        lineJoin: 'round',
-        className: 'nav-step-casing'
-      })
-
-      // (c) 核心高亮金黄光带 (8px)
-      const core = L.polyline(latlngs, {
-        color: '#fbbf24',
-        weight: 8,
-        opacity: 1.0,
-        lineCap: 'round',
-        lineJoin: 'round',
-        className: 'nav-step-core'
-      })
-
-      // (d) 动态前进光流核心束 (3.5px)
-      const pulse = L.polyline(latlngs, {
-        color: '#ffffff',
-        weight: 3.5,
-        opacity: 0.95,
-        dashArray: '10, 16',
-        lineCap: 'round',
-        lineJoin: 'round',
-        className: 'nav-step-flow-pulse'
-      })
-
-      navSegmentLayer = L.layerGroup([halo, casing, core, pulse]).addTo(map)
-    }
-
-    // 转向决策点雷达波动态发光标记
-    if (targetLatLng) {
-      const beaconIcon = L.divIcon({
-        className: 'nav-pulse-beacon-container',
-        html: `<div class="nav-pulse-beacon">
-                 <div class="nav-pulse-ripple"></div>
-                 <div class="nav-pulse-dot"></div>
-               </div>`,
-        iconSize: [28, 28],
-        iconAnchor: [14, 14]
-      })
-      navHighlightMarker = L.marker(targetLatLng, { icon: beaconIcon }).addTo(map)
-    }
-  }
-
-  let needsPan = false
-  let targetZoom = map.getZoom()
-  if (panTo && targetLatLng) {
-    targetZoom = Math.max(map.getZoom(), 16)
-    const currCenter = map.getCenter()
-    const currZoom = map.getZoom()
-    const dist = currCenter ? map.distance(currCenter, targetLatLng) : 999
-    const zoomDiff = Math.abs(currZoom - targetZoom)
-
-    if (dist > 5 || zoomDiff > 0.05) {
-      needsPan = true
-    }
-  }
-
-  if (needsPan) {
-    let completed = false
-    const onMoveEnd = function () {
-      if (completed) return
-      completed = true
-      map.off('moveend', onMoveEnd)
-      if (currentSeq === navHighlightSeq) {
-        doRender()
-      }
-    }
-
-    map.once('moveend', onMoveEnd)
-    setTimeout(onMoveEnd, 850)
-    map.flyTo(targetLatLng, targetZoom, { duration: 0.55 })
-  } else {
-    doRender()
-  }
-}
-
-function goToNavStep(targetIdx, panTo = true) {
-  if (!currentNavGuideCache.value || !currentNavGuideCache.value.steps) return
-  const total = currentNavGuideCache.value.steps.length
-  if (targetIdx < 0 || targetIdx >= total) return
-
-  currentNavStepIdx.value = targetIdx
-  navStepProgressText.value = `步骤 ${targetIdx + 1} / ${total}`
-
-  const step = currentNavGuideCache.value.steps[targetIdx]
-  if (step) {
-    highlightNavStep(step, panTo)
-  }
-}
-
-function prevNavStep() {
-  if (currentNavStepIdx.value > 0) {
-    goToNavStep(currentNavStepIdx.value - 1, true)
-  }
-}
-
-function currNavStep() {
-  if (currentNavGuideCache.value && currentNavGuideCache.value.steps) {
-    const step = currentNavGuideCache.value.steps[currentNavStepIdx.value]
-    if (step) {
-      highlightNavStep(step, true)
-    }
-  }
-}
-
-function nextNavStep() {
-  if (currentNavGuideCache.value && currentNavGuideCache.value.steps) {
-    if (currentNavStepIdx.value < currentNavGuideCache.value.steps.length - 1) {
-      goToNavStep(currentNavStepIdx.value + 1, true)
-    }
-  }
-}
-
-function fitCurrentRouteBounds() {
-  if (currentRouteData.value && currentRouteData.value.coordinates && currentRouteData.value.coordinates.length > 0 && map) {
-    const latlngs = currentRouteData.value.coordinates.map(c => [c[1], c[0]])
-    map.fitBounds(L.latLngBounds(latlngs), { padding: [80, 80] })
-  }
-}
-
-function formatStepInstruction(instr) {
-  if (!instr) return ''
-  return instr.replace(/【(.*?)】/g, '<strong>$1</strong>')
-}
-
-function getManeuverBadge(maneuver, icon) {
-  const m = (maneuver || icon || '').toLowerCase()
-  if (m === 'depart') {
-    return { cls: 'badge-depart', emoji: '🟢' }
-  }
-  if (m === 'arrive') {
-    return { cls: 'badge-arrive', emoji: '🏁' }
-  }
-  if (m.includes('u-turn') || m.includes('uturn')) {
-    return { cls: 'badge-uturn', emoji: '🔄' }
-  }
-  if (m.includes('left')) {
-    return { cls: 'badge-left', emoji: m.includes('slight') ? '↖️' : (m.includes('sharp') ? '↙️' : '⬅️') }
-  }
-  if (m.includes('right')) {
-    return { cls: 'badge-right', emoji: m.includes('slight') ? '↗️' : (m.includes('sharp') ? '↘️' : '➡️') }
-  }
-  return { cls: 'badge-straight', emoji: '⬆️' }
-}
-
-function onNavKeyDown(e) {
-  if (!isNavDrawerOpen.value) return
-  if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return
-  if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-    if (currentNavStepIdx.value > 0) {
-      e.preventDefault()
-      goToNavStep(currentNavStepIdx.value - 1, true)
-    }
-  } else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-    if (currentNavGuideCache.value && currentNavGuideCache.value.steps && currentNavStepIdx.value < currentNavGuideCache.value.steps.length - 1) {
-      e.preventDefault()
-      goToNavStep(currentNavStepIdx.value + 1, true)
-    }
-  }
-}
-
 function renderRouteResult(res, engineType = '') {
   isPlanning.value = false
   clearMultiRoutes()
@@ -1850,78 +1393,27 @@ function renderRouteResult(res, engineType = '') {
       ? geojson.features[0].geometry.coordinates
       : (geojson.geometry ? geojson.geometry.coordinates : geojson.coordinates)
 
-    const routeSvgRenderer = L.svg()
-
-    const navClickFn = function (e) {
-      if (e && e.originalEvent) {
-        e.originalEvent.stopPropagation()
-      }
-      console.log('🗺️ 路线被点击，弹出导航指引')
-      if (currentRouteData.value) {
-        triggerNavigationGuide(currentRouteData.value)
-      }
-    }
-
-    // 1. 深色外边框高对比描边层 (Casing Layer, weight 12)
-    routeCasingLayer = L.geoJSON(geojson, {
-      renderer: routeSvgRenderer,
-      style: {
-        color: '#07162c',
-        weight: 12,
-        opacity: 0.85,
-        lineCap: 'round',
-        lineJoin: 'round',
-        className: 'route-interactive-line'
-      },
-      onEachFeature: function (feat, layer) {
-        layer.on('click', navClickFn)
-      }
-    }).addTo(map)
-
-    // 2. 科技蓝柔和流光外晕层 (Glow Layer, weight 16)
+    // 1. 底层霓虹发光光晕层
     routeGlowLayer = L.geoJSON(geojson, {
-      renderer: routeSvgRenderer,
       style: {
-        color: '#0284c7',
-        weight: 16,
-        opacity: 0.35,
+        color: '#f43f5e',
+        weight: 12,
+        opacity: 0.45,
         lineCap: 'round',
-        lineJoin: 'round',
-        className: 'route-interactive-line'
-      },
-      onEachFeature: function (feat, layer) {
-        layer.on('click', navClickFn)
+        lineJoin: 'round'
       }
     }).addTo(map)
 
-    // 3. 核心高饱和亮蓝主干层 (Core Layer, weight 6)
+    // 2. 顶层高亮发光核心流光层
     routeCoreLayer = L.geoJSON(geojson, {
-      renderer: routeSvgRenderer,
       style: {
-        color: '#38bdf8',
+        color: '#fb7185',
         weight: 6,
         opacity: 1.0,
         lineCap: 'round',
-        lineJoin: 'round',
-        className: 'route-interactive-line'
-      },
-      onEachFeature: function (feat, layer) {
-        layer.on('click', navClickFn)
+        lineJoin: 'round'
       }
     }).addTo(map)
-
-    routeCasingLayer.on('click', navClickFn)
-    routeCoreLayer.on('click', navClickFn)
-    routeGlowLayer.on('click', navClickFn)
-
-    // 缓存当前路线数据供导航使用
-    currentRouteData.value = {
-      coordinates: currentRouteCoords,
-      totalDistance: res.data.totalDistance,
-      geometry: geojson,
-      startNode: res.data.startNode,
-      endNode: res.data.endNode
-    }
 
     // 3. 绘制起止点引线
     if (currentRouteCoords && currentRouteCoords.length > 0) {
@@ -1999,39 +1491,15 @@ function renderMultiRoutesResult(routes, calcCostStr, paradigm) {
       ? geojson.features[0].geometry.coordinates
       : (geojson.geometry ? geojson.geometry.coordinates : (geojson.coordinates || []))
 
-    const routeSvgRenderer = L.svg()
-
-    const handleMultiRouteClick = (e) => {
-      if (e && e.originalEvent) e.originalEvent.stopPropagation()
-      focusRoute(idx)
-      triggerNavigationGuide({
-        coordinates: coords,
-        totalDistance: rt.totalDistance,
-        geometry: geojson,
-        name: `路线 ${idx + 1}`
-      })
-    }
-
     // 1. 发光外轮廓
     const glow = L.geoJSON(geojson, {
-      renderer: routeSvgRenderer,
-      style: { color: color, weight: 14, opacity: 0.35, lineCap: 'round', lineJoin: 'round', className: 'route-interactive-line' },
-      onEachFeature: (feat, layer) => {
-        layer.on('click', handleMultiRouteClick)
-      }
+      style: { color: color, weight: 10, opacity: 0.35, lineCap: 'round', lineJoin: 'round' }
     }).addTo(map)
 
     // 2. 核心流光层
     const core = L.geoJSON(geojson, {
-      renderer: routeSvgRenderer,
-      style: { color: color, weight: 5, opacity: 0.95, lineCap: 'round', lineJoin: 'round', className: 'route-interactive-line' },
-      onEachFeature: (feat, layer) => {
-        layer.on('click', handleMultiRouteClick)
-      }
+      style: { color: color, weight: 4.5, opacity: 0.95, lineCap: 'round', lineJoin: 'round' }
     }).addTo(map)
-
-    core.on('click', handleMultiRouteClick)
-    glow.on('click', handleMultiRouteClick)
 
     const tooltipText = paradigm === '1_to_n'
       ? `中心起点 ➔ 终点 ${label}: ${distKm} km`
@@ -2090,22 +1558,6 @@ function renderMultiRoutesResult(routes, calcCostStr, paradigm) {
   resMultiExtremes.value = `${minKm} km / ${maxKm} km`
   multiRouteListItems.value = listItems
 
-  // 默认选择第一条多路线并准备导航数据
-  if (routes.length > 0) {
-    const first = routes[0]
-    const firstCoords = (first.geometry.type === 'FeatureCollection' && first.geometry.features && first.geometry.features[0])
-      ? first.geometry.features[0].geometry.coordinates
-      : (first.geometry.geometry ? first.geometry.geometry.coordinates : (first.geometry.coordinates || []))
-    currentRouteData.value = {
-      coordinates: firstCoords,
-      totalDistance: first.totalDistance,
-      geometry: first.geometry,
-      name: '路线 1'
-    }
-    clearNavHighlight()
-    clearNavGuideContent()
-  }
-
   if (allLatLngs.length > 0) {
     map.fitBounds(L.latLngBounds(allLatLngs), { padding: [50, 50] })
   }
@@ -2118,39 +1570,13 @@ function focusRoute(idx) {
     if (i === idx) {
       r.glowLayer.setStyle({ weight: 16, opacity: 0.8 })
       r.coreLayer.setStyle({ weight: 7, opacity: 1.0 })
-      if (Array.isArray(r.dashLayers)) {
-        r.dashLayers.forEach(d => { if (d && d.setStyle) d.setStyle({ opacity: 1.0, weight: 3 }) })
-      }
       if (r.coords && r.coords.length > 0) {
-        const pts = r.coords.map(c => [c[1], c[0]])
-        if (Array.isArray(r.dashLayers)) {
-          r.dashLayers.forEach(d => {
-            if (d && d.getLatLngs) {
-              const dPts = d.getLatLngs()
-              if (dPts && dPts.length > 0) pts.push(dPts[0], dPts[dPts.length - 1])
-            }
-          })
-        }
-        const bounds = L.latLngBounds(pts)
+        const bounds = L.latLngBounds(r.coords.map(c => [c[1], c[0]]))
         map.fitBounds(bounds, { padding: [60, 60] })
-      }
-      currentRouteData.value = {
-        coordinates: r.coords,
-        totalDistance: r.totalDistance,
-        geometry: r.coreLayer.toGeoJSON ? r.coreLayer.toGeoJSON() : null,
-        name: `路线 ${idx + 1}`
-      }
-      clearNavHighlight()
-      clearNavGuideContent()
-      if (isNavDrawerOpen.value) {
-        triggerNavigationGuide(currentRouteData.value)
       }
     } else {
       r.glowLayer.setStyle({ weight: 6, opacity: 0.2 })
       r.coreLayer.setStyle({ weight: 3, opacity: 0.4 })
-      if (Array.isArray(r.dashLayers)) {
-        r.dashLayers.forEach(d => { if (d && d.setStyle) d.setStyle({ opacity: 0.25, weight: 1.5 }) })
-      }
     }
   })
 }
@@ -2158,14 +1584,6 @@ function focusRoute(idx) {
 async function planRoute() {
   resetPickingMode()
   stopContinuousPicking()
-
-  clearSingleRouteLayers()
-  clearMultiRoutes()
-  clearNavHighlight()
-  clearNavGuideContent()
-  closeNavDrawer(true)
-  currentRouteData.value = null
-  currentNavGuideCache.value = null
 
   const isDirected = true
   const router = pgrbRouterInstance
@@ -2377,11 +1795,6 @@ function resetRoute() {
   clearOrigPoints()
   clearSingleRouteLayers()
   clearMultiRoutes()
-  clearNavHighlight()
-  clearNavGuideContent()
-  closeNavDrawer(true)
-  currentRouteData.value = null
-  currentNavGuideCache.value = null
 
   showResultCard.value = false
   resStatus.value = '已重置'
@@ -2734,12 +2147,9 @@ onMounted(() => {
   })
 
   fetchRoadNetworks()
-  window.addEventListener('keydown', onNavKeyDown)
 })
 
 onUnmounted(() => {
-  window.removeEventListener('keydown', onNavKeyDown)
-  clearNavHighlight()
   if (map) {
     map.remove()
     map = null
@@ -3708,476 +3118,6 @@ select.coord-input option {
   margin-top: 10px;
   font-size: 12px;
 }
-
-/* ==========================================
-   左侧浮动智能导航指引抽屉面板 (Nav Drawer)
-   ========================================== */
-.nav-drawer-panel {
-  position: absolute;
-  top: 16px;
-  bottom: 16px;
-  left: 16px;
-  z-index: 2000;
-  width: 380px;
-  max-height: calc(100vh - 32px);
-  background: rgba(15, 23, 42, 0.94);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 14px;
-  display: flex;
-  flex-direction: column;
-  padding: 0;
-  color: #f8fafc;
-  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.65);
-  overflow: hidden;
-  transform: translateX(-115%);
-  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
-  pointer-events: auto;
-}
-
-.nav-drawer-panel.open,
-.nav-drawer-panel.active {
-  transform: translateX(0) !important;
-}
-
-.nav-drawer-header {
-  padding: 14px 16px 12px 16px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(15, 23, 42, 0.92);
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.nav-header-left {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.nav-drawer-icon {
-  font-size: 20px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 34px;
-  height: 34px;
-  background: rgba(56, 189, 248, 0.15);
-  border: 1px solid rgba(56, 189, 248, 0.35);
-  border-radius: 8px;
-}
-
-.nav-drawer-title {
-  font-size: 14px;
-  font-weight: 700;
-  color: #38bdf8;
-  letter-spacing: 0.3px;
-}
-
-.nav-drawer-subtitle {
-  font-size: 11px;
-  color: #94a3b8;
-  margin-top: 2px;
-}
-
-.nav-close-btn {
-  background: transparent;
-  border: none;
-  color: #94a3b8;
-  font-size: 22px;
-  cursor: pointer;
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 6px;
-  transition: all 0.2s ease;
-}
-
-.nav-close-btn:hover {
-  color: #ffffff;
-  background: rgba(255, 255, 255, 0.1);
-}
-
-.nav-drawer-body {
-  flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding: 12px 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.nav-drawer-body::-webkit-scrollbar {
-  width: 5px;
-}
-
-.nav-drawer-body::-webkit-scrollbar-track {
-  background: rgba(15, 23, 42, 0.4);
-}
-
-.nav-drawer-body::-webkit-scrollbar-thumb {
-  background: rgba(56, 189, 248, 0.28);
-  border-radius: 10px;
-}
-
-.nav-steps-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 12.5px;
-  font-weight: 700;
-  color: #e2e8f0;
-  padding: 2px 0 6px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.nav-step-counter {
-  font-size: 11px;
-  color: #38bdf8;
-  font-family: 'Courier New', monospace;
-  background: rgba(56, 189, 248, 0.12);
-  border: 1px solid rgba(56, 189, 248, 0.3);
-  border-radius: 6px;
-  padding: 2px 8px;
-}
-
-.nav-step-ctrl-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px;
-  background: rgba(15, 23, 42, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 8px;
-}
-
-.nav-ctrl-btn {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 7px 4px;
-  border-radius: 6px;
-  font-size: 11.5px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  user-select: none;
-  white-space: nowrap;
-}
-
-.nav-ctrl-btn.btn-prev,
-.nav-ctrl-btn.btn-next {
-  background: rgba(30, 41, 59, 0.8);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: #cbd5e1;
-}
-
-.nav-ctrl-btn.btn-prev:hover:not(:disabled),
-.nav-ctrl-btn.btn-next:hover:not(:disabled) {
-  background: rgba(56, 189, 248, 0.15);
-  border-color: rgba(56, 189, 248, 0.4);
-  color: #38bdf8;
-  transform: translateY(-1px);
-}
-
-.nav-ctrl-btn.btn-curr {
-  background: rgba(14, 165, 233, 0.18);
-  border: 1px solid rgba(56, 189, 248, 0.4);
-  color: #38bdf8;
-}
-
-.nav-ctrl-btn.btn-curr:hover:not(:disabled) {
-  background: #38bdf8;
-  color: #0f172a;
-  box-shadow: 0 0 10px rgba(56, 189, 248, 0.5);
-  transform: translateY(-1px);
-}
-
-.nav-ctrl-btn:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-  transform: none !important;
-  box-shadow: none !important;
-}
-
-.nav-three-steps-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.nav-three-node-item {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  background: rgba(30, 41, 59, 0.5);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  cursor: pointer;
-  transition: all 0.22s ease;
-  position: relative;
-}
-
-.nav-three-node-item:hover {
-  background: rgba(56, 189, 248, 0.12);
-  border-color: rgba(56, 189, 248, 0.4);
-  transform: translateX(3px);
-}
-
-.node-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.step-role-tag {
-  font-size: 11px;
-  font-weight: 700;
-  padding: 2px 7px;
-  border-radius: 4px;
-  letter-spacing: 0.2px;
-}
-
-.step-role-tag.prev {
-  color: #94a3b8;
-  background: rgba(148, 163, 184, 0.15);
-  border: 1px solid rgba(148, 163, 184, 0.25);
-}
-
-.step-role-tag.curr {
-  color: #38bdf8;
-  background: rgba(56, 189, 248, 0.22);
-  border: 1px solid rgba(56, 189, 248, 0.5);
-  box-shadow: 0 0 8px rgba(56, 189, 248, 0.25);
-}
-
-.step-role-tag.next {
-  color: #fbbf24;
-  background: rgba(245, 158, 11, 0.18);
-  border: 1px solid rgba(245, 158, 11, 0.35);
-}
-
-.node-click-hint {
-  font-size: 10.5px;
-  color: #64748b;
-}
-
-.nav-three-node-item:hover .node-click-hint {
-  color: #38bdf8;
-}
-
-.node-body {
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
-}
-
-.nav-three-node-item.role-curr {
-  background: linear-gradient(135deg, rgba(14, 165, 233, 0.16), rgba(30, 41, 59, 0.8));
-  border: 1.5px solid #38bdf8;
-  box-shadow: 0 0 16px rgba(56, 189, 248, 0.25);
-}
-
-.nav-three-node-item.role-curr:hover {
-  transform: none;
-  box-shadow: 0 0 20px rgba(56, 189, 248, 0.35);
-}
-
-.nav-three-node-item.empty-node {
-  background: rgba(15, 23, 42, 0.4);
-  border: 1px dashed rgba(255, 255, 255, 0.12);
-  cursor: default;
-  opacity: 0.65;
-  transform: none !important;
-}
-
-.empty-hint {
-  font-size: 12px;
-  color: #64748b;
-  text-align: center;
-  padding: 8px 0;
-  font-weight: 500;
-}
-
-.maneuver-badge {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 15px;
-  flex-shrink: 0;
-  font-weight: 700;
-}
-
-.maneuver-badge.badge-depart {
-  background: rgba(16, 185, 129, 0.2);
-  color: #10b981;
-  border: 1px solid rgba(16, 185, 129, 0.4);
-}
-
-.maneuver-badge.badge-straight {
-  background: rgba(56, 189, 248, 0.18);
-  color: #38bdf8;
-  border: 1px solid rgba(56, 189, 248, 0.4);
-}
-
-.maneuver-badge.badge-left {
-  background: rgba(168, 85, 247, 0.2);
-  color: #c084fc;
-  border: 1px solid rgba(168, 85, 247, 0.4);
-}
-
-.maneuver-badge.badge-right {
-  background: rgba(245, 158, 11, 0.2);
-  color: #fbbf24;
-  border: 1px solid rgba(245, 158, 11, 0.4);
-}
-
-.maneuver-badge.badge-uturn {
-  background: rgba(244, 63, 94, 0.2);
-  color: #fb7185;
-  border: 1px solid rgba(244, 63, 94, 0.4);
-}
-
-.maneuver-badge.badge-arrive {
-  background: rgba(239, 68, 68, 0.2);
-  color: #f87171;
-  border: 1px solid rgba(239, 68, 68, 0.4);
-}
-
-.nav-step-content {
-  flex: 1;
-  min-width: 0;
-}
-
-.nav-step-main {
-  font-size: 12.5px;
-  font-weight: 600;
-  color: #f1f5f9;
-  line-height: 1.4;
-}
-
-:deep(.nav-step-main strong) {
-  color: #38bdf8;
-}
-
-.nav-step-sub {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  margin-top: 4px;
-  font-size: 11px;
-  color: #94a3b8;
-}
-
-.nav-step-dist {
-  font-family: 'Courier New', monospace;
-  font-weight: 700;
-  color: #10b981;
-}
-
-.nav-drawer-footer {
-  padding: 10px 16px 12px 16px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(15, 23, 42, 0.98);
-  flex-shrink: 0;
-  display: flex;
-  gap: 10px;
-}
-
-.nav-footer-btn {
-  flex: 1;
-  padding: 8px 12px;
-  font-size: 12px;
-  font-weight: 600;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  text-align: center;
-  border: 1px solid transparent;
-}
-
-.btn-fit-route {
-  background: rgba(56, 189, 248, 0.15);
-  color: #38bdf8;
-  border-color: rgba(56, 189, 248, 0.35);
-}
-
-.btn-fit-route:hover {
-  background: rgba(56, 189, 248, 0.3);
-}
-
-.btn-close-nav {
-  background: rgba(255, 255, 255, 0.08);
-  color: #cbd5e1;
-  border-color: rgba(255, 255, 255, 0.12);
-}
-
-.btn-close-nav:hover {
-  background: rgba(255, 255, 255, 0.15);
-  color: #ffffff;
-}
-
-.btn-nav-guide {
-  width: 100%;
-  background: linear-gradient(135deg, rgba(14, 165, 233, 0.25), rgba(99, 102, 241, 0.25));
-  border: 1px solid rgba(56, 189, 248, 0.45);
-  color: #38bdf8;
-  padding: 8px 12px;
-  border-radius: 8px;
-  font-weight: 600;
-  font-size: 12.5px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  transition: all 0.25s ease;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-}
-
-.btn-nav-guide:hover {
-  background: linear-gradient(135deg, rgba(14, 165, 233, 0.4), rgba(99, 102, 241, 0.4));
-  border-color: #38bdf8;
-  color: #ffffff;
-  transform: translateY(-1px);
-  box-shadow: 0 0 15px rgba(56, 189, 248, 0.4);
-}
-
-.nav-loading-placeholder {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  padding: 30px 10px;
-  color: #94a3b8;
-  font-size: 12px;
-}
-
-.nav-spinner {
-  width: 24px;
-  height: 24px;
-  border: 2.5px solid rgba(56, 189, 248, 0.2);
-  border-top-color: #38bdf8;
-  border-radius: 50%;
-  animation: navSpin 0.8s linear infinite;
-}
-
-@keyframes navSpin {
-  to {
-    transform: rotate(360deg);
-  }
-}
 </style>
 
 <style>
@@ -4237,65 +3177,5 @@ select.coord-input option {
   padding: 0;
   margin: -4px auto 0;
   transform: rotate(45deg);
-}
-
-.route-interactive-line,
-path.route-interactive-line,
-.leaflet-interactive {
-  cursor: pointer !important;
-  pointer-events: auto !important;
-  outline: none !important;
-  -webkit-tap-highlight-color: transparent !important;
-}
-.route-interactive-line:focus,
-path.route-interactive-line:focus,
-.leaflet-interactive:focus {
-  outline: none !important;
-}
-
-/* 当前步骤光流动画与高亮样式 */
-@keyframes navFlowPulse {
-  from { stroke-dashoffset: 26; }
-  to { stroke-dashoffset: 0; }
-}
-.nav-step-flow-pulse {
-  animation: navFlowPulse 0.85s linear infinite !important;
-}
-
-/* 转向决策点动态雷达波信标 */
-.nav-pulse-beacon-container {
-  background: transparent !important;
-  border: none !important;
-}
-.nav-pulse-beacon {
-  position: relative;
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.nav-pulse-ripple {
-  position: absolute;
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  background: rgba(245, 158, 11, 0.45);
-  animation: navPulseRippleAnim 1.6s ease-out infinite;
-  pointer-events: none;
-}
-.nav-pulse-dot {
-  position: relative;
-  width: 15px;
-  height: 15px;
-  border-radius: 50%;
-  background: radial-gradient(circle, #fef08a 0%, #f59e0b 60%, #d97706 100%);
-  border: 2.5px solid #ffffff;
-  box-shadow: 0 0 12px rgba(245, 158, 11, 0.95), 0 2px 6px rgba(0, 0, 0, 0.65);
-  pointer-events: none;
-}
-@keyframes navPulseRippleAnim {
-  0% { transform: scale(0.45); opacity: 1; }
-  100% { transform: scale(1.9); opacity: 0; }
 }
 </style>
