@@ -198,6 +198,83 @@ class PGRBRouter {
     }
 
     /**
+     * 读取 IndexedDB (PGRB_Cache_DB) 中所有已持久化缓存的路网列表
+     */
+    static async listCachedNetworks() {
+        try {
+            const db = await PGRBRouter.openDB();
+            return new Promise((resolve) => {
+                const tx = db.transaction('graphs', 'readonly');
+                const store = tx.objectStore('graphs');
+                const list = [];
+                const req = store.openCursor();
+                req.onsuccess = (e) => {
+                    const cursor = e.target.result;
+                    if (cursor) {
+                        const key = cursor.key;
+                        const val = cursor.value;
+                        let networkId = key;
+                        let buildTime = null;
+                        let savedAt = null;
+                        let byteLength = 0;
+
+                        if (val instanceof ArrayBuffer) {
+                            byteLength = val.byteLength;
+                        } else if (val && val.buffer instanceof ArrayBuffer) {
+                            byteLength = val.buffer.byteLength;
+                            networkId = val.networkId || key;
+                            buildTime = val.buildTime || null;
+                            savedAt = val.savedAt || null;
+                        } else if (val && typeof val === 'object') {
+                            networkId = val.networkId || key;
+                            buildTime = val.buildTime || null;
+                            savedAt = val.savedAt || null;
+                            if (val.buffer && val.buffer.byteLength) byteLength = val.buffer.byteLength;
+                        }
+
+                        let cleanId = String(networkId).replace(/^pgrb_v\d+_/i, '').replace(/^pgrb_/i, '');
+                        list.push({
+                            key: key,
+                            networkId: cleanId,
+                            rawNetworkId: networkId,
+                            buildTime: buildTime,
+                            savedAt: savedAt,
+                            byteLength: byteLength,
+                            sizeMB: (byteLength / (1024 * 1024)).toFixed(2)
+                        });
+                        cursor.continue();
+                    } else {
+                        resolve(list);
+                    }
+                };
+                req.onerror = () => resolve([]);
+            });
+        } catch (e) {
+            console.error('[PGRB] 获取 IndexedDB 缓存列表异常:', e);
+            return [];
+        }
+    }
+
+    /**
+     * 根据缓存 Key 直接从 IndexedDB 读取原始数据
+     */
+    static async getRawCacheByKey(key) {
+        try {
+            const db = await PGRBRouter.openDB();
+            return new Promise((resolve) => {
+                const tx = db.transaction('graphs', 'readonly');
+                const store = tx.objectStore('graphs');
+                const req = store.get(key);
+                req.onsuccess = () => resolve(req.result || null);
+                req.onerror = () => resolve(null);
+            });
+        } catch (e) {
+            console.error('[PGRB] 获取 IndexedDB 缓存项异常:', e);
+            return null;
+        }
+    }
+
+    /**
      * 高级智能加载策略：支持服务端版本时间戳 (buildTime) 校验
      * 若服务端提供了 buildTime 且与本地缓存不一致，自动清除旧缓存并拉取最新图；
      * 若版本一致，直接从 IndexedDB 秒开；未命中则下载并持久化。
@@ -1200,7 +1277,13 @@ class PGRBRouter {
             });
         }
         if (startCandidates.length === 0) {
-            startCandidates.push({ node: startSnap.bestNode, partialCost: 0 });
+            return {
+                path: [],
+                distance: 0,
+                startSnap,
+                endSnap,
+                message: "起点所在道路受单向通行限制，无合法出行方向"
+            };
         }
 
         // 构建终点候选节点
@@ -1218,7 +1301,13 @@ class PGRBRouter {
             });
         }
         if (endCandidates.length === 0) {
-            endCandidates.push({ node: endSnap.bestNode, partialCost: 0 });
+            return {
+                path: [],
+                distance: 0,
+                startSnap,
+                endSnap,
+                message: "终点所在道路受单向通行限制，无合法驶入方向"
+            };
         }
 
         let bestPath = [];
@@ -1237,10 +1326,15 @@ class PGRBRouter {
             }
         }
 
+        // 若断头路或受单向限制无法到达终点，坚决不进行 bestNode 兜底逆行，直接跳出并明确表示未找到路径
         if (bestPath.length === 0) {
-            const cpuRes = this.astar(startSnap.bestNode, endSnap.bestNode, directed);
-            bestPath = cpuRes.path;
-            minTotalDist = cpuRes.distance;
+            return {
+                path: [],
+                distance: 0,
+                startSnap,
+                endSnap,
+                message: "未找到有效连通路径 (可能位于不连通的路网子图、断头路或受单向通行限制)"
+            };
         }
 
         return {
@@ -1326,7 +1420,7 @@ class PGRBRouter {
             });
         }
         if (startCandidates.length === 0) {
-            startCandidates.push({ node: startSnap.bestNode, partialCost: 0 });
+            return { code: 404, msg: "起点所在道路受单向通行限制，无合法出行方向", data: { routes: [] }, startSnap, endSnap };
         }
 
         // 构建终点候选节点
@@ -1344,7 +1438,7 @@ class PGRBRouter {
             });
         }
         if (endCandidates.length === 0) {
-            endCandidates.push({ node: endSnap.bestNode, partialCost: 0 });
+            return { code: 404, msg: "终点所在道路受单向通行限制，无合法驶入方向", data: { routes: [] }, startSnap, endSnap };
         }
 
         // 挑选基础最短路径对应的起终点节点对
@@ -1365,18 +1459,7 @@ class PGRBRouter {
         }
 
         if (!bestPair) {
-            const sNode = startSnap.bestNode;
-            const eNode = endSnap.bestNode;
-            const res = this.astar(sNode, eNode, directed);
-            if (res && res.path && res.path.length > 0) {
-                bestPair = {
-                    sCand: { node: sNode, partialCost: 0 },
-                    eCand: { node: eNode, partialCost: 0 },
-                    baseRes: res
-                };
-            } else {
-                return { code: 404, msg: "起点与终点之间未找到连通路径", data: { routes: [] } };
-            }
+            return { code: 404, msg: "起点与终点之间未找到连通路径 (可能受单向通行限制或断头路)", data: { routes: [] }, startSnap, endSnap };
         }
 
         const sNode = bestPair.sCand.node;
