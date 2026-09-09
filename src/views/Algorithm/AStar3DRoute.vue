@@ -1161,7 +1161,7 @@ function handleMapClick(e) {
 function updateRouteVisibility() {
   const isVisible = chkShowRoute.value
     // 1:1 单路线图层
-    ;[routeGlowLayer, routeCoreLayer, startDashLayer, endDashLayer, routeArrowLayer].forEach(layer => {
+    ;[routeCasingLayer, routeGlowLayer, routeCoreLayer, startDashLayer, endDashLayer, routeArrowLayer].forEach(layer => {
       if (layer && map) {
         if (isVisible) {
           if (!map.hasLayer(layer)) map.addLayer(layer)
@@ -1542,6 +1542,22 @@ function clearMultiRoutes() {
 }
 
 // ==========================================
+// 地图分层管理 (Panes) 确保渲染物理层级稳定
+// ==========================================
+function ensureMapPanes() {
+  if (!map) return
+  if (!map.getPane('routePane')) {
+    const routePane = map.createPane('routePane')
+    routePane.style.zIndex = '450'
+  }
+  if (!map.getPane('navHighlightPane')) {
+    const navPane = map.createPane('navHighlightPane')
+    navPane.style.zIndex = '550'
+    navPane.style.pointerEvents = 'none'
+  }
+}
+
+// ==========================================
 // 智能路径导航与分步指引核心逻辑
 // ==========================================
 function openNavDrawer() {
@@ -1662,9 +1678,13 @@ function highlightNavStep(step, panTo = true) {
   const doRender = () => {
     if (currentSeq !== navHighlightSeq || !map) return
 
+    ensureMapPanes()
+
     if (latlngs.length > 1) {
       // (a) 底层柔和发光外晕 (20px)
       const halo = L.polyline(latlngs, {
+        pane: 'navHighlightPane',
+        interactive: false,
         color: '#38bdf8',
         weight: 20,
         opacity: 0.38,
@@ -1675,6 +1695,8 @@ function highlightNavStep(step, panTo = true) {
 
       // (b) 深色高对比隔离描边 (13px)
       const casing = L.polyline(latlngs, {
+        pane: 'navHighlightPane',
+        interactive: false,
         color: '#020617',
         weight: 13,
         opacity: 0.95,
@@ -1685,6 +1707,8 @@ function highlightNavStep(step, panTo = true) {
 
       // (c) 核心高亮金黄光带 (8px)
       const core = L.polyline(latlngs, {
+        pane: 'navHighlightPane',
+        interactive: false,
         color: '#fbbf24',
         weight: 8,
         opacity: 1.0,
@@ -1695,6 +1719,8 @@ function highlightNavStep(step, panTo = true) {
 
       // (d) 动态前进光流核心束 (3.5px)
       const pulse = L.polyline(latlngs, {
+        pane: 'navHighlightPane',
+        interactive: false,
         color: '#ffffff',
         weight: 3.5,
         opacity: 0.95,
@@ -1857,7 +1883,7 @@ function renderRouteResult(res, engineType = '') {
       ? geojson.features[0].geometry.coordinates
       : (geojson.geometry ? geojson.geometry.coordinates : geojson.coordinates)
 
-    const routeSvgRenderer = L.svg()
+    ensureMapPanes()
 
     const navClickFn = function (e) {
       if (e && e.originalEvent) {
@@ -1871,7 +1897,7 @@ function renderRouteResult(res, engineType = '') {
 
     // 1. 深色外边框高对比描边层 (Casing Layer, weight 12)
     routeCasingLayer = L.geoJSON(geojson, {
-      renderer: routeSvgRenderer,
+      pane: 'routePane',
       style: {
         color: '#07162c',
         weight: 12,
@@ -1887,7 +1913,7 @@ function renderRouteResult(res, engineType = '') {
 
     // 2. 科技蓝柔和流光外晕层 (Glow Layer, weight 16)
     routeGlowLayer = L.geoJSON(geojson, {
-      renderer: routeSvgRenderer,
+      pane: 'routePane',
       style: {
         color: '#0284c7',
         weight: 16,
@@ -1903,7 +1929,7 @@ function renderRouteResult(res, engineType = '') {
 
     // 3. 核心高饱和亮蓝主干层 (Core Layer, weight 6)
     routeCoreLayer = L.geoJSON(geojson, {
-      renderer: routeSvgRenderer,
+      pane: 'routePane',
       style: {
         color: '#38bdf8',
         weight: 6,
@@ -1943,14 +1969,14 @@ function renderRouteResult(res, engineType = '') {
       if (!isNaN(sLngVal) && !isNaN(sLatVal)) {
         startDashLayer = L.polyline(
           [[sLatVal, sLngVal], [firstCoord[1], firstCoord[0]]],
-          { color: '#10b981', weight: 2.5, dashArray: '4, 6', opacity: 0.85 }
+          { pane: 'routePane', color: '#10b981', weight: 2.5, dashArray: '4, 6', opacity: 0.85 }
         ).addTo(map)
       }
 
       if (!isNaN(eLngVal) && !isNaN(eLatVal)) {
         endDashLayer = L.polyline(
           [[eLatVal, eLngVal], [lastCoord[1], lastCoord[0]]],
-          { color: '#ef4444', weight: 2.5, dashArray: '4, 6', opacity: 0.85 }
+          { pane: 'routePane', color: '#ef4444', weight: 2.5, dashArray: '4, 6', opacity: 0.85 }
         ).addTo(map)
       }
 
@@ -2006,7 +2032,7 @@ function renderMultiRoutesResult(routes, calcCostStr, paradigm) {
       ? geojson.features[0].geometry.coordinates
       : (geojson.geometry ? geojson.geometry.coordinates : (geojson.coordinates || []))
 
-    const routeSvgRenderer = L.svg()
+    ensureMapPanes()
 
     const handleMultiRouteClick = (e) => {
       if (e && e.originalEvent) e.originalEvent.stopPropagation()
@@ -2021,7 +2047,7 @@ function renderMultiRoutesResult(routes, calcCostStr, paradigm) {
 
     // 1. 发光外轮廓
     const glow = L.geoJSON(geojson, {
-      renderer: routeSvgRenderer,
+      pane: 'routePane',
       style: { color: color, weight: 14, opacity: 0.35, lineCap: 'round', lineJoin: 'round', className: 'route-interactive-line' },
       onEachFeature: (feat, layer) => {
         layer.on('click', handleMultiRouteClick)
@@ -2030,7 +2056,7 @@ function renderMultiRoutesResult(routes, calcCostStr, paradigm) {
 
     // 2. 核心流光层
     const core = L.geoJSON(geojson, {
-      renderer: routeSvgRenderer,
+      pane: 'routePane',
       style: { color: color, weight: 5, opacity: 0.95, lineCap: 'round', lineJoin: 'round', className: 'route-interactive-line' },
       onEachFeature: (feat, layer) => {
         layer.on('click', handleMultiRouteClick)
@@ -2056,12 +2082,12 @@ function renderMultiRoutesResult(routes, calcCostStr, paradigm) {
         const sLatVal = parseFloat(startLat.value)
         if (!isNaN(sLngVal) && !isNaN(sLatVal)) {
           allLatLngs.push([sLatVal, sLngVal])
-          const sDash = L.polyline([[sLatVal, sLngVal], firstCoord], { color: '#10b981', weight: 2.5, dashArray: '4, 6', opacity: 0.85 }).addTo(map)
+          const sDash = L.polyline([[sLatVal, sLngVal], firstCoord], { pane: 'routePane', color: '#10b981', weight: 2.5, dashArray: '4, 6', opacity: 0.85 }).addTo(map)
           dashLayers.push(sDash)
         }
         if (rt.destPoint && !isNaN(rt.destPoint.lat) && !isNaN(rt.destPoint.lng)) {
           allLatLngs.push([rt.destPoint.lat, rt.destPoint.lng])
-          const dDash = L.polyline([[rt.destPoint.lat, rt.destPoint.lng], lastCoord], { color: color, weight: 2.5, dashArray: '4, 6', opacity: 0.85 }).addTo(map)
+          const dDash = L.polyline([[rt.destPoint.lat, rt.destPoint.lng], lastCoord], { pane: 'routePane', color: color, weight: 2.5, dashArray: '4, 6', opacity: 0.85 }).addTo(map)
           dashLayers.push(dDash)
         }
       } else if (paradigm === 'n_to_1') {
@@ -2069,12 +2095,12 @@ function renderMultiRoutesResult(routes, calcCostStr, paradigm) {
         const eLatVal = parseFloat(endLat.value)
         if (rt.origPoint && !isNaN(rt.origPoint.lat) && !isNaN(rt.origPoint.lng)) {
           allLatLngs.push([rt.origPoint.lat, rt.origPoint.lng])
-          const oDash = L.polyline([[rt.origPoint.lat, rt.origPoint.lng], firstCoord], { color: color, weight: 2.5, dashArray: '4, 6', opacity: 0.85 }).addTo(map)
+          const oDash = L.polyline([[rt.origPoint.lat, rt.origPoint.lng], firstCoord], { pane: 'routePane', color: color, weight: 2.5, dashArray: '4, 6', opacity: 0.85 }).addTo(map)
           dashLayers.push(oDash)
         }
         if (!isNaN(eLngVal) && !isNaN(eLatVal)) {
           allLatLngs.push([eLatVal, eLngVal])
-          const eDash = L.polyline([lastCoord, [eLatVal, eLngVal]], { color: '#ef4444', weight: 2.5, dashArray: '4, 6', opacity: 0.85 }).addTo(map)
+          const eDash = L.polyline([lastCoord, [eLatVal, eLngVal]], { pane: 'routePane', color: '#ef4444', weight: 2.5, dashArray: '4, 6', opacity: 0.85 }).addTo(map)
           dashLayers.push(eDash)
         }
       }
@@ -2696,6 +2722,7 @@ onMounted(() => {
   })
 
   mapInstance.value = map
+  ensureMapPanes()
 
   // 1. 天地图底图
   const vecUrl = `https://t{s}.tianditu.gov.cn/vec_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=vec&STYLE=default&TILEMATRIXSET=w&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=tiles&tk=${tk}`
