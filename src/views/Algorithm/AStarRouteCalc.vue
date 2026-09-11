@@ -412,8 +412,94 @@
             </div>
           </div>
 
+          <!-- 市级/行政区路网实时百分比构建进度卡片 -->
+          <div v-if="isXzqBuilding" class="xzq-progress-card" :class="{ 'card-success': isBuildFinishedSuccess, 'card-failed': isBuildFailed }">
+            <div class="progress-card-top">
+              <div class="progress-task-title">
+                <span v-if="isBuildFinishedSuccess" class="success-icon">🎉</span>
+                <span v-else-if="isBuildFailed" class="fail-icon">❌</span>
+                <span v-else class="pulse-dot"></span>
+                <span>{{ isBuildFinishedSuccess ? '路网构建成功！' : (isBuildFailed ? '路网构建中断' : '正在构建【' + xzqBuildTargetName + '】') }}</span>
+              </div>
+              <div class="progress-timer-pill">
+                ⏱️ {{ isBuildFinishedSuccess ? '总耗时' : '已耗时' }}: <strong>{{ xzqBuildElapsedSec }}</strong>s
+              </div>
+            </div>
+
+            <!-- 百分比大数字与阶段标题 -->
+            <div class="progress-info-row">
+              <div class="stage-col">
+                <div class="stage-tag" :class="{ 'tag-success': isBuildFinishedSuccess, 'tag-fail': isBuildFailed }">
+                  {{ isBuildFinishedSuccess ? '全部就绪' : (isBuildFailed ? '计算中断' : '步骤 ' + xzqBuildCurrentStep + ' / 6') }}
+                </div>
+                <div class="stage-title-text">{{ xzqBuildStageTitle }}</div>
+              </div>
+              <div class="percent-num-col">
+                <span class="percent-num" :class="{ 'num-success': isBuildFinishedSuccess, 'num-fail': isBuildFailed }">{{ xzqBuildPercent }}</span>
+                <span class="percent-symbol">%</span>
+              </div>
+            </div>
+
+            <!-- 动态流光进度条 -->
+            <div class="progress-track">
+              <div
+                class="progress-fill"
+                :class="{ 'fill-success': isBuildFinishedSuccess, 'fill-fail': isBuildFailed }"
+                :style="{ width: xzqBuildPercent + '%' }"
+              >
+                <div v-if="!isBuildFinishedSuccess && !isBuildFailed" class="progress-shimmer"></div>
+              </div>
+            </div>
+
+            <!-- 详细提示文字 -->
+            <div class="progress-detail-row">
+              <span class="detail-icon">{{ isBuildFinishedSuccess ? '✅' : (isBuildFailed ? '⚠️' : '⚡') }}</span>
+              <span class="detail-text">{{ xzqBuildStageDetail }}</span>
+            </div>
+
+            <!-- 6大阶段步骤时间轴 -->
+            <div class="progress-stepper">
+              <div
+                v-for="(step, idx) in xzqBuildSteps"
+                :key="step.key"
+                class="step-item"
+                :class="{
+                  completed: xzqBuildCurrentStep > idx + 1 || xzqBuildPercent === 100,
+                  active: xzqBuildCurrentStep === idx + 1 && xzqBuildPercent < 100 && !isBuildFailed,
+                  failed: isBuildFailed && xzqBuildCurrentStep === idx + 1,
+                  pending: xzqBuildCurrentStep < idx + 1 && xzqBuildPercent < 100
+                }"
+              >
+                <div class="step-circle">
+                  <span v-if="xzqBuildCurrentStep > idx + 1 || xzqBuildPercent === 100">✓</span>
+                  <span v-else-if="isBuildFailed && xzqBuildCurrentStep === idx + 1">✕</span>
+                  <span v-else-if="xzqBuildCurrentStep === idx + 1" class="step-spinner"></span>
+                  <span v-else>{{ idx + 1 }}</span>
+                </div>
+                <div class="step-name">{{ step.name }}</div>
+              </div>
+            </div>
+
+            <!-- 构建成功后的操作引导区 -->
+            <div v-if="isBuildFinishedSuccess" class="build-success-action-bar">
+              <div class="countdown-hint">
+                ✨ 将在 <strong>{{ buildSuccessCountdown }}</strong> 秒后自动载入并居中路网...
+              </div>
+              <button type="button" class="btn-enter-network" @click="confirmEnterBuiltNetwork">
+                🚀 立即进入路网
+              </button>
+            </div>
+
+            <!-- 构建失败后的重试按钮 -->
+            <div v-if="isBuildFailed" class="build-failed-action-bar">
+              <button type="button" class="btn-retry-build" @click="resetAndRetryBuild">
+                🔄 重新尝试构建
+              </button>
+            </div>
+          </div>
+
           <div
-            v-if="xzqMsg.show"
+            v-if="xzqMsg.show && !isXzqBuilding"
             class="upload-msg"
             :style="{ color: xzqMsg.color }"
           >
@@ -422,12 +508,21 @@
         </div>
         <div class="modal-footer">
           <button
+            v-if="!isBuildFinishedSuccess"
             type="button"
             class="btn-submit"
             :disabled="isXzqBuilding"
             @click="submitXzqBuild"
           >
-            {{ isXzqBuilding ? '⏳ 构建中...' : '🚀 开始相交构建路网' }}
+            {{ isXzqBuilding ? '⏳ 拓扑构建中 (' + xzqBuildPercent + '%)...' : '🚀 开始相交构建路网' }}
+          </button>
+          <button
+            v-else
+            type="button"
+            class="btn-submit btn-success-done"
+            @click="confirmEnterBuiltNetwork"
+          >
+            ✓ 完成并进入路网 ({{ buildSuccessCountdown }}s)
           </button>
         </div>
       </div>
@@ -492,6 +587,32 @@ const xzqMsg = reactive({
   color: ''
 })
 
+// 实时百分比进度追踪状态
+const xzqBuildTargetName = ref('')
+const xzqBuildPercent = ref(0)
+const xzqBuildCurrentStep = ref(1)
+const xzqBuildStageTitle = ref('正在准备构建环境...')
+const xzqBuildStageDetail = ref('正在连接空间数据库并校验行政区要素...')
+const xzqBuildElapsedSec = ref(0)
+let xzqElapsedInterval = null
+let xzqPollInterval = null
+let xzqSimInterval = null
+let countdownTimer = null
+
+const isBuildFinishedSuccess = ref(false)
+const buildSuccessCountdown = ref(3)
+const isBuildFailed = ref(false)
+const pendingBuiltNetId = ref('')
+
+const xzqBuildSteps = [
+  { key: 'intersect', name: '空间相交' },
+  { key: 'insert', name: '批量入库' },
+  { key: 'node', name: '拓扑打散' },
+  { key: 'topo', name: '端点构建' },
+  { key: 'cost', name: '代价计算' },
+  { key: 'register', name: '索引注册' }
+]
+
 let map = null
 let vecLayer = null
 let cvaLayer = null
@@ -547,6 +668,12 @@ function getXzqItemFullName(item) {
 
 function getNetworkLevel(net) {
   if (!net) return 'county'
+  const id = String(net.networkId || net.id || '').toLowerCase()
+  if (id.startsWith('xzq_city_')) return 'city'
+  if (id.startsWith('xzq_county_')) return 'county'
+  if (id.startsWith('xzq_town_')) return 'town'
+  if (id.startsWith('xzq_village_') || id.startsWith('xzq_street_') || id.startsWith('shjd')) return 'village'
+
   if (net.level) {
     const l = String(net.level).toLowerCase()
     if (l === 'city' || l.includes('市级') || l === '市') return 'city'
@@ -554,13 +681,13 @@ function getNetworkLevel(net) {
     if (l === 'town' || l.includes('镇') || l.includes('乡')) return 'town'
     if (l === 'village' || l === 'street' || l.includes('街') || l.includes('村')) return 'village'
   }
-  const id = (net.id || '').toLowerCase()
-  if (id.startsWith('xzq_city_') || id.includes('city')) return 'city'
-  if (id.startsWith('xzq_county_') || id.includes('county')) return 'county'
-  if (id.startsWith('xzq_town_') || id.includes('town')) return 'town'
-  if (id.startsWith('xzq_village_') || id.startsWith('xzq_street_') || id.includes('village') || id.includes('street') || id.startsWith('shjd')) return 'village'
 
-  const name = (net.name || '')
+  if (id.includes('city')) return 'city'
+  if (id.includes('county')) return 'county'
+  if (id.includes('town')) return 'town'
+  if (id.includes('village') || id.includes('street')) return 'village'
+
+  const name = String(net.networkName || net.name || '')
   if (name.includes('街道') || name.includes('村') || name.includes('社区')) return 'village'
   if (name.includes('镇') || name.includes('乡')) return 'town'
   if (name.includes('区') || name.includes('县')) return 'county'
@@ -1528,6 +1655,112 @@ async function pollCheckNetworkBuilt(targetNetId, maxAttempts = 16, intervalMs =
   return false
 }
 
+function clearBuildTimers() {
+  if (xzqElapsedInterval) { clearInterval(xzqElapsedInterval); xzqElapsedInterval = null }
+  if (xzqPollInterval) { clearInterval(xzqPollInterval); xzqPollInterval = null }
+  if (xzqSimInterval) { clearInterval(xzqSimInterval); xzqSimInterval = null }
+  if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null }
+}
+
+function confirmEnterBuiltNetwork() {
+  clearBuildTimers()
+  isXzqBuilding.value = false
+  isBuildFinishedSuccess.value = false
+  isBuildFailed.value = false
+  showXzqModal.value = false
+  if (pendingBuiltNetId.value) {
+    fetchRoadNetworks(pendingBuiltNetId.value)
+  }
+}
+
+function resetAndRetryBuild() {
+  clearBuildTimers()
+  isBuildFailed.value = false
+  isBuildFinishedSuccess.value = false
+  isXzqBuilding.value = false
+  submitXzqBuild()
+}
+
+// 平滑冲刺到 100% 成功状态，点亮所有步骤并保留成功卡片让用户确认
+async function finishBuildSmoothly(successMsg, netId) {
+  clearBuildTimers()
+  pendingBuiltNetId.value = netId
+
+  const stepsTo100 = [
+    { step: 4, percent: 75, title: '拓扑网络构建 (pgr_createTopology)', detail: '正在构建全域拓扑端点顶点表...' },
+    { step: 5, percent: 90, title: '通行代价与通行方向权值计算', detail: '正在根据单双向规则计算通行成本...' },
+    { step: 6, percent: 100, title: '✓ 路网相交拓扑构建成功！', detail: successMsg || '空间包围盒与路网系统表已全部注册完成' }
+  ]
+
+  for (const s of stepsTo100) {
+    if (xzqBuildPercent.value < s.percent) {
+      xzqBuildCurrentStep.value = s.step
+      xzqBuildPercent.value = s.percent
+      xzqBuildStageTitle.value = s.title
+      xzqBuildStageDetail.value = s.detail
+      await new Promise(r => setTimeout(r, 140))
+    }
+  }
+
+  xzqBuildPercent.value = 100
+  xzqBuildCurrentStep.value = 6
+  xzqBuildStageTitle.value = '✓ 路网相交拓扑构建成功！'
+  xzqBuildStageDetail.value = successMsg || '空间包围盒与系统注册就绪，可立即开启路径规划'
+  isBuildFinishedSuccess.value = true
+  isBuildFailed.value = false
+  buildSuccessCountdown.value = 3
+
+  if (countdownTimer) clearInterval(countdownTimer)
+  countdownTimer = setInterval(() => {
+    buildSuccessCountdown.value--
+    if (buildSuccessCountdown.value <= 0) {
+      confirmEnterBuiltNetwork()
+    }
+  }, 1000)
+}
+
+// 智能阶段驱动进度平滑推进引擎
+function startSmartProgressSimulation() {
+  if (xzqSimInterval) clearInterval(xzqSimInterval)
+  xzqSimInterval = setInterval(() => {
+    if (isBuildFinishedSuccess.value || isBuildFailed.value) return
+    const sec = xzqBuildElapsedSec.value
+    if (sec < 5) {
+      xzqBuildCurrentStep.value = 1
+      xzqBuildStageTitle.value = '空间相交分析与要素筛选'
+      xzqBuildStageDetail.value = '正在检索行政区划边界与 OSM 路网执行空间相交...'
+      xzqBuildPercent.value = Math.min(15, 3 + Math.floor((sec / 5) * 12))
+    } else if (sec < 15) {
+      xzqBuildCurrentStep.value = 2
+      xzqBuildStageTitle.value = '基础路网数据分批入库'
+      xzqBuildStageDetail.value = '正在将提取出的庞大道路几何要素分批写入基础数据表...'
+      xzqBuildPercent.value = Math.min(35, 15 + Math.floor(((sec - 5) / 10) * 20))
+    } else if (sec < 45) {
+      xzqBuildCurrentStep.value = 3
+      xzqBuildStageTitle.value = '道路拓扑打散计算 (pgr_nodeNetwork)'
+      xzqBuildStageDetail.value = 'PostGIS 空间引擎正在打散道路相交弧段，构建连通线元...'
+      xzqBuildPercent.value = Math.min(65, 35 + Math.floor(((sec - 15) / 30) * 30))
+    } else if (sec < 65) {
+      xzqBuildCurrentStep.value = 4
+      xzqBuildStageTitle.value = '拓扑网络构建 (pgr_createTopology)'
+      xzqBuildStageDetail.value = '正在构建全域拓扑端点顶点表 (vertices_pgr)...'
+      xzqBuildPercent.value = Math.min(80, 65 + Math.floor(((sec - 45) / 20) * 15))
+    } else if (sec < 80) {
+      xzqBuildCurrentStep.value = 5
+      xzqBuildStageTitle.value = '通行代价与通行方向权值计算'
+      xzqBuildStageDetail.value = '正在根据单双向规则计算通行成本，并创建空间与属性索引...'
+      xzqBuildPercent.value = Math.min(92, 80 + Math.floor(((sec - 65) / 15) * 12))
+    } else {
+      xzqBuildCurrentStep.value = 6
+      xzqBuildStageTitle.value = '空间包围盒与路网注册就绪'
+      xzqBuildStageDetail.value = '市级数据量庞大，后台正在完成包围盒分析与路网系统表注册...'
+      if (xzqBuildPercent.value < 98) {
+        xzqBuildPercent.value = Math.min(98, xzqBuildPercent.value + 1)
+      }
+    }
+  }, 500)
+}
+
 async function submitXzqBuild() {
   if (!selectedXzqItem.value) {
     alert('请先在列表中点击选中具体的要素！')
@@ -1536,10 +1769,22 @@ async function submitXzqBuild() {
   const netId = `xzq_${currentLevel.value}_${selectedXzqItem.value.id}`
   const netName = getXzqItemFullName(selectedXzqItem.value) || selectedXzqItem.value.name || selectedXzqItem.value.id
 
-  xzqMsg.show = true
-  xzqMsg.color = '#38bdf8'
-  xzqMsg.text = `⏳ 正基于【${netName}】提取 OSM 路网相交要素并构建拓扑（打散弧段、建拓扑），请稍候...`
+  clearBuildTimers()
+  xzqBuildTargetName.value = netName
+  xzqBuildPercent.value = 3
+  xzqBuildCurrentStep.value = 1
+  xzqBuildStageTitle.value = '空间相交分析与要素筛选'
+  xzqBuildStageDetail.value = '正在连接空间数据库并校验行政区要素...'
+  xzqBuildElapsedSec.value = 0
   isXzqBuilding.value = true
+  isBuildFinishedSuccess.value = false
+  isBuildFailed.value = false
+  xzqMsg.show = false
+
+  // 开启耗时秒表
+  xzqElapsedInterval = setInterval(() => {
+    xzqBuildElapsedSec.value++
+  }, 1000)
 
   const formData = new URLSearchParams()
   formData.append('level', currentLevel.value)
@@ -1548,62 +1793,110 @@ async function submitXzqBuild() {
   formData.append('networkName', netName)
 
   try {
-    const response = await fetch(`${routeApiBase}/xzq/build`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Accept': 'application/json'
-      },
-      body: formData
-    })
+    // 优先尝试后端异步构建接口 (/build-async)
+    let isAsyncSupported = false
+    let asyncTaskId = null
 
-    const contentType = response.headers.get('content-type') || ''
-    let res = null
-
-    if (contentType.includes('application/json')) {
-      res = await response.json()
-    } else {
-      const rawText = await response.text()
-      if (response.status === 504 || rawText.includes('504') || rawText.includes('Gateway Time-out')) {
-        // 市级路网因为数据量巨大，可能触发代理超时（504），但后台可能仍在继续建网
-        xzqMsg.color = '#f59e0b'
-        xzqMsg.text = '⚠️ 请求等待超时（504）：市级路网数据量庞大，后台仍在继续构建中！正在自动轮询检测构建结果...'
-        const builtSuccess = await pollCheckNetworkBuilt(netId, 16, 5000)
-        if (builtSuccess) {
-          isXzqBuilding.value = false
-          xzqMsg.color = '#10b981'
-          xzqMsg.text = `✅【${netName}】市级路网后台构建完成！已自动同步。`
-          setTimeout(() => {
-            showXzqModal.value = false
-            fetchRoadNetworks(netId)
-          }, 1500)
-          return
-        } else {
-          throw new Error('市级路网构建耗时较长，已转入后台继续处理。稍候在路网列表中刷新即可查看。')
+    try {
+      const asyncResp = await fetch(`${routeApiBase}/xzq/build-async`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept': 'application/json'
+        },
+        body: formData
+      })
+      if (asyncResp.ok) {
+        const asyncRes = await asyncResp.json()
+        if (asyncRes.code === 200 && asyncRes.data && asyncRes.data.taskId) {
+          isAsyncSupported = true
+          asyncTaskId = asyncRes.data.taskId
         }
-      } else if (response.status === 502) {
-        throw new Error('网关错误 (502 Bad Gateway)，后端服务不可用或正在重启')
+      }
+    } catch (e) {
+      console.warn('[Build Progress] /build-async 端点未就绪，降级为常规兼容模式:', e)
+    }
+
+    if (isAsyncSupported && asyncTaskId) {
+      // ===== 方案 A：后端真实进度轮询模式 =====
+      xzqPollInterval = setInterval(async () => {
+        try {
+          const pResp = await fetch(`${routeApiBase}/xzq/build-progress?taskId=${encodeURIComponent(asyncTaskId)}`)
+          if (pResp.ok) {
+            const pRes = await pResp.json()
+            if (pRes.code === 200 && pRes.data) {
+              const data = pRes.data
+              xzqBuildPercent.value = data.percent || xzqBuildPercent.value
+              xzqBuildCurrentStep.value = data.currentStep || xzqBuildCurrentStep.value
+              if (data.stageTitle) xzqBuildStageTitle.value = data.stageTitle
+              if (data.stageDetail) xzqBuildStageDetail.value = data.stageDetail
+
+              if (data.status === 'SUCCESS') {
+                await finishBuildSmoothly(data.stageDetail, netId)
+              } else if (data.status === 'FAILED') {
+                clearBuildTimers()
+                isBuildFailed.value = true
+                xzqBuildStageTitle.value = '❌ 构建失败: ' + (data.errorMsg || '后台计算异常')
+                xzqBuildStageDetail.value = '请检查网络日志或稍后重试'
+              }
+            }
+          }
+        } catch (err) {
+          console.error('[Build Progress Poll Error]', err)
+        }
+      }, 800)
+    } else {
+      // ===== 方案 B：双模保障（智能阶段驱动 + 阻塞请求 + 504 自动轮询检测） =====
+      startSmartProgressSimulation()
+
+      const response = await fetch(`${routeApiBase}/xzq/build`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept': 'application/json'
+        },
+        body: formData
+      })
+
+      const contentType = response.headers.get('content-type') || ''
+      let res = null
+
+      if (contentType.includes('application/json')) {
+        res = await response.json()
       } else {
-        throw new Error(`服务端响应异常 (HTTP ${response.status})`)
+        const rawText = await response.text()
+        if (response.status === 504 || rawText.includes('504') || rawText.includes('Gateway Time-out')) {
+          // 市级路网由于计算量大触发 Nginx 504，转入后台轮询
+          xzqBuildStageTitle.value = '后台正在全力计算中...'
+          xzqBuildStageDetail.value = '网关代理超时已转入后台无阻执行，系统正在自动同步检测结果...'
+          const builtSuccess = await pollCheckNetworkBuilt(netId, 24, 4000)
+          if (builtSuccess) {
+            await finishBuildSmoothly('已成功检测到路网注册完成', netId)
+            return
+          } else {
+            throw new Error('市级路网构建耗时较长，已转入后台继续处理。稍候在路网列表中刷新即可查看。')
+          }
+        } else if (response.status === 502) {
+          throw new Error('网关错误 (502 Bad Gateway)，后端服务不可用或正在重启')
+        } else {
+          throw new Error(`服务端响应异常 (HTTP ${response.status})`)
+        }
+      }
+
+      if (res && res.code === 200) {
+        await finishBuildSmoothly((res.data && res.data.msg) || '空间索引与拓扑关系已注册完成', netId)
+      } else {
+        clearBuildTimers()
+        isBuildFailed.value = true
+        xzqBuildStageTitle.value = '❌ ' + ((res && res.msg) || '构建失败')
+        xzqBuildStageDetail.value = '拓扑几何校验未通过，请检查所选范围'
       }
     }
-
-    isXzqBuilding.value = false
-    if (res && res.code === 200) {
-      xzqMsg.color = '#10b981'
-      xzqMsg.text = '✅ ' + (res.data ? res.data.msg : '路网相交构建成功！')
-      setTimeout(() => {
-        showXzqModal.value = false
-        fetchRoadNetworks(netId)
-      }, 1500)
-    } else {
-      xzqMsg.color = '#ef4444'
-      xzqMsg.text = '❌ ' + ((res && res.msg) || '构建失败')
-    }
   } catch (err) {
-    isXzqBuilding.value = false
-    xzqMsg.color = '#ef4444'
-    xzqMsg.text = `❌ 请求异常: ${err.message}`
+    clearBuildTimers()
+    isBuildFailed.value = true
+    xzqBuildStageTitle.value = '❌ 请求异常中断'
+    xzqBuildStageDetail.value = err.message || '网络通讯异常'
     console.error('Build Error:', err)
   }
 }
@@ -1676,6 +1969,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  clearBuildTimers()
   if (map) {
     map.remove()
     map = null
@@ -2441,6 +2735,256 @@ select.coord-input option {
 .upload-msg {
   margin-top: 10px;
   font-size: 12px;
+}
+
+/* 实时百分比进度卡片样式 */
+.xzq-progress-card {
+  margin-top: 14px;
+  padding: 16px;
+  background: rgba(15, 23, 42, 0.88);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  animation: cardFadeIn 0.3s ease-out;
+}
+
+@keyframes cardFadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.progress-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
+.progress-task-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  color: #f1f5f9;
+}
+
+.pulse-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #38bdf8;
+  box-shadow: 0 0 8px #38bdf8;
+  animation: pulseGlow 1.5s infinite;
+}
+
+@keyframes pulseGlow {
+  0% { transform: scale(0.9); opacity: 0.8; box-shadow: 0 0 4px #38bdf8; }
+  50% { transform: scale(1.3); opacity: 1; box-shadow: 0 0 12px #38bdf8; }
+  100% { transform: scale(0.9); opacity: 0.8; box-shadow: 0 0 4px #38bdf8; }
+}
+
+.progress-timer-pill {
+  padding: 3px 10px;
+  border-radius: 20px;
+  background: rgba(30, 41, 59, 0.9);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  color: #94a3b8;
+  font-size: 11.5px;
+}
+
+.progress-timer-pill strong {
+  color: #38bdf8;
+  font-family: monospace;
+  font-size: 13px;
+}
+
+.progress-info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-bottom: 8px;
+}
+
+.stage-col {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.stage-tag {
+  align-self: flex-start;
+  padding: 2px 7px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.15);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  border-radius: 4px;
+  letter-spacing: 0.5px;
+}
+
+.stage-title-text {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+.percent-num-col {
+  display: flex;
+  align-items: baseline;
+  line-height: 1;
+}
+
+.percent-num {
+  font-size: 32px;
+  font-weight: 800;
+  font-family: 'JetBrains Mono', 'Roboto Mono', monospace;
+  background: linear-gradient(135deg, #38bdf8, #818cf8, #c084fc);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.percent-symbol {
+  font-size: 16px;
+  font-weight: 700;
+  color: #818cf8;
+  margin-left: 2px;
+}
+
+.progress-track {
+  height: 8px;
+  width: 100%;
+  background: rgba(30, 41, 59, 0.8);
+  border-radius: 6px;
+  overflow: hidden;
+  position: relative;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #0284c7, #38bdf8, #818cf8, #a855f7);
+  background-size: 200% 100%;
+  border-radius: 6px;
+  transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.65);
+}
+
+.progress-shimmer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+  animation: shimmerMove 2s infinite linear;
+}
+
+@keyframes shimmerMove {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.progress-detail-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.detail-icon {
+  font-size: 13px;
+}
+
+.detail-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.progress-stepper {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  position: relative;
+}
+
+.step-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  text-align: center;
+  transition: all 0.3s ease;
+}
+
+.step-circle {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10.5px;
+  font-weight: 700;
+  background: #1e293b;
+  border: 2px solid #475569;
+  color: #64748b;
+  transition: all 0.3s;
+}
+
+.step-name {
+  font-size: 10.5px;
+  color: #64748b;
+  transition: color 0.3s;
+  white-space: nowrap;
+}
+
+.step-item.active .step-circle {
+  background: rgba(56, 189, 248, 0.2);
+  border-color: #38bdf8;
+  color: #38bdf8;
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.6);
+}
+
+.step-item.active .step-name {
+  color: #38bdf8;
+  font-weight: 600;
+}
+
+.step-item.completed .step-circle {
+  background: #10b981;
+  border-color: #10b981;
+  color: #ffffff;
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.5);
+}
+
+.step-item.completed .step-name {
+  color: #10b981;
+}
+
+.step-spinner {
+  width: 10px;
+  height: 10px;
+  border: 2px solid transparent;
+  border-top-color: #38bdf8;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
 </style>
 
