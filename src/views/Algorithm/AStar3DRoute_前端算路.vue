@@ -129,7 +129,7 @@
       <!-- 顶部固定栏：面板标题与模式 Badge -->
       <div class="route-panel-header">
         <div class="panel-header">
-          <span class="panel-title">3D立体分层路径规划</span>
+          <span class="panel-title">pgRouting A* 算法</span>
           <span class="mode-badge" :class="paradigmBadgeClass">{{ paradigmBadgeText }}</span>
         </div>
       </div>
@@ -443,19 +443,18 @@
           <table class="manage-table">
             <thead>
               <tr>
-                <th style="width: 25%;">路网 ID 与级别</th>
-                <th style="width: 32%;">路网别名 (可修改)</th>
-                <th style="width: 20%;">磁盘落盘与统计</th>
-                <th style="width: 23%; text-align: center;">快捷操作</th>
+                <th>ID</th>
+                <th>显示名称 (可编辑)</th>
+                <th class="text-center">操作</th>
               </tr>
             </thead>
             <tbody>
               <tr v-if="filteredEditableNetworks.length === 0">
-                <td colspan="4" class="text-center empty-td">当前级别暂无配置的路网数据</td>
+                <td colspan="3" class="text-center empty-td">当前级别暂无配置的路网数据</td>
               </tr>
               <tr v-for="net in filteredEditableNetworks" :key="net.id">
                 <td class="net-id-cell">
-                  <div>{{ net.id }} <span class="pgrb-level-badge">{{ getNetworkLevel(net) }}</span></div>
+                  <div>{{ net.id }}</div>
                   <div v-if="net.buildTime" style="font-size: 11px; color: #64748b; margin-top: 2px;">🕒 {{
                     net.buildTime }}
                   </div>
@@ -463,21 +462,9 @@
                 <td>
                   <input type="text" v-model="net.editingName" class="coord-input edit-name-input" />
                 </td>
-                <td>
-                  <div>
-                    <span v-if="net.fileSizeFmt" class="pgrb-size-badge">{{ net.fileSizeFmt }}</span>
-                    <span v-else style="color:#64748b; font-size:11px;">未落盘</span>
-                  </div>
-                  <div v-if="net.nodeCount || net.edgeCount" style="font-size: 11px; color: #94a3b8; margin-top: 2px;">
-                    {{ (net.nodeCount || 0).toLocaleString() }} 节点 / {{ (net.edgeCount || 0).toLocaleString() }} 边
-                  </div>
-                </td>
                 <td class="text-center">
                   <button type="button" class="pick-btn btn-sm-action" @click="saveNetworkName(net)">
-                    💾 保存
-                  </button>
-                  <button type="button" class="pick-btn btn-sm-action" @click="recompileNetwork(net)">
-                    🔄 编译
+                    💾 保存名称
                   </button>
                   <span v-if="net.id === 'shjd_road'" class="protected-badge">系统保护</span>
                   <button v-else type="button" class="pick-btn btn-del-net" @click="deleteNetwork(net)">
@@ -577,7 +564,7 @@
 import { ref, reactive, computed, watch, shallowRef, onMounted, onUnmounted, markRaw } from 'vue'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { BoundaryRouteDecode } from '@/utils/boundary_route_decode.js'
+import { PGRBRouter } from '@/utils/pgrb-router.js'
 import UploadBtn from '@/components/UploadBtn.vue'
 import LocationBtn from '@/components/LocationBtn.vue'
 
@@ -690,12 +677,10 @@ const nextStep = computed(() => {
   return (idx >= 0 && idx < currentNavGuideCache.value.steps.length) ? currentNavGuideCache.value.steps[idx] : null
 })
 
-let currentNetworkMeta = null
-let currentNetworkBoundary = null
+let pgrbRouterInstance = null
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || ''
 const routeApiBase = `${apiBaseUrl}/get_geo_pg/geo/route`
-const pgrbApiBase = `${apiBaseUrl}/get_geo_pg/geo/route/pgrb`
 const tk = '73a87062ca36baaed0feebe7989f453a'
 
 const ROUTE_PALETTE = [
@@ -949,12 +934,12 @@ function isPointInGeoJSONBoundary(lng, lat, geojson) {
 }
 
 function isPointInCurrentBoundary(lng, lat) {
-  if (currentNetworkBoundary && typeof currentNetworkBoundary.contains === 'function') {
-    return currentNetworkBoundary.contains(lng, lat)
-  }
-  if (currentNetworkMeta && currentNetworkMeta.bbox) {
-    const b = currentNetworkMeta.bbox
-    return (lng >= b.minLng && lng <= b.maxLng && lat >= b.minLat && lat <= b.maxLat)
+  if (pgrbRouterInstance) {
+    const geo = pgrbRouterInstance.getBoundaryGeoJSON()
+    if (geo) {
+      return isPointInGeoJSONBoundary(lng, lat, geo)
+    }
+    return pgrbRouterInstance.isPointInBoundary(lng, lat)
   }
   return true
 }
@@ -1296,70 +1281,55 @@ function flyMapToCenter(lat, lng, zoom = 15, duration = 0.8) {
 
 async function loadRoadNetworkRange(networkId) {
   const loadSeq = ++currentNetworkLoadSeq
-  currentNetworkMeta = null
-  currentNetworkBoundary = null
+  pgrbRouterInstance = null
 
   // 1. 切换区域/路网时立即重置并清除已有路径、起终点标注与结果面板
   resetRoute()
 
-  // 2. 切换路网时立即移除旧边界，避免移动时残留漂移
+  // 2. 切换路网时立即移除旧边界
   if (xzqHighlightLayer && map) {
     map.removeLayer(xzqHighlightLayer)
     xzqHighlightLayer = null
   }
   if (!networkId) return
 
+  const baseUrl = `${apiBaseUrl}/get_geo_pg`
+  const router = new PGRBRouter()
   try {
     const targetNet = Array.isArray(networksList.value) ? networksList.value.find(n => n.id === networkId) : null
-    const metaUrl = `${pgrbApiBase}/meta?networkId=${encodeURIComponent(networkId)}`
-    const boundaryUrl = `${pgrbApiBase}/boundary-binary?networkId=${encodeURIComponent(networkId)}`
-    console.log(`[PGRB Meta] ⚡ 从服务端获取轻量元数据与 PGBB 紧凑边界流 (零全量拓扑下载，杜绝泄露): ${networkId}`)
-
-    const [metaResp, boundaryResp] = await Promise.all([
-      fetch(metaUrl),
-      fetch(boundaryUrl)
-    ])
-
-    if (!metaResp.ok) {
-      throw new Error(`获取服务端路网元数据失败 HTTP ${metaResp.status}`)
-    }
-    const res = await metaResp.json()
-    if (res.code !== 200 || !res.data) {
-      throw new Error(`元数据响应异常: ${res.message || res.msg || '未知错误'}`)
-    }
-
+    const serverBuildTime = targetNet ? targetNet.buildTime : null
+    await router.loadNetwork(networkId, baseUrl, serverBuildTime)
     if (loadSeq !== currentNetworkLoadSeq || selectedNetworkId.value !== networkId) return
 
-    const meta = res.data
-    currentNetworkMeta = meta
+    pgrbRouterInstance = router
+    console.log(`[PGRB v${router.version || 2}] 内存离线图就绪: ${router.nodeCount} 节点, ${router.edgeCount} 边${router.boundaryPointCount > 0 ? `, 边界点: ${router.boundaryPointCount}` : ''} ⚡`)
 
-    // 解析 PGBB 紧凑边界二进制流 (体积缩减 80%+)
-    if (boundaryResp.ok) {
-      const boundaryBuf = await boundaryResp.arrayBuffer()
-      if (boundaryBuf && boundaryBuf.byteLength >= 16 && BoundaryRouteDecode.isPGBB(boundaryBuf)) {
-        currentNetworkBoundary = BoundaryRouteDecode.decodeBoundary(boundaryBuf)
-        console.log(`[PGBB Boundary] ✅ 边界二进制解码成功: ${currentNetworkBoundary.ringCount} 环, ${currentNetworkBoundary.totalPointCount} 顶点, 体积 ${(boundaryBuf.byteLength / 1024).toFixed(1)} KB`)
+    // 3. 计算最佳视角 Bounds
+    let bounds = null
+    const boundaryGeo = router.getBoundaryGeoJSON()
+    if (boundaryGeo) {
+      const tempLayer = L.geoJSON(boundaryGeo)
+      bounds = tempLayer.getBounds()
+    } else if (router.bbox && router.bbox.minLat != null) {
+      bounds = L.latLngBounds(
+        [router.bbox.minLat, router.bbox.minLng],
+        [router.bbox.maxLat, router.bbox.maxLng]
+      )
+    }
+
+    if (bounds && bounds.isValid() && map) {
+      await flyMapToBounds(bounds, { padding: [50, 50], maxZoom: 17, duration: 0.8 })
+    } else if (Array.isArray(networksList.value) && map) {
+      const targetNet = networksList.value.find(n => n.id === networkId)
+      if (targetNet && targetNet.centerLat && targetNet.centerLng) {
+        const zoom = targetNet.defaultZoom || 15
+        await flyMapToCenter(targetNet.centerLat, targetNet.centerLng, zoom, 0.8)
       }
     }
 
-    console.log(`[PGRB v${meta.version || 2}] 服务端常驻内存图就绪: ${meta.nodeCount} 节点, ${meta.edgeCount} 边${meta.boundaryPointCount > 0 ? `, 边界点: ${meta.boundaryPointCount}` : ''} ⚡`)
-
-    // 2. 地图平滑移动/缩放至路网 BBOX 范围
-    if (meta.bbox && map) {
-      const bounds = L.latLngBounds(
-        [meta.bbox.minLat, meta.bbox.minLng],
-        [meta.bbox.maxLat, meta.bbox.maxLng]
-      )
-      await flyMapToBounds(bounds, { padding: [50, 50], duration: 0.8 })
-    } else if (targetNet && targetNet.centerLat && targetNet.centerLng) {
-      const zoom = targetNet.defaultZoom || 15
-      await flyMapToCenter(targetNet.centerLat, targetNet.centerLng, zoom, 0.8)
-    }
-
     if (loadSeq !== currentNetworkLoadSeq || selectedNetworkId.value !== networkId) return
 
-    // 3. 待地图平移到位后，直接利用解析出的边界 GeoJSON 渲染高亮虚线框
-    const boundaryGeo = currentNetworkBoundary ? currentNetworkBoundary.geojson : meta.boundaryGeoJSON
+    // 4. 渲染边界虚线高亮
     if (map && selectedNetworkId.value === networkId && boundaryGeo) {
       if (xzqHighlightLayer) {
         map.removeLayer(xzqHighlightLayer)
@@ -1378,7 +1348,7 @@ async function loadRoadNetworkRange(networkId) {
       }).addTo(map)
     }
   } catch (err) {
-    console.error('[PGRB Meta] 服务端元数据或边界加载失败:', err)
+    console.error('[PGRB] 二进制图预加载失败:', err)
   }
 }
 
@@ -1454,80 +1424,55 @@ async function enrichNetworksWithFullName(rawList) {
 async function fetchRoadNetworks(targetSelectId = null, autoSwitchMap = true) {
   networksLoading.value = true
   try {
-    let listData = []
-    try {
-      const pgrbRes = await fetch(`${pgrbApiBase}/list?level=all`).then(r => r.json())
-      if (pgrbRes.code === 200 && Array.isArray(pgrbRes.data) && pgrbRes.data.length > 0) {
-        listData = pgrbRes.data.map(p => ({
-          id: p.networkId,
-          networkId: p.networkId,
-          name: p.networkName,
-          networkName: p.networkName,
-          level: p.level,
-          fileName: p.fileName,
-          filePath: p.filePath,
-          fileSize: p.fileSize,
-          fileSizeFmt: p.fileSizeFmt,
-          nodeCount: p.nodeCount,
-          edgeCount: p.edgeCount,
-          pointCount: p.pointCount,
-          boundaryPointCount: p.boundaryPointCount,
-          centerLng: p.centerLng,
-          centerLat: p.centerLat,
-          defaultZoom: p.defaultZoom || 15,
-          buildTime: p.buildTime,
-          roadTable: `3d_road.${p.networkId}_base`,
-          nodedTable: `3d_road.${p.networkId}_base_noded`
+    const response = await fetch(`${routeApiBase}/networks?mode=3d`)
+    const res = await response.json()
+    if (res.code === 200 && Array.isArray(res.data) && res.data.length > 0) {
+      // 专属于 3D 立体分层页面的过滤：仅展示 3d_road 模式下的立体路网
+      const d3RawData = res.data.filter(net =>
+        (net.roadTable && net.roadTable.includes('3d_road')) ||
+        (net.id && (net.id.endsWith('_3d') || net.id.includes('3d_')))
+      )
+      if (d3RawData.length > 0) {
+        const enrichedList = await enrichNetworksWithFullName(d3RawData)
+        networksList.value = enrichedList
+        editableNetworks.value = enrichedList.map(net => ({
+          ...net,
+          editingName: net.name || net.id
         }))
-      }
-    } catch (e) {
-      console.warn('获取服务端 PGRB 列表失败，回退到历史 networks 接口:', e)
-    }
 
-    if (listData.length === 0) {
-      const response = await fetch(`${routeApiBase}/networks?mode=3d`)
-      const res = await response.json()
-      if (res.code === 200 && Array.isArray(res.data)) {
-        listData = res.data.filter(net =>
-          (net.roadTable && net.roadTable.includes('3d_road')) ||
-          (net.id && (net.id.endsWith('_3d') || net.id.includes('3d_')))
-        )
-      }
-    }
+        if (!autoSwitchMap) {
+          return
+        }
 
-    if (listData.length > 0) {
-      const enrichedList = await enrichNetworksWithFullName(listData)
-      networksList.value = enrichedList
-      editableNetworks.value = enrichedList.map(net => ({
-        ...net,
-        editingName: net.name || net.id
-      }))
+        let targetNet = null
+        if (targetSelectId) {
+          targetNet = enrichedList.find(n => n.id === targetSelectId)
+        } else if (selectedNetworkId.value) {
+          targetNet = enrichedList.find(n => n.id === selectedNetworkId.value)
+        }
 
-      if (!autoSwitchMap) {
-        return
-      }
-
-      let targetNet = null
-      if (targetSelectId) {
-        targetNet = enrichedList.find(n => n.id === targetSelectId)
-      } else if (selectedNetworkId.value) {
-        targetNet = enrichedList.find(n => n.id === selectedNetworkId.value)
-      }
-
-      if (targetNet) {
-        selectedLevelFilter.value = getNetworkLevel(targetNet)
-        selectedNetworkId.value = targetNet.id
-      } else {
-        const currentMatch = enrichedList.filter(n => getNetworkLevel(n) === selectedLevelFilter.value)
-        if (currentMatch.length > 0) {
-          selectedNetworkId.value = currentMatch[0].id
+        if (targetNet) {
+          selectedLevelFilter.value = getNetworkLevel(targetNet)
+          selectedNetworkId.value = targetNet.id
         } else {
-          const firstNet = enrichedList[0]
-          selectedLevelFilter.value = getNetworkLevel(firstNet)
-          selectedNetworkId.value = firstNet.id
+          const currentMatch = enrichedList.filter(n => getNetworkLevel(n) === selectedLevelFilter.value)
+          if (currentMatch.length > 0) {
+            selectedNetworkId.value = currentMatch[0].id
+          } else {
+            const firstNet = enrichedList[0]
+            selectedLevelFilter.value = getNetworkLevel(firstNet)
+            selectedNetworkId.value = firstNet.id
+          }
+        }
+        loadRoadNetworkRange(selectedNetworkId.value)
+      } else {
+        networksList.value = []
+        editableNetworks.value = []
+        if (autoSwitchMap) {
+          selectedNetworkId.value = ''
+          loadRoadNetworkRange(null)
         }
       }
-      loadRoadNetworkRange(selectedNetworkId.value)
     } else {
       networksList.value = []
       editableNetworks.value = []
@@ -1662,84 +1607,62 @@ async function triggerNavigationGuide(routeInfo) {
     return
   }
 
-  currentRouteData.value = routeInfo
-  openNavDrawer()
-
-  // 1. 优先命中导航步骤缓存：若已计算过导航指引，直接秒级呈现，0 次网络请求
-  if (routeInfo.guideCache) {
-    console.log('🧭 命中路线导航指引缓存，无需请求后端路名接口 ⚡')
-    currentNavGuideCache.value = routeInfo.guideCache
-    currentNavStepIdx.value = 0
-    clearNavHighlight()
-    updateNavGuideInfo(routeInfo.guideCache)
-    if (routeInfo.guideCache.steps && routeInfo.guideCache.steps.length > 0) {
-      highlightNavStep(routeInfo.guideCache.steps[0], false)
-    }
-    return
-  }
-
   clearNavHighlight()
+  currentRouteData.value = routeInfo
   currentNavGuideCache.value = null
   currentNavStepIdx.value = 0
-  isNavLoading.value = true
+  openNavDrawer()
 
   navTripSubtitle.value = '正在获取沿途路段路名与转向拓扑...'
   navStepProgressText.value = '准备中...'
+  isNavLoading.value = true
 
-  let roadData = routeInfo.roadDataCache || null
-  if (!roadData) {
-    try {
-      const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 3500)
-      const resp = await fetch(`${routeApiBase}/road-names`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          networkId: selectedNetworkId.value || '',
-          coordinates: routeInfo.coordinates
-        }),
-        signal: controller.signal
-      })
-      clearTimeout(timeoutId)
-      if (resp.ok) {
-        const json = await resp.json()
-        if (json.code === 200 && json.data) {
-          roadData = json.data
-          routeInfo.roadDataCache = roadData
-        }
+  let roadData = null
+  try {
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 3000)
+    const resp = await fetch(`${routeApiBase}/road-names`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        networkId: selectedNetworkId.value || '',
+        coordinates: routeInfo.coordinates
+      }),
+      signal: controller.signal
+    })
+    clearTimeout(timeoutId)
+    if (resp.ok) {
+      const json = await resp.json()
+      if (json.code === 200 && json.data) {
+        roadData = json.data
       }
-    } catch (err) {
-      console.warn('请求后端路名接口失败或超时，采用前端几何转角分析:', err)
     }
+  } catch (err) {
+    console.warn('请求后端路名接口失败或超时，采用前端几何转角分析:', err)
   }
 
   isNavLoading.value = false
 
   try {
-    const guide = BoundaryRouteDecode.generateNavigationGuide(routeInfo.coordinates, roadData)
-    routeInfo.guideCache = guide
+    const guide = PGRBRouter.generateNavigationGuide(routeInfo.coordinates, roadData)
     currentNavGuideCache.value = guide
     currentNavStepIdx.value = 0
 
-    updateNavGuideInfo(guide)
+    const totalDistKm = guide.distanceText || `${(guide.totalDistance / 1000).toFixed(1)}公里`
+    const mainRoadsCount = guide.mainRoads ? guide.mainRoads.length : 0
+    let tripSub = `全程 ${totalDistKm} · 预计用时 ${guide.estimatedMinutes}分钟`
+    if (mainRoadsCount > 0) {
+      tripSub += ` · 途经 ${mainRoadsCount}条主要道路`
+    }
+    navTripSubtitle.value = tripSub
+    navStepProgressText.value = `步骤 1 / ${guide.totalSteps}`
 
     if (guide.steps && guide.steps.length > 0) {
       highlightNavStep(guide.steps[0], false)
     }
   } catch (e) {
-    console.error('generateNavigationGuide 异常:', e)
+    console.error('PGRBRouter.generateNavigationGuide 异常:', e)
   }
-}
-
-function updateNavGuideInfo(guide) {
-  const totalDistKm = guide.distanceText || `${(guide.totalDistance / 1000).toFixed(1)}公里`
-  const mainRoadsCount = guide.mainRoads ? guide.mainRoads.length : 0
-  let tripSub = `全程 ${totalDistKm} · 预计用时 ${guide.estimatedMinutes}分钟`
-  if (mainRoadsCount > 0) {
-    tripSub += ` · 途经 ${mainRoadsCount}条主要道路`
-  }
-  navTripSubtitle.value = tripSub
-  navStepProgressText.value = `步骤 1 / ${guide.totalSteps}`
 }
 
 function highlightNavStep(step, panTo = true) {
@@ -2278,9 +2201,10 @@ async function planRoute() {
   currentNavGuideCache.value = null
 
   const isDirected = true
+  const router = pgrbRouterInstance
 
-  if (!selectedNetworkId.value) {
-    alert('请先选择有效的路网！')
+  if (!router || !router.isLoaded) {
+    alert('路网二进制图尚未加载完成，请稍候再试！')
     return
   }
 
@@ -2306,6 +2230,16 @@ async function planRoute() {
       return
     }
 
+    for (let i = 0; i < multiDestPoints.value.length; i++) {
+      const d = multiDestPoints.value[i]
+      if (!isPointInCurrentBoundary(d.lng, d.lat)) {
+        alert(`⚠️ 终点 D${i + 1} (${d.lng.toFixed(4)}, ${d.lat.toFixed(4)}) 超出当前路网边界范围，请删除或修改！`)
+        isPlanning.value = false
+        showResultCard.value = false
+        return
+      }
+    }
+
     clearSingleRouteLayers()
     clearMultiRoutes()
 
@@ -2315,45 +2249,29 @@ async function planRoute() {
     isPlanning.value = true
 
     const t0 = performance.now()
-    try {
-      const planRes = await fetch(`${pgrbApiBase}/plan-batch`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          networkId: selectedNetworkId.value,
-          mode: '1_to_n',
-          center: { lng: sLng, lat: sLat },
-          points: multiDestPoints.value.map((d, i) => ({ id: d.id, idx: i, lng: d.lng, lat: d.lat })),
-          directed: isDirected
+    const routes = []
+    for (let i = 0; i < multiDestPoints.value.length; i++) {
+      const d = multiDestPoints.value[i]
+      const planRes = router.planRouteWithSnap(sLng, sLat, d.lng, d.lat, isDirected)
+      if (planRes && planRes.path && planRes.path.length > 0) {
+        const geojson = router.getPathGeoJSONWithSnap(planRes.path, planRes.startSnap, planRes.endSnap, isDirected)
+        routes.push({
+          destId: d.id,
+          destIdx: i,
+          destPoint: d,
+          color: d.color,
+          label: `D${i + 1}`,
+          totalDistance: planRes.distance,
+          startNode: router.getOriginalNodeId(planRes.path[0]),
+          endNode: router.getOriginalNodeId(planRes.path[planRes.path.length - 1]),
+          geometry: geojson,
+          path: planRes.path
         })
-      }).then(r => r.json())
-
-      const t1 = performance.now()
-      const calcCostMs = (t1 - t0).toFixed(1)
-
-      if (planRes && planRes.code === 200 && planRes.data && planRes.data.routes) {
-        const routes = planRes.data.routes.map(r => ({
-          destId: r.id,
-          destIdx: r.idx,
-          destPoint: r.point,
-          color: (multiDestPoints.value[r.idx] && multiDestPoints.value[r.idx].color) || null,
-          label: `D${r.idx + 1}`,
-          totalDistance: r.totalDistance,
-          startNode: r.startNode,
-          endNode: r.endNode,
-          geometry: r.geometry
-        }))
-        renderMultiRoutesResult(routes, `${planRes.data.costTimeMs || calcCostMs} ms 服务端算路 ⚡`, '1_to_n')
-      } else {
-        isPlanning.value = false
-        resStatusColor.value = '#ef4444'
-        resStatus.value = (planRes && planRes.message) || '1对N 规划失败'
       }
-    } catch (e) {
-      isPlanning.value = false
-      resStatusColor.value = '#ef4444'
-      resStatus.value = '服务端算路请求异常: ' + e.message
     }
+    const t1 = performance.now()
+    const calcCostMs = (t1 - t0).toFixed(1)
+    renderMultiRoutesResult(routes, `${calcCostMs} ms CPU A* ⚡`, '1_to_n')
     return
   }
 
@@ -2379,6 +2297,16 @@ async function planRoute() {
       return
     }
 
+    for (let i = 0; i < multiOrigPoints.value.length; i++) {
+      const o = multiOrigPoints.value[i]
+      if (!isPointInCurrentBoundary(o.lng, o.lat)) {
+        alert(`⚠️ 起点 S${i + 1} (${o.lng.toFixed(4)}, ${o.lat.toFixed(4)}) 超出当前路网边界范围，请删除或修改！`)
+        isPlanning.value = false
+        showResultCard.value = false
+        return
+      }
+    }
+
     clearSingleRouteLayers()
     clearMultiRoutes()
 
@@ -2388,45 +2316,29 @@ async function planRoute() {
     isPlanning.value = true
 
     const t0 = performance.now()
-    try {
-      const planRes = await fetch(`${pgrbApiBase}/plan-batch`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          networkId: selectedNetworkId.value,
-          mode: 'n_to_1',
-          center: { lng: eLng, lat: eLat },
-          points: multiOrigPoints.value.map((o, i) => ({ id: o.id, idx: i, lng: o.lng, lat: o.lat })),
-          directed: isDirected
+    const routes = []
+    for (let i = 0; i < multiOrigPoints.value.length; i++) {
+      const o = multiOrigPoints.value[i]
+      const planRes = router.planRouteWithSnap(o.lng, o.lat, eLng, eLat, isDirected)
+      if (planRes && planRes.path && planRes.path.length > 0) {
+        const geojson = router.getPathGeoJSONWithSnap(planRes.path, planRes.startSnap, planRes.endSnap, isDirected)
+        routes.push({
+          origId: o.id,
+          origIdx: i,
+          origPoint: o,
+          color: o.color,
+          label: `S${i + 1}`,
+          totalDistance: planRes.distance,
+          startNode: router.getOriginalNodeId(planRes.path[0]),
+          endNode: router.getOriginalNodeId(planRes.path[planRes.path.length - 1]),
+          geometry: geojson,
+          path: planRes.path
         })
-      }).then(r => r.json())
-
-      const t1 = performance.now()
-      const calcCostMs = (t1 - t0).toFixed(1)
-
-      if (planRes && planRes.code === 200 && planRes.data && planRes.data.routes) {
-        const routes = planRes.data.routes.map(r => ({
-          origId: r.id,
-          origIdx: r.idx,
-          origPoint: r.point,
-          color: (multiOrigPoints.value[r.idx] && multiOrigPoints.value[r.idx].color) || null,
-          label: `S${r.idx + 1}`,
-          totalDistance: r.totalDistance,
-          startNode: r.startNode,
-          endNode: r.endNode,
-          geometry: r.geometry
-        }))
-        renderMultiRoutesResult(routes, `${planRes.data.costTimeMs || calcCostMs} ms 服务端算路 ⚡`, 'n_to_1')
-      } else {
-        isPlanning.value = false
-        resStatusColor.value = '#ef4444'
-        resStatus.value = (planRes && planRes.message) || 'N对1 汇聚规划失败'
       }
-    } catch (e) {
-      isPlanning.value = false
-      resStatusColor.value = '#ef4444'
-      resStatus.value = '服务端算路请求异常: ' + e.message
     }
+    const t1 = performance.now()
+    const calcCostMs = (t1 - t0).toFixed(1)
+    renderMultiRoutesResult(routes, `${calcCostMs} ms CPU A* ⚡`, 'n_to_1')
     return
   }
 
@@ -2464,56 +2376,25 @@ async function planRoute() {
   isPlanning.value = true
 
   const t0 = performance.now()
-  try {
-    const planResp = await fetch(`${pgrbApiBase}/plan-binary`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        networkId: selectedNetworkId.value,
-        startLng: sLng,
-        startLat: sLat,
-        endLng: eLng,
-        endLat: eLat,
-        directed: isDirected
-      })
-    })
+  const planRes = router.planRouteWithSnap(sLng, sLat, eLng, eLat, isDirected)
+  const t1 = performance.now()
+  const calcCostMs = (t1 - t0).toFixed(1)
 
-    let planRes
-    if (planResp.ok) {
-      const arrayBuf = await planResp.arrayBuffer()
-      if (BoundaryRouteDecode.isPGRP(arrayBuf)) {
-        planRes = BoundaryRouteDecode.decodeRoutePath(arrayBuf)
-        console.log(`[PGRP Route] ⚡ 路径二进制解码成功: 距离 ${(planRes.data.totalDistance / 1000).toFixed(2)} km, 点数 ${planRes.data.coordCount}, 字节 ${arrayBuf.byteLength} B`)
-      } else {
-        planRes = JSON.parse(new TextDecoder().decode(arrayBuf))
+  if (planRes && planRes.path && planRes.path.length > 0) {
+    const geojson = router.getPathGeoJSONWithSnap(planRes.path, planRes.startSnap, planRes.endSnap, isDirected)
+    renderRouteResult({
+      code: 200,
+      data: {
+        totalDistance: planRes.distance,
+        startNode: router.getOriginalNodeId(planRes.path[0]),
+        endNode: router.getOriginalNodeId(planRes.path[planRes.path.length - 1]),
+        geometry: geojson
       }
-    } else {
-      try {
-        const errBuf = await planResp.arrayBuffer()
-        if (BoundaryRouteDecode.isPGRP(errBuf)) {
-          planRes = BoundaryRouteDecode.decodeRoutePath(errBuf)
-        } else {
-          planRes = JSON.parse(new TextDecoder().decode(errBuf))
-        }
-      } catch (e) {
-        planRes = { code: planResp.status, message: `HTTP ${planResp.status}` }
-      }
-    }
-
-    const t1 = performance.now()
-    const calcCostMs = (t1 - t0).toFixed(1)
-
-    if (planRes && planRes.code === 200 && planRes.data) {
-      renderRouteResult(planRes, `${planRes.data.costTimeMs || calcCostMs} ms PGRP二进制算路 ⚡`)
-    } else {
-      isPlanning.value = false
-      resStatusColor.value = '#ef4444'
-      resStatus.value = (planRes && (planRes.message || planRes.msg)) ? (planRes.message || planRes.msg) : '起点与终点之间未找到连通路径 (服务端算路)'
-    }
-  } catch (e) {
+    }, `${calcCostMs} ms CPU ⚡`)
+  } else {
     isPlanning.value = false
     resStatusColor.value = '#ef4444'
-    resStatus.value = '服务端算路请求异常: ' + e.message
+    resStatus.value = '起点与终点之间未找到连通路径 (CPU A* 算路)'
   }
 }
 
@@ -2566,17 +2447,12 @@ async function saveNetworkName(net) {
   }
 
   try {
-    const formData = new URLSearchParams()
-    formData.append('networkId', net.id)
-    formData.append('networkName', newName)
-    const res = await fetch(`${pgrbApiBase}/update-name`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: formData
-    }).then(r => r.json())
+    const url = `${routeApiBase}/update-name?networkId=${net.id}&name=${encodeURIComponent(newName)}`
+    const response = await fetch(url, { method: 'POST' })
+    const res = await response.json()
     if (res.code === 200) {
       alert(`✅ ${res.msg || '名称更新成功！'}`)
-      fetchRoadNetworks(net.id)
+      fetchRoadNetworks()
     } else {
       alert(`❌ 更新失败: ${res.msg}`)
     }
@@ -2585,44 +2461,19 @@ async function saveNetworkName(net) {
   }
 }
 
-async function recompileNetwork(net) {
-  if (!confirm(`确认要重新编译路网【${net.name || net.id}】并刷新服务器磁盘 .pgrb 文件吗？`)) {
-    return
-  }
-  try {
-    const formData = new URLSearchParams()
-    formData.append('networkId', net.id)
-    const res = await fetch(`${pgrbApiBase}/recompile`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: formData
-    }).then(r => r.json())
-    if (res.code === 200) {
-      alert(`✅ 重新编译落盘成功！最新文件体积: ${res.data ? res.data.fileSizeFmt : '就绪'}`)
-      fetchRoadNetworks(net.id)
-    } else {
-      alert(`❌ 重新编译失败: ${res.msg}`)
-    }
-  } catch (err) {
-    alert(`❌ 重新编译异常: ${err.message}`)
-  }
-}
-
 async function deleteNetwork(net) {
-  if (!confirm(`⚠️ 删除确认：路网【${net.name || net.id}】\n\n点击【确定】将彻底删除服务器磁盘 .pgrb 文件并级联清理 PostgreSQL 拓扑表 (${net.id}_base 和 ${net.id}_base_noded)\n点击【取消】中止操作。`)) {
+  if (!confirm(`⚠️ 危险操作确认：\n确认要彻底删除路网【${net.name}】及其 PostgreSQL 数据库物理表 (${net.id}_base 和 ${net.id}_base_noded) 吗？\n此操作不可撤销！`)) {
     return
   }
 
   try {
-    const formData = new URLSearchParams()
-    formData.append('networkId', net.id)
-    formData.append('deleteDbTable', 'true')
-    const res = await fetch(`${pgrbApiBase}/delete`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: formData
-    }).then(r => r.json())
+    const url = `${routeApiBase}/delete?networkId=${net.id}`
+    const response = await fetch(url, { method: 'POST' })
+    const res = await response.json()
     if (res.code === 200) {
+      if (PGRBRouter && typeof PGRBRouter.clearCache === 'function') {
+        try { await PGRBRouter.clearCache(net.id) } catch (e) { }
+      }
       alert(`✅ ${res.msg || '删除成功！'}`)
       fetchRoadNetworks()
     } else {
@@ -2808,6 +2659,9 @@ async function submitXzqBuild() {
         const builtSuccess = await pollCheckNetworkBuilt(netId, 16, 5000)
         if (builtSuccess) {
           isXzqBuilding.value = false
+          if (PGRBRouter && typeof PGRBRouter.clearCache === 'function') {
+            try { await PGRBRouter.clearCache(netId) } catch (e) { }
+          }
           xzqMsg.color = '#10b981'
           xzqMsg.text = `✅【${netName}】市级3D路网后台构建完成！已自动同步。`
           setTimeout(() => {
@@ -2827,6 +2681,9 @@ async function submitXzqBuild() {
 
     isXzqBuilding.value = false
     if (res && res.code === 200) {
+      if (PGRBRouter && typeof PGRBRouter.clearCache === 'function') {
+        try { await PGRBRouter.clearCache(netId) } catch (e) { }
+      }
       xzqMsg.color = '#10b981'
       xzqMsg.text = '✅ ' + (res.data ? res.data.msg : '路网相交构建成功！')
       setTimeout(() => {
@@ -3620,30 +3477,7 @@ select.coord-input option {
 }
 
 .manage-modal-width {
-  max-width: 820px;
-}
-
-.pgrb-level-badge {
-  display: inline-block;
-  padding: 1px 6px;
-  font-size: 10px;
-  font-weight: 600;
-  color: #38bdf8;
-  background: rgba(56, 189, 248, 0.15);
-  border: 1px solid rgba(56, 189, 248, 0.35);
-  border-radius: 4px;
-  margin-left: 4px;
-}
-
-.pgrb-size-badge {
-  display: inline-block;
-  padding: 1px 6px;
-  font-size: 11px;
-  font-weight: 600;
-  color: #10b981;
-  background: rgba(16, 185, 129, 0.15);
-  border: 1px solid rgba(16, 185, 129, 0.35);
-  border-radius: 4px;
+  max-width: 680px;
 }
 
 .modal-header {
