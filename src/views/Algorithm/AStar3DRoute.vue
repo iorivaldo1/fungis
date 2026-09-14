@@ -29,13 +29,17 @@
 
         <!-- 三个功能控制按钮 (前一步 - 当前步 - 后一步) -->
         <div class="nav-step-ctrl-bar">
-          <button type="button" class="nav-ctrl-btn btn-prev" :disabled="currentNavStepIdx <= 0" @click="prevNavStep" title="切换到上一步">
+          <button type="button" class="nav-ctrl-btn btn-prev" :disabled="currentNavStepIdx <= 0" @click="prevNavStep"
+            title="切换到上一步">
             <span>◀ 前一步</span>
           </button>
-          <button type="button" class="nav-ctrl-btn btn-curr" :disabled="!currentNavGuideCache || !currentNavGuideCache.steps" @click="currNavStep" title="地图定位当前步骤">
+          <button type="button" class="nav-ctrl-btn btn-curr"
+            :disabled="!currentNavGuideCache || !currentNavGuideCache.steps" @click="currNavStep" title="地图定位当前步骤">
             <span>🎯 当前步</span>
           </button>
-          <button type="button" class="nav-ctrl-btn btn-next" :disabled="!currentNavGuideCache || !currentNavGuideCache.steps || currentNavStepIdx >= currentNavGuideCache.steps.length - 1" @click="nextNavStep" title="切换到下一步">
+          <button type="button" class="nav-ctrl-btn btn-next"
+            :disabled="!currentNavGuideCache || !currentNavGuideCache.steps || currentNavStepIdx >= currentNavGuideCache.steps.length - 1"
+            @click="nextNavStep" title="切换到下一步">
             <span>后一步 ▶</span>
           </button>
         </div>
@@ -46,7 +50,9 @@
             <div class="nav-spinner"></div>
             <div>正在解析沿途路名与转向节点...</div>
           </div>
-          <div v-else-if="!currentNavGuideCache || !currentNavGuideCache.steps || currentNavGuideCache.steps.length === 0" class="nav-loading-placeholder">
+          <div
+            v-else-if="!currentNavGuideCache || !currentNavGuideCache.steps || currentNavGuideCache.steps.length === 0"
+            class="nav-loading-placeholder">
             <div style="font-size: 26px; margin-bottom: 6px;">🧭</div>
             <div style="font-weight: 600; color: #cbd5e1; margin-bottom: 4px;">暂无分步指引内容</div>
             <div style="color: #64748b; font-size: 11.5px;">请完成路径规划后点击“查看详细导航指引”</div>
@@ -94,7 +100,8 @@
             </div>
 
             <!-- 后一步卡片 -->
-            <div v-if="currentNavStepIdx < currentNavGuideCache.steps.length - 1 && nextStep" class="nav-three-node-item" @click="nextNavStep">
+            <div v-if="currentNavStepIdx < currentNavGuideCache.steps.length - 1 && nextStep"
+              class="nav-three-node-item" @click="nextNavStep">
               <div class="node-header">
                 <span class="step-role-tag next">后一步 ▶</span>
                 <span class="node-click-hint">点击前进</span>
@@ -140,11 +147,16 @@
         <div class="form-group">
           <div class="form-label">
             <span>🌐 选择路网数据集</span>
-            <button type="button" class="pick-btn btn-manage-badge" @click="openManageModal">
-              ⚙️ 路网管理
-            </button>
+            <div style="display: flex; gap: 6px;">
+              <button type="button" class="pick-btn btn-upload-shp-badge" @click="openUploadModal" title="上传包含 SHP 文件的本地文件夹并编译落盘为 V3 格式">
+                📁 上传SHP
+              </button>
+              <button type="button" class="pick-btn btn-manage-badge" @click="openManageModal">
+                ⚙️ 路网管理
+              </button>
+            </div>
           </div>
-          <!-- 行政级别单选切换 (市级、区县、乡镇、街道) -->
+          <!-- 行政级别单选切换 (市级、区县、乡镇、街道、SHP) -->
           <div class="level-radio-group">
             <label class="level-radio-item" :class="{ active: selectedLevelFilter === 'city' }">
               <input type="radio" name="levelFilter" value="city" v-model="selectedLevelFilter"
@@ -170,11 +182,19 @@
               <span class="radio-dot"></span>
               <span class="radio-text">街道</span>
             </label>
+            <label class="level-radio-item" :class="{ active: selectedLevelFilter === 'shp' }">
+              <input type="radio" name="levelFilter" value="shp" v-model="selectedLevelFilter"
+                @change="onLevelFilterChange" />
+              <span class="radio-dot"></span>
+              <span class="radio-text">SHP</span>
+            </label>
           </div>
 
           <select v-model="selectedNetworkId" class="coord-input full-width-select" @change="onNetworkChange">
             <option v-if="networksLoading" value="">加载路网配置中...</option>
-            <option v-else-if="filteredNetworksList.length === 0" value="">当前级别暂无 3D 立体路网配置</option>
+            <option v-else-if="filteredNetworksList.length === 0" value="">
+              {{ selectedLevelFilter === 'shp' ? '当前暂无自定义 SHP 路网配置，请点击上方“上传SHP”添加' : '当前级别暂无 3D 立体路网配置' }}
+            </option>
             <option v-for="net in filteredNetworksList" :key="net.id" :value="net.id">
               {{ net.name }}
             </option>
@@ -406,12 +426,17 @@
         <div class="modal-body max-modal-body">
           <div class="manage-sub-header">
             <span class="sub-header-desc">包含新建、名称修改与物理删除管理：</span>
-            <button type="button" class="btn-submit btn-sm" @click="openXzqFromManage">
-              🏛️ + 行政区划相交新建路网
-            </button>
+            <div style="display: flex; gap: 8px;">
+              <button type="button" class="btn-submit btn-sm btn-upload-shp-badge" @click="openUploadFromManage">
+                📁 + 上传 SHP 文件夹新建路网
+              </button>
+              <button type="button" class="btn-submit btn-sm" @click="openXzqFromManage">
+                🏛️ + 行政区划相交新建路网
+              </button>
+            </div>
           </div>
 
-          <!-- 行政级别单选切换 (全部、市级、区县、乡镇、街道) -->
+          <!-- 行政级别单选切换 (全部、市级、区县、乡镇、街道、SHP) -->
           <div class="level-radio-group manage-level-radio">
             <label class="level-radio-item" :class="{ active: manageLevelFilter === 'city' }">
               <input type="radio" name="manageLevelFilter" value="city" v-model="manageLevelFilter" />
@@ -432,6 +457,11 @@
               <input type="radio" name="manageLevelFilter" value="village" v-model="manageLevelFilter" />
               <span class="radio-dot"></span>
               <span class="radio-text">街道 ({{ countByLevel('village') }})</span>
+            </label>
+            <label class="level-radio-item" :class="{ active: manageLevelFilter === 'shp' }">
+              <input type="radio" name="manageLevelFilter" value="shp" v-model="manageLevelFilter" />
+              <span class="radio-dot"></span>
+              <span class="radio-text">SHP ({{ countByLevel('shp') }})</span>
             </label>
             <label class="level-radio-item" :class="{ active: manageLevelFilter === 'all' }">
               <input type="radio" name="manageLevelFilter" value="all" v-model="manageLevelFilter" />
@@ -560,13 +590,15 @@
           </div>
 
           <!-- 市级/行政区 3D 路网实时百分比构建进度卡片 -->
-          <div v-if="isXzqBuilding" class="xzq-progress-card" :class="{ 'card-success': isBuildFinishedSuccess, 'card-failed': isBuildFailed }">
+          <div v-if="isXzqBuilding" class="xzq-progress-card"
+            :class="{ 'card-success': isBuildFinishedSuccess, 'card-failed': isBuildFailed }">
             <div class="progress-card-top">
               <div class="progress-task-title">
                 <span v-if="isBuildFinishedSuccess" class="success-icon">🎉</span>
                 <span v-else-if="isBuildFailed" class="fail-icon">❌</span>
                 <span v-else class="pulse-dot"></span>
-                <span>{{ isBuildFinishedSuccess ? '路网构建成功！' : (isBuildFailed ? '路网构建中断' : '正在构建【' + xzqBuildTargetName + '】') }}</span>
+                <span>{{ isBuildFinishedSuccess ? '路网构建成功！' : (isBuildFailed ? '路网构建中断' : '正在构建【' + xzqBuildTargetName +
+                  '】') }}</span>
               </div>
               <div class="progress-timer-pill">
                 ⏱️ {{ isBuildFinishedSuccess ? '总耗时' : '已耗时' }}: <strong>{{ xzqBuildElapsedSec }}</strong>s
@@ -577,23 +609,23 @@
             <div class="progress-info-row">
               <div class="stage-col">
                 <div class="stage-tag" :class="{ 'tag-success': isBuildFinishedSuccess, 'tag-fail': isBuildFailed }">
-                  {{ isBuildFinishedSuccess ? '全部就绪' : (isBuildFailed ? '计算中断' : '步骤 ' + xzqBuildCurrentStep + ' / 6') }}
+                  {{ isBuildFinishedSuccess ? '全部就绪' : (isBuildFailed ? '计算中断' : '步骤 ' + xzqBuildCurrentStep + ' / 6')
+                  }}
                 </div>
                 <div class="stage-title-text">{{ xzqBuildStageTitle }}</div>
               </div>
               <div class="percent-num-col">
-                <span class="percent-num" :class="{ 'num-success': isBuildFinishedSuccess, 'num-fail': isBuildFailed }">{{ xzqBuildPercent }}</span>
+                <span class="percent-num"
+                  :class="{ 'num-success': isBuildFinishedSuccess, 'num-fail': isBuildFailed }">{{
+                  xzqBuildPercent }}</span>
                 <span class="percent-symbol">%</span>
               </div>
             </div>
 
             <!-- 动态流光进度条 -->
             <div class="progress-track">
-              <div
-                class="progress-fill"
-                :class="{ 'fill-success': isBuildFinishedSuccess, 'fill-fail': isBuildFailed }"
-                :style="{ width: xzqBuildPercent + '%' }"
-              >
+              <div class="progress-fill" :class="{ 'fill-success': isBuildFinishedSuccess, 'fill-fail': isBuildFailed }"
+                :style="{ width: xzqBuildPercent + '%' }">
                 <div v-if="!isBuildFinishedSuccess && !isBuildFailed" class="progress-shimmer"></div>
               </div>
             </div>
@@ -606,17 +638,12 @@
 
             <!-- 6大阶段步骤时间轴 -->
             <div class="progress-stepper">
-              <div
-                v-for="(step, idx) in xzqBuildSteps"
-                :key="step.key"
-                class="step-item"
-                :class="{
-                  completed: xzqBuildCurrentStep > idx + 1 || xzqBuildPercent === 100,
-                  active: xzqBuildCurrentStep === idx + 1 && xzqBuildPercent < 100 && !isBuildFailed,
-                  failed: isBuildFailed && xzqBuildCurrentStep === idx + 1,
-                  pending: xzqBuildCurrentStep < idx + 1 && xzqBuildPercent < 100
-                }"
-              >
+              <div v-for="(step, idx) in xzqBuildSteps" :key="step.key" class="step-item" :class="{
+                completed: xzqBuildCurrentStep > idx + 1 || xzqBuildPercent === 100,
+                active: xzqBuildCurrentStep === idx + 1 && xzqBuildPercent < 100 && !isBuildFailed,
+                failed: isBuildFailed && xzqBuildCurrentStep === idx + 1,
+                pending: xzqBuildCurrentStep < idx + 1 && xzqBuildPercent < 100
+              }">
                 <div class="step-circle">
                   <span v-if="xzqBuildCurrentStep > idx + 1 || xzqBuildPercent === 100">✓</span>
                   <span v-else-if="isBuildFailed && xzqBuildCurrentStep === idx + 1">✕</span>
@@ -650,22 +677,80 @@
           </div>
         </div>
         <div class="modal-footer">
-          <button
-            v-if="!isBuildFinishedSuccess"
-            type="button"
-            class="btn-submit"
-            :disabled="isXzqBuilding"
-            @click="submitXzqBuild"
-          >
+          <button v-if="!isBuildFinishedSuccess" type="button" class="btn-submit" :disabled="isXzqBuilding"
+            @click="submitXzqBuild">
             {{ isXzqBuilding ? '⏳ 拓扑构建中 (' + xzqBuildPercent + '%)...' : '🚀 开始相交构建路网' }}
           </button>
-          <button
-            v-else
-            type="button"
-            class="btn-submit btn-success-done"
-            @click="confirmEnterBuiltNetwork"
-          >
+          <button v-else type="button" class="btn-submit btn-success-done" @click="confirmEnterBuiltNetwork">
             ✓ 完成并进入路网 ({{ buildSuccessCountdown }}s)
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 上传 SHP 文件夹新建路网 Modal 弹窗 -->
+    <div v-if="showUploadModal" class="modal-overlay" @click.self="showUploadModal = false">
+      <div class="modal-content">
+        <div class="modal-header">
+          <span class="modal-title">📁 上传 SHP 文件夹新建路网 (PGRB V3)</span>
+          <span class="modal-close" @click="showUploadModal = false">&times;</span>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label class="form-label">📂 选择本地包含 Shapefile 的文件夹 (.shp, .dbf, .shx, .prj)</label>
+            <input
+              type="file"
+              ref="shpFolderInputRef"
+              class="coord-input full-width-input"
+              webkitdirectory
+              directory
+              multiple
+              @change="handleShpFolderChange"
+            />
+            <div
+              v-if="shpFilesSummary.show"
+              :style="{ color: shpFilesSummary.color, fontSize: '11.5px', marginTop: '6px' }"
+            >
+              {{ shpFilesSummary.text }}
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">🔑 路网唯一标识 Code (英文字母、数字和下划线)</label>
+            <input
+              type="text"
+              v-model="uploadNetId"
+              class="coord-input full-width-input"
+              placeholder="例: shp_cd_road 或 cd_road"
+            />
+          </div>
+          <div class="form-group">
+            <label class="form-label">🏷️ 路网前端显示名称</label>
+            <input
+              type="text"
+              v-model="uploadNetName"
+              class="coord-input full-width-input"
+              placeholder="例: 成都局部路网"
+            />
+          </div>
+          <div class="form-group">
+            <label class="form-label">🌐 属性表字符编码</label>
+            <select v-model="uploadEncoding" class="coord-input full-width-select">
+              <option value="GBK">GBK (推荐中文常见标准，防止乱码)</option>
+              <option value="UTF-8">UTF-8</option>
+            </select>
+          </div>
+          <div v-if="uploadMsg.show" class="upload-msg" :style="{ color: uploadMsg.color }">
+            {{ uploadMsg.text }}
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button
+            type="button"
+            class="btn-submit"
+            :disabled="isUploadingShp"
+            @click="submitShpUpload"
+          >
+            {{ isUploadingShp ? uploadSubmitText : '🚀 上传并编译为 V3 路网' }}
           </button>
         </div>
       </div>
@@ -685,7 +770,7 @@ const mapContainer = ref(null)
 const mapInstance = shallowRef(null)
 
 const zoomValue = ref('--')
-const selectedLevelFilter = ref('county') // 'city' | 'county' | 'town' | 'village'
+const selectedLevelFilter = ref('county') // 'city' | 'county' | 'town' | 'village' | 'shp'
 const selectedNetworkId = ref('')
 const networksList = ref([])
 const editableNetworks = ref([])
@@ -720,8 +805,29 @@ const multiRouteListItems = ref([])
 const selectedRouteIdx = ref(null)
 
 const showManageModal = ref(false)
-const manageLevelFilter = ref('county') // 'city' | 'county' | 'town' | 'village' | 'all'
+const manageLevelFilter = ref('county') // 'city' | 'county' | 'town' | 'village' | 'shp' | 'all'
 const showXzqModal = ref(false)
+
+// 上传 SHP 文件夹状态
+const showUploadModal = ref(false)
+const shpFolderInputRef = ref(null)
+const uploadNetId = ref('')
+const uploadNetName = ref('')
+const uploadEncoding = ref('GBK')
+const isUploadingShp = ref(false)
+const uploadSubmitText = ref('⏳ 处理中...')
+const uploadMsg = reactive({
+  show: false,
+  color: '#38bdf8',
+  text: ''
+})
+const shpFilesSummary = reactive({
+  show: false,
+  color: '#38bdf8',
+  text: ''
+})
+let detectedShpFile = null
+let detectedMatchedFiles = []
 
 const xzqLevels = ref([])
 const currentLevel = ref('town')
@@ -895,26 +1001,24 @@ function getXzqItemFullName(item) {
 
 function getNetworkLevel(net) {
   if (!net) return 'county'
-  const id = String(net.networkId || net.id || '').toLowerCase()
-  if (id.startsWith('xzq_city_')) return 'city'
-  if (id.startsWith('xzq_county_')) return 'county'
-  if (id.startsWith('xzq_town_')) return 'town'
-  if (id.startsWith('xzq_village_') || id.startsWith('xzq_street_') || id.startsWith('shjd')) return 'village'
-
   if (net.level) {
     const l = String(net.level).toLowerCase()
+    if (l === 'shp' || l.includes('shp') || l.includes('自定义')) return 'shp'
     if (l === 'city' || l.includes('市级') || l === '市') return 'city'
     if (l === 'county' || l.includes('区') || l.includes('县')) return 'county'
     if (l === 'town' || l.includes('镇') || l.includes('乡')) return 'town'
     if (l === 'village' || l === 'street' || l.includes('街') || l.includes('村')) return 'village'
   }
 
-  if (id.includes('city')) return 'city'
-  if (id.includes('county')) return 'county'
-  if (id.includes('town')) return 'town'
-  if (id.includes('village') || id.includes('street')) return 'village'
+  const id = String(net.networkId || net.id || '').toLowerCase()
+  if (id.startsWith('shp_') || id.includes('upload') || (!id.startsWith('xzq_') && id !== 'shjd_road' && !id.includes('city') && !id.includes('county') && !id.includes('town') && !id.includes('village') && !id.includes('street'))) return 'shp'
+  if (id.startsWith('xzq_city_') || id.includes('city')) return 'city'
+  if (id.startsWith('xzq_county_') || id.includes('county')) return 'county'
+  if (id.startsWith('xzq_town_') || id.includes('town')) return 'town'
+  if (id.startsWith('xzq_village_') || id.startsWith('xzq_street_') || id.includes('village') || id.includes('street') || id.startsWith('shjd')) return 'village'
 
   const name = String(net.networkName || net.name || '')
+  if (name.includes('(SHP)') || name.toLowerCase().includes('shp')) return 'shp'
   if (name.includes('街道') || name.includes('村') || name.includes('社区')) return 'village'
   if (name.includes('镇') || name.includes('乡')) return 'town'
   if (name.includes('区') || name.includes('县')) return 'county'
@@ -1597,6 +1701,7 @@ async function fetchRoadNetworks(targetSelectId = null, autoSwitchMap = true) {
           else if (p.networkId && p.networkId.startsWith('xzq_county_')) lvl = 'county'
           else if (p.networkId && p.networkId.startsWith('xzq_town_')) lvl = 'town'
           else if (p.networkId && (p.networkId.startsWith('xzq_village_') || p.networkId.startsWith('xzq_street_'))) lvl = 'village'
+          else if (p.networkId && (p.networkId.startsWith('shp_') || p.level === 'shp')) lvl = 'shp'
           const cleanName = String(p.networkName || '').replace(/[\s\(\（]*3D(?:立体分层)?[\)\）]*/g, '').trim()
           return {
             id: p.networkId,
@@ -1642,6 +1747,7 @@ async function fetchRoadNetworks(targetSelectId = null, autoSwitchMap = true) {
           else if (net.id && net.id.startsWith('xzq_county_')) lvl = 'county'
           else if (net.id && net.id.startsWith('xzq_town_')) lvl = 'town'
           else if (net.id && (net.id.startsWith('xzq_village_') || net.id.startsWith('xzq_street_'))) lvl = 'village'
+          else if (net.id && (net.id.startsWith('shp_') || net.level === 'shp')) lvl = 'shp'
           const cleanName = String(net.name || net.id).replace(/[\s\(\（]*3D(?:立体分层)?[\)\）]*/g, '').trim()
           listData.push({
             ...net,
@@ -1651,7 +1757,7 @@ async function fetchRoadNetworks(targetSelectId = null, autoSwitchMap = true) {
             networkName: cleanName
           })
           // 异步触发生成 .pgrb 二进制加速文件
-          fetch(`${pgrbApiBase}/recompile?networkId=${encodeURIComponent(net.id)}`, { method: 'POST' }).catch(() => {})
+          fetch(`${pgrbApiBase}/recompile?networkId=${encodeURIComponent(net.id)}`, { method: 'POST' }).catch(() => { })
         }
       }
     } catch (e) {
@@ -2721,6 +2827,158 @@ function openXzqFromManage() {
   initXzqLevels()
 }
 
+function openUploadModal() {
+  showManageModal.value = false
+  showXzqModal.value = false
+  showUploadModal.value = true
+  uploadMsg.show = false
+  shpFilesSummary.show = false
+  uploadNetId.value = ''
+  uploadNetName.value = ''
+  uploadEncoding.value = 'GBK'
+  detectedShpFile = null
+  detectedMatchedFiles = []
+  isUploadingShp.value = false
+  uploadSubmitText.value = '⏳ 处理中...'
+  if (shpFolderInputRef.value) {
+    shpFolderInputRef.value.value = ''
+  }
+}
+
+function openUploadFromManage() {
+  showManageModal.value = false
+  openUploadModal()
+}
+
+function handleShpFolderChange(e) {
+  const files = e.target.files
+  if (!files || files.length === 0) {
+    detectedShpFile = null
+    detectedMatchedFiles = []
+    shpFilesSummary.show = false
+    return
+  }
+
+  const shpRelatedExtensions = ['.shp', '.dbf', '.shx', '.prj', '.cpg', '.sbn', '.sbx']
+  detectedMatchedFiles = []
+  detectedShpFile = null
+
+  for (let i = 0; i < files.length; i++) {
+    const f = files[i]
+    const name = f.name.toLowerCase()
+    const ext = name.substring(name.lastIndexOf('.'))
+    if (shpRelatedExtensions.includes(ext)) {
+      detectedMatchedFiles.push(f)
+      if (ext === '.shp' && !detectedShpFile) {
+        detectedShpFile = f
+      }
+    }
+  }
+
+  if (!detectedShpFile) {
+    shpFilesSummary.show = true
+    shpFilesSummary.color = '#ef4444'
+    shpFilesSummary.text = '⚠️ 未在选择的文件夹中检测到 .shp 主图层文件，请确认选择的是正确的 Shapefile 目录！'
+    return
+  }
+
+  const rawBaseName = detectedShpFile.name.replace(/\.shp$/i, '')
+  const cleanId = 'shp_' + rawBaseName.toLowerCase().replace(/[^a-z0-9_]/g, '_').replace(/_+/g, '_').replace(/^_+|_+$/g, '')
+
+  if (!uploadNetId.value || uploadNetId.value.startsWith('shp_')) {
+    uploadNetId.value = cleanId
+  }
+  if (!uploadNetName.value || uploadNetName.value.endsWith('(SHP)')) {
+    uploadNetName.value = `${rawBaseName} (SHP)`
+  }
+
+  const extSet = Array.from(new Set(detectedMatchedFiles.map(f => {
+    const n = f.name.toLowerCase()
+    return n.substring(n.lastIndexOf('.'))
+  })))
+
+  shpFilesSummary.show = true
+  shpFilesSummary.color = '#38bdf8'
+  shpFilesSummary.text = `✅ 检测到主矢量文件: ${detectedShpFile.name} (含配套格式: ${extSet.join(', ')}，共 ${detectedMatchedFiles.length} 个相关文件)`
+}
+
+async function submitShpUpload() {
+  if (!detectedShpFile || detectedMatchedFiles.length === 0) {
+    alert('请先选择包含有效 .shp 矢量文件的本地文件夹！')
+    return
+  }
+
+  const netId = uploadNetId.value.trim()
+  const netName = uploadNetName.value.trim() || netId
+  const encoding = uploadEncoding.value || 'GBK'
+
+  if (!netId) {
+    alert('请输入路网唯一标识 Code！')
+    return
+  }
+  if (!/^[a-zA-Z0-9_]+$/.test(netId)) {
+    alert('路网标识 Code 仅支持英文字母、数字和下划线！')
+    return
+  }
+
+  isUploadingShp.value = true
+  uploadSubmitText.value = '⏳ 上传中...'
+  uploadMsg.show = true
+  uploadMsg.color = '#38bdf8'
+  uploadMsg.text = '⏳ [步骤 1/2] 正在上传 Shapefile 并在 PostGIS 中生成拓扑节点...'
+
+  try {
+    const formData = new FormData()
+    for (const f of detectedMatchedFiles) {
+      formData.append('files', f)
+    }
+    formData.append('networkId', netId)
+    formData.append('networkName', netName)
+    formData.append('encoding', encoding)
+
+    const uploadRes = await fetch(`${routeApiBase}/upload-shp-folder`, {
+      method: 'POST',
+      body: formData
+    }).then(r => r.json())
+
+    if (uploadRes.code !== 200) {
+      throw new Error(uploadRes.msg || '上传并在 PostGIS 构建拓扑失败')
+    }
+
+    uploadSubmitText.value = '⏳ 编译 V3...'
+    uploadMsg.text = '⏳ [步骤 2/2] PostGIS 拓扑构建成功，正在编译落盘为 V3 二进制路网与凹包边界...'
+    const compileParams = new URLSearchParams()
+    compileParams.append('networkId', netId)
+    compileParams.append('level', 'shp')
+
+    const compileRes = await fetch(`${pgrbApiBase}/recompile`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: compileParams
+    }).then(r => r.json())
+
+    if (compileRes.code !== 200) {
+      throw new Error(compileRes.msg || '编译 V3 PGRB 失败')
+    }
+
+    const sizeFmt = compileRes.data && compileRes.data.fileSizeFmt ? compileRes.data.fileSizeFmt : '就绪'
+    uploadMsg.color = '#10b981'
+    uploadMsg.text = `✅ 路网创建并落盘成功！最新文件体积: ${sizeFmt}`
+
+    setTimeout(() => {
+      showUploadModal.value = false
+      selectedLevelFilter.value = 'shp'
+      fetchRoadNetworks(netId)
+    }, 1200)
+  } catch (err) {
+    console.error('SHP Upload and Build Error:', err)
+    isUploadingShp.value = false
+    uploadSubmitText.value = '🚀 上传并编译为 V3 路网'
+    uploadMsg.color = '#ef4444'
+    uploadMsg.text = `❌ ${err.message}`
+  }
+}
+
 async function saveNetworkName(net) {
   const newName = net.editingName ? net.editingName.trim() : ''
   if (!newName) {
@@ -2941,7 +3199,7 @@ async function confirmEnterBuiltNetwork() {
     // 确保落盘并刷新
     try {
       await fetch(`${pgrbApiBase}/recompile?networkId=${encodeURIComponent(netId)}`, { method: 'POST' })
-    } catch (e) {}
+    } catch (e) { }
     await fetchRoadNetworks(netId)
   }
 }
@@ -2961,7 +3219,7 @@ async function finishBuildSmoothly(successMsg, netId) {
 
   // 触发后台落盘 .pgrb 二进制文件加速算路
   if (netId) {
-    fetch(`${pgrbApiBase}/recompile?networkId=${encodeURIComponent(netId)}`, { method: 'POST' }).catch(() => {})
+    fetch(`${pgrbApiBase}/recompile?networkId=${encodeURIComponent(netId)}`, { method: 'POST' }).catch(() => { })
   }
 
   const stepsTo100 = [
@@ -3800,6 +4058,19 @@ select.coord-input option {
   border-color: rgba(56, 189, 248, 0.4);
 }
 
+.btn-upload-shp-badge {
+  padding: 2px 10px;
+  background: rgba(16, 185, 129, 0.2);
+  color: #34d399;
+  border-color: rgba(16, 185, 129, 0.45);
+}
+
+.btn-upload-shp-badge:hover {
+  background: rgba(16, 185, 129, 0.35);
+  border-color: #34d399;
+  color: #ffffff;
+}
+
 .option-row {
   display: flex;
   align-items: center;
@@ -4266,8 +4537,15 @@ select.coord-input option {
 }
 
 @keyframes cardFadeIn {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .progress-card-top {
@@ -4296,9 +4574,23 @@ select.coord-input option {
 }
 
 @keyframes pulseGlow {
-  0% { transform: scale(0.9); opacity: 0.8; box-shadow: 0 0 4px #38bdf8; }
-  50% { transform: scale(1.3); opacity: 1; box-shadow: 0 0 12px #38bdf8; }
-  100% { transform: scale(0.9); opacity: 0.8; box-shadow: 0 0 4px #38bdf8; }
+  0% {
+    transform: scale(0.9);
+    opacity: 0.8;
+    box-shadow: 0 0 4px #38bdf8;
+  }
+
+  50% {
+    transform: scale(1.3);
+    opacity: 1;
+    box-shadow: 0 0 12px #38bdf8;
+  }
+
+  100% {
+    transform: scale(0.9);
+    opacity: 0.8;
+    box-shadow: 0 0 4px #38bdf8;
+  }
 }
 
 .progress-timer-pill {
@@ -4401,8 +4693,13 @@ select.coord-input option {
 }
 
 @keyframes shimmerMove {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(100%); }
+  0% {
+    transform: translateX(-100%);
+  }
+
+  100% {
+    transform: translateX(100%);
+  }
 }
 
 .progress-detail-row {
@@ -4498,8 +4795,13 @@ select.coord-input option {
 }
 
 @keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+  0% {
+    transform: rotate(0deg);
+  }
+
+  100% {
+    transform: rotate(360deg);
+  }
 }
 
 /* 成功卡片样式 */
@@ -5175,6 +5477,7 @@ path.route-interactive-line,
   outline: none !important;
   -webkit-tap-highlight-color: transparent !important;
 }
+
 .route-interactive-line:focus,
 path.route-interactive-line:focus,
 .leaflet-interactive:focus {
@@ -5183,9 +5486,15 @@ path.route-interactive-line:focus,
 
 /* 当前步骤光流动画与高亮样式 */
 @keyframes navFlowPulse {
-  from { stroke-dashoffset: 26; }
-  to { stroke-dashoffset: 0; }
+  from {
+    stroke-dashoffset: 26;
+  }
+
+  to {
+    stroke-dashoffset: 0;
+  }
 }
+
 .nav-step-flow-pulse {
   animation: navFlowPulse 0.85s linear infinite !important;
 }
@@ -5195,6 +5504,7 @@ path.route-interactive-line:focus,
   background: transparent !important;
   border: none !important;
 }
+
 .nav-pulse-beacon {
   position: relative;
   width: 28px;
@@ -5203,6 +5513,7 @@ path.route-interactive-line:focus,
   align-items: center;
   justify-content: center;
 }
+
 .nav-pulse-ripple {
   position: absolute;
   width: 100%;
@@ -5212,6 +5523,7 @@ path.route-interactive-line:focus,
   animation: navPulseRippleAnim 1.6s ease-out infinite;
   pointer-events: none;
 }
+
 .nav-pulse-dot {
   position: relative;
   width: 15px;
@@ -5222,8 +5534,16 @@ path.route-interactive-line:focus,
   box-shadow: 0 0 12px rgba(245, 158, 11, 0.95), 0 2px 6px rgba(0, 0, 0, 0.65);
   pointer-events: none;
 }
+
 @keyframes navPulseRippleAnim {
-  0% { transform: scale(0.45); opacity: 1; }
-  100% { transform: scale(1.9); opacity: 0; }
+  0% {
+    transform: scale(0.45);
+    opacity: 1;
+  }
+
+  100% {
+    transform: scale(1.9);
+    opacity: 0;
+  }
 }
 </style>
