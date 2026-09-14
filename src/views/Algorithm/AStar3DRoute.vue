@@ -147,14 +147,9 @@
         <div class="form-group">
           <div class="form-label">
             <span>🌐 选择路网数据集</span>
-            <div style="display: flex; gap: 6px;">
-              <button type="button" class="pick-btn btn-upload-shp-badge" @click="openUploadModal" title="上传包含 SHP 文件的本地文件夹并编译落盘为 V3 格式">
-                📁 上传SHP
-              </button>
-              <button type="button" class="pick-btn btn-manage-badge" @click="openManageModal">
-                ⚙️ 路网管理
-              </button>
-            </div>
+            <button type="button" class="pick-btn btn-manage-badge" @click="openManageModal">
+              ⚙️ 路网管理
+            </button>
           </div>
           <!-- 行政级别单选切换 (市级、区县、乡镇、街道、SHP) -->
           <div class="level-radio-group">
@@ -193,7 +188,7 @@
           <select v-model="selectedNetworkId" class="coord-input full-width-select" @change="onNetworkChange">
             <option v-if="networksLoading" value="">加载路网配置中...</option>
             <option v-else-if="filteredNetworksList.length === 0" value="">
-              {{ selectedLevelFilter === 'shp' ? '当前暂无自定义 SHP 路网配置，请点击上方“上传SHP”添加' : '当前级别暂无 3D 立体路网配置' }}
+              {{ selectedLevelFilter === 'shp' ? '当前暂无自定义 SHP 路网配置，请在“路网管理”中上传添加' : '当前级别暂无 3D 立体路网配置' }}
             </option>
             <option v-for="net in filteredNetworksList" :key="net.id" :value="net.id">
               {{ net.name }}
@@ -426,9 +421,12 @@
         <div class="modal-body max-modal-body">
           <div class="manage-sub-header">
             <span class="sub-header-desc">包含新建、名称修改与物理删除管理：</span>
-            <div style="display: flex; gap: 8px;">
-              <button type="button" class="btn-submit btn-sm btn-upload-shp-badge" @click="openUploadFromManage">
-                📁 + 上传 SHP 文件夹新建路网
+            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+              <button type="button" class="btn-submit btn-sm btn-upload-shp-badge" @click="openUploadFromManage('folder')">
+                📁 + 上传 SHP 文件夹
+              </button>
+              <button type="button" class="btn-submit btn-sm btn-upload-shp-badge" @click="openUploadFromManage('files')">
+                📑 + 多选 4 个 SHP 文件
               </button>
               <button type="button" class="btn-submit btn-sm" @click="openXzqFromManage">
                 🏛️ + 行政区划相交新建路网
@@ -688,15 +686,39 @@
       </div>
     </div>
 
-    <!-- 上传 SHP 文件夹新建路网 Modal 弹窗 -->
+    <!-- 上传 SHP 新建路网 Modal 弹窗 (支持文件夹与多选文件双方案) -->
     <div v-if="showUploadModal" class="modal-overlay" @click.self="showUploadModal = false">
       <div class="modal-content">
         <div class="modal-header">
-          <span class="modal-title">📁 上传 SHP 文件夹新建路网 (PGRB V3)</span>
+          <span class="modal-title">📁 上传 SHP 新建路网 (PGRB V3)</span>
           <span class="modal-close" @click="showUploadModal = false">&times;</span>
         </div>
         <div class="modal-body">
+          <!-- 上传模式方案选择 (方案 1: 按文件夹 / 方案 2: 多选 4 个基本文件) -->
           <div class="form-group">
+            <label class="form-label">🎯 选择上传方案</label>
+            <div class="upload-mode-toggle">
+              <button
+                type="button"
+                class="upload-mode-btn"
+                :class="{ active: uploadMode === 'folder' }"
+                @click="switchUploadMode('folder')"
+              >
+                📁 方案 1：选择 SHP 文件夹
+              </button>
+              <button
+                type="button"
+                class="upload-mode-btn"
+                :class="{ active: uploadMode === 'files' }"
+                @click="switchUploadMode('files')"
+              >
+                📑 方案 2：多选 4 个基本文件
+              </button>
+            </div>
+          </div>
+
+          <!-- 方案 1: 选择本地包含 Shapefile 的文件夹 -->
+          <div v-if="uploadMode === 'folder'" class="form-group">
             <label class="form-label">📂 选择本地包含 Shapefile 的文件夹 (.shp, .dbf, .shx, .prj)</label>
             <input
               type="file"
@@ -705,8 +727,31 @@
               webkitdirectory
               directory
               multiple
-              @change="handleShpFolderChange"
+              @change="handleShpFilesChange($event, 'folder')"
             />
+            <div class="input-sub-tip">💡 提示：直接选中存放 Shapefile 的目录，系统将自动关联匹配的主矢量与全部配套文件。</div>
+            <div
+              v-if="shpFilesSummary.show"
+              :style="{ color: shpFilesSummary.color, fontSize: '11.5px', marginTop: '6px' }"
+            >
+              {{ shpFilesSummary.text }}
+            </div>
+          </div>
+
+          <!-- 方案 2: 多选本地 4 个基本 Shapefile 文件 -->
+          <div v-else class="form-group">
+            <label class="form-label">📄 多选本地 4 个基本文件 (按住 Ctrl 或 Shift 键同时多选)</label>
+            <input
+              type="file"
+              ref="shpFilesInputRef"
+              class="coord-input full-width-input"
+              multiple
+              accept=".shp,.dbf,.shx,.prj,.cpg,.sbn,.sbx"
+              @change="handleShpFilesChange($event, 'files')"
+            />
+            <div class="input-sub-tip">
+              📌 必备 4 大核心格式：<strong>.shp</strong> (几何形状)、<strong>.dbf</strong> (属性表)、<strong>.shx</strong> (空间索引)、<strong>.prj</strong> (坐标投影)
+            </div>
             <div
               v-if="shpFilesSummary.show"
               :style="{ color: shpFilesSummary.color, fontSize: '11.5px', marginTop: '6px' }"
@@ -808,9 +853,11 @@ const showManageModal = ref(false)
 const manageLevelFilter = ref('county') // 'city' | 'county' | 'town' | 'village' | 'shp' | 'all'
 const showXzqModal = ref(false)
 
-// 上传 SHP 文件夹状态
+// 上传 SHP 状态 (支持按文件夹与多文件两种方案)
 const showUploadModal = ref(false)
+const uploadMode = ref('folder') // 'folder' | 'files'
 const shpFolderInputRef = ref(null)
+const shpFilesInputRef = ref(null)
 const uploadNetId = ref('')
 const uploadNetName = ref('')
 const uploadEncoding = ref('GBK')
@@ -1001,27 +1048,30 @@ function getXzqItemFullName(item) {
 
 function getNetworkLevel(net) {
   if (!net) return 'county'
+
+  // 1. 优先按系统规范 ID 前缀强判定（100% 精确唯一，不受数据库 level 字段历史误标影响）
+  const id = String(net.id || net.networkId || '').toLowerCase()
+  if (id.startsWith('shp_') || id.includes('upload') || (!id.startsWith('xzq_') && id !== 'shjd_road')) return 'shp'
+  if (id.startsWith('xzq_city_') || id.includes('_city_')) return 'city'
+  if (id.startsWith('xzq_county_') || id.includes('_county_')) return 'county'
+  if (id.startsWith('xzq_town_') || id.includes('_town_')) return 'town'
+  if (id.startsWith('xzq_village_') || id.startsWith('xzq_street_') || id.includes('_village_') || id.includes('_street_') || id.startsWith('shjd')) return 'village'
+
+  // 2. 其次按明确的 level 枚举值标准匹配（避免模糊匹配导致成都市全沦为 city）
   if (net.level) {
-    const l = String(net.level).toLowerCase()
-    if (l === 'shp' || l.includes('shp') || l.includes('自定义')) return 'shp'
-    if (l === 'city' || l.includes('市级') || l === '市') return 'city'
-    if (l === 'county' || l.includes('区') || l.includes('县')) return 'county'
-    if (l === 'town' || l.includes('镇') || l.includes('乡')) return 'town'
-    if (l === 'village' || l === 'street' || l.includes('街') || l.includes('村')) return 'village'
+    const l = String(net.level).trim().toLowerCase()
+    if (l === 'shp' || l === 'custom' || l.includes('自定义')) return 'shp'
+    if (l === 'city' || l === '市级') return 'city'
+    if (l === 'county' || l === '区县') return 'county'
+    if (l === 'town' || l === '乡镇') return 'town'
+    if (l === 'village' || l === 'street' || l === '街道') return 'village'
   }
 
-  const id = String(net.networkId || net.id || '').toLowerCase()
-  if (id.startsWith('shp_') || id.includes('upload') || (!id.startsWith('xzq_') && id !== 'shjd_road' && !id.includes('city') && !id.includes('county') && !id.includes('town') && !id.includes('village') && !id.includes('street'))) return 'shp'
-  if (id.startsWith('xzq_city_') || id.includes('city')) return 'city'
-  if (id.startsWith('xzq_county_') || id.includes('county')) return 'county'
-  if (id.startsWith('xzq_town_') || id.includes('town')) return 'town'
-  if (id.startsWith('xzq_village_') || id.startsWith('xzq_street_') || id.includes('village') || id.includes('street') || id.startsWith('shjd')) return 'village'
-
-  const name = String(net.networkName || net.name || '')
-  if (name.includes('(SHP)') || name.toLowerCase().includes('shp')) return 'shp'
+  // 3. 语义推断兜底（从细粒度街道/村到粗粒度依次推断）
+  const name = String(net.name || net.networkName || '')
   if (name.includes('街道') || name.includes('村') || name.includes('社区')) return 'village'
   if (name.includes('镇') || name.includes('乡')) return 'town'
-  if (name.includes('区') || name.includes('县')) return 'county'
+  if (name.includes('区') || name.includes('县') || name.includes('旗')) return 'county'
   if (name.includes('市') || name.includes('州') || name.includes('盟')) return 'city'
 
   return 'county'
@@ -2827,7 +2877,8 @@ function openXzqFromManage() {
   initXzqLevels()
 }
 
-function openUploadModal() {
+function openUploadModal(mode = 'folder') {
+  uploadMode.value = mode
   showManageModal.value = false
   showXzqModal.value = false
   showUploadModal.value = true
@@ -2843,14 +2894,33 @@ function openUploadModal() {
   if (shpFolderInputRef.value) {
     shpFolderInputRef.value.value = ''
   }
+  if (shpFilesInputRef.value) {
+    shpFilesInputRef.value.value = ''
+  }
 }
 
-function openUploadFromManage() {
+function openUploadFromManage(mode = 'folder') {
   showManageModal.value = false
-  openUploadModal()
+  openUploadModal(mode)
 }
 
-function handleShpFolderChange(e) {
+function switchUploadMode(mode) {
+  if (uploadMode.value === mode) return
+  uploadMode.value = mode
+  detectedShpFile = null
+  detectedMatchedFiles = []
+  shpFilesSummary.show = false
+  uploadNetId.value = ''
+  uploadNetName.value = ''
+  if (shpFolderInputRef.value) {
+    shpFolderInputRef.value.value = ''
+  }
+  if (shpFilesInputRef.value) {
+    shpFilesInputRef.value.value = ''
+  }
+}
+
+function handleShpFilesChange(e, mode = uploadMode.value) {
   const files = e.target.files
   if (!files || files.length === 0) {
     detectedShpFile = null
@@ -2878,7 +2948,9 @@ function handleShpFolderChange(e) {
   if (!detectedShpFile) {
     shpFilesSummary.show = true
     shpFilesSummary.color = '#ef4444'
-    shpFilesSummary.text = '⚠️ 未在选择的文件夹中检测到 .shp 主图层文件，请确认选择的是正确的 Shapefile 目录！'
+    shpFilesSummary.text = mode === 'folder'
+      ? '⚠️ 未在选择的文件夹中检测到 .shp 主图层文件，请确认选择的是正确的 Shapefile 目录！'
+      : '⚠️ 未包含 .shp 主图层文件，请确保多选的文件中含有 .shp 几何主文件！'
     return
   }
 
@@ -2892,20 +2964,44 @@ function handleShpFolderChange(e) {
     uploadNetName.value = `${rawBaseName} (SHP)`
   }
 
-  const extSet = Array.from(new Set(detectedMatchedFiles.map(f => {
+  const foundExts = new Set(detectedMatchedFiles.map(f => {
     const n = f.name.toLowerCase()
     return n.substring(n.lastIndexOf('.'))
-  })))
+  }))
+
+  const requiredCore = ['.shp', '.dbf', '.shx', '.prj']
+  const missingCore = requiredCore.filter(ext => !foundExts.has(ext))
+
+  if (mode === 'files' && missingCore.length > 0) {
+    shpFilesSummary.show = true
+    shpFilesSummary.color = '#f59e0b'
+    shpFilesSummary.text = `⚠️ 核心文件未齐备：已选择 [ ${Array.from(foundExts).join(', ')} ]，缺少必备文件 [ ${missingCore.join(', ')} ]，请多选至少包含这 4 个基本文件！`
+    return
+  }
 
   shpFilesSummary.show = true
-  shpFilesSummary.color = '#38bdf8'
-  shpFilesSummary.text = `✅ 检测到主矢量文件: ${detectedShpFile.name} (含配套格式: ${extSet.join(', ')}，共 ${detectedMatchedFiles.length} 个相关文件)`
+  shpFilesSummary.color = '#10b981'
+  if (missingCore.length === 0) {
+    shpFilesSummary.text = `✅ 4个核心要素文件已齐备: ${detectedShpFile.name} (含 ${Array.from(foundExts).join(', ')}，共 ${detectedMatchedFiles.length} 个文件)`
+  } else {
+    shpFilesSummary.text = `✅ 检测到主矢量文件: ${detectedShpFile.name} (含配套格式: ${Array.from(foundExts).join(', ')}，共 ${detectedMatchedFiles.length} 个相关文件)`
+  }
 }
 
 async function submitShpUpload() {
   if (!detectedShpFile || detectedMatchedFiles.length === 0) {
-    alert('请先选择包含有效 .shp 矢量文件的本地文件夹！')
+    alert(uploadMode.value === 'folder' ? '请先选择包含有效 .shp 矢量文件的本地文件夹！' : '请先多选包含 .shp、.dbf、.shx、.prj 核心文件的文件列表！')
     return
+  }
+
+  if (uploadMode.value === 'files') {
+    const foundExts = new Set(detectedMatchedFiles.map(f => f.name.toLowerCase().substring(f.name.lastIndexOf('.'))))
+    const requiredCore = ['.shp', '.dbf', '.shx', '.prj']
+    const missingCore = requiredCore.filter(ext => !foundExts.has(ext))
+    if (missingCore.length > 0) {
+      alert(`⚠️ 缺少必需的核心 Shapefile 文件：${missingCore.join(', ')}！\nShapefile 构网必须同时包含 .shp、.dbf、.shx、.prj 这 4 个基本文件。`)
+      return
+    }
   }
 
   const netId = uploadNetId.value.trim()
@@ -3013,6 +3109,8 @@ async function recompileNetwork(net) {
   try {
     const formData = new URLSearchParams()
     formData.append('networkId', net.id)
+    const lvl = getNetworkLevel(net)
+    if (lvl) formData.append('level', lvl)
     const res = await fetch(`${pgrbApiBase}/recompile`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -3198,7 +3296,7 @@ async function confirmEnterBuiltNetwork() {
     const netId = pendingBuiltNetId.value
     // 确保落盘并刷新
     try {
-      await fetch(`${pgrbApiBase}/recompile?networkId=${encodeURIComponent(netId)}`, { method: 'POST' })
+      await fetch(`${pgrbApiBase}/recompile?networkId=${encodeURIComponent(netId)}&level=${encodeURIComponent(currentLevel.value)}`, { method: 'POST' })
     } catch (e) { }
     await fetchRoadNetworks(netId)
   }
@@ -3219,7 +3317,7 @@ async function finishBuildSmoothly(successMsg, netId) {
 
   // 触发后台落盘 .pgrb 二进制文件加速算路
   if (netId) {
-    fetch(`${pgrbApiBase}/recompile?networkId=${encodeURIComponent(netId)}`, { method: 'POST' }).catch(() => { })
+    fetch(`${pgrbApiBase}/recompile?networkId=${encodeURIComponent(netId)}&level=${encodeURIComponent(currentLevel.value)}`, { method: 'POST' }).catch(() => { })
   }
 
   const stepsTo100 = [
@@ -4521,6 +4619,47 @@ select.coord-input option {
 .upload-msg {
   margin-top: 10px;
   font-size: 12px;
+}
+
+/* 上传方案切换按钮组 */
+.upload-mode-toggle {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.upload-mode-btn {
+  flex: 1;
+  padding: 8px 12px;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  border-radius: 8px;
+  color: #94a3b8;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: center;
+}
+
+.upload-mode-btn:hover {
+  background: rgba(56, 189, 248, 0.15);
+  color: #e2e8f0;
+  border-color: rgba(56, 189, 248, 0.4);
+}
+
+.upload-mode-btn.active {
+  background: rgba(16, 185, 129, 0.2);
+  border-color: #10b981;
+  color: #34d399;
+  font-weight: 600;
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.25);
+}
+
+.input-sub-tip {
+  font-size: 11px;
+  color: #94a3b8;
+  margin-top: 4px;
+  line-height: 1.4;
 }
 
 /* 实时百分比进度卡片样式 */
