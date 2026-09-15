@@ -1797,6 +1797,7 @@ async function submitXzqBuild() {
     let isAsyncSupported = false
     let asyncTaskId = null
 
+    /*
     try {
       const asyncResp = await fetch(`${routeApiBase}/xzq/build-async`, {
         method: 'POST',
@@ -1816,6 +1817,7 @@ async function submitXzqBuild() {
     } catch (e) {
       console.warn('[Build Progress] /build-async 端点未就绪，降级为常规兼容模式:', e)
     }
+    */
 
     if (isAsyncSupported && asyncTaskId) {
       // ===== 方案 A：后端真实进度轮询模式 =====

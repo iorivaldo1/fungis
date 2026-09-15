@@ -471,10 +471,10 @@
           <table class="manage-table">
             <thead>
               <tr>
-                <th style="width: 25%;">路网 ID 与级别</th>
-                <th style="width: 32%;">路网别名 (可修改)</th>
-                <th style="width: 20%;">磁盘落盘与统计</th>
-                <th style="width: 23%; text-align: center;">快捷操作</th>
+                <th style="width: 24%;">路网 ID 与级别</th>
+                <th style="width: 26%;">路网别名 (可修改)</th>
+                <th style="width: 22%;">磁盘落盘与统计</th>
+                <th style="width: 28%; text-align: center; white-space: nowrap;">快捷操作</th>
               </tr>
             </thead>
             <tbody>
@@ -500,17 +500,19 @@
                     {{ (net.nodeCount || 0).toLocaleString() }} 节点 / {{ (net.edgeCount || 0).toLocaleString() }} 边
                   </div>
                 </td>
-                <td class="text-center">
-                  <button type="button" class="pick-btn btn-sm-action" @click="saveNetworkName(net)">
-                    💾 保存
-                  </button>
-                  <button type="button" class="pick-btn btn-sm-action" @click="recompileNetwork(net)">
-                    🔄 编译
-                  </button>
-                  <span v-if="net.id === 'shjd_road'" class="protected-badge">系统保护</span>
-                  <button v-else type="button" class="pick-btn btn-del-net" @click="deleteNetwork(net)">
-                    🗑️ 删除
-                  </button>
+                <td class="text-center action-btns-td">
+                  <div class="action-btn-group">
+                    <button type="button" class="pick-btn btn-sm-action" @click="saveNetworkName(net)">
+                      💾 保存
+                    </button>
+                    <button type="button" class="pick-btn btn-sm-action" @click="recompileNetwork(net)">
+                      🔄 编译
+                    </button>
+                    <span v-if="net.id === 'shjd_road'" class="protected-badge">系统保护</span>
+                    <button v-else type="button" class="pick-btn btn-del-net" @click="deleteNetwork(net)">
+                      🗑️ 删除
+                    </button>
+                  </div>
                 </td>
               </tr>
             </tbody>
@@ -3438,6 +3440,7 @@ async function submitXzqBuild() {
     let isAsyncSupported = false
     let asyncTaskId = null
 
+    /*
     try {
       const asyncResp = await fetch(`${routeApiBase}/xzq/build-async`, {
         method: 'POST',
@@ -3457,6 +3460,7 @@ async function submitXzqBuild() {
     } catch (e) {
       console.warn('[Build Progress 3D] /build-async 端点未就绪，降级为常规兼容模式:', e)
     }
+    */
 
     if (isAsyncSupported && asyncTaskId) {
       // ===== 方案 A：后端真实进度轮询模式 =====
@@ -4330,7 +4334,7 @@ select.coord-input option {
 }
 
 .manage-modal-width {
-  max-width: 820px;
+  max-width: 880px;
 }
 
 .pgrb-level-badge {
@@ -4441,9 +4445,21 @@ select.coord-input option {
   text-align: center;
 }
 
+.action-btns-td {
+  white-space: nowrap;
+}
+
+.action-btn-group {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
 .btn-sm-action {
   padding: 2px 8px;
-  margin-right: 4px;
+  margin-right: 0;
 }
 
 .protected-badge {
