@@ -180,11 +180,11 @@ const router = createRouter({
           name: 'PostGisRTree',
           component: () => import('./views/Algorithm/PostGisRTree.vue')
         },
-        {
-          path: 'astar-route-calc',
-          name: 'AStarRouteCalc',
-          component: () => import('./views/Algorithm/AStarRouteCalc.vue')
-        },
+        // {
+        //   path: 'astar-route-calc',
+        //   name: 'AStarRouteCalc',
+        //   component: () => import('./views/Algorithm/AStarRouteCalc.vue')
+        // },
         // {
         //   path: 'astar-route',
         //   name: 'AStarRoute',

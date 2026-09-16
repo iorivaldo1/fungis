@@ -975,7 +975,8 @@ let currentNetworkMeta = null
 let currentNetworkBoundary = null
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || ''
-const routeApiBase = `${apiBaseUrl}/get_geo_pg/geo/route`
+const routeDataManageApiBase = `${apiBaseUrl}/get_geo_pg/geo/route/data-manage`
+const xzqApiBase = `${apiBaseUrl}/get_geo_pg/geo/route/xzq`
 const pgrbApiBase = `${apiBaseUrl}/get_geo_pg/geo/route/pgrb`
 const tk = '73a87062ca36baaed0feebe7989f453a'
 
@@ -1221,14 +1222,24 @@ function isPointInGeoJSONBoundary(lng, lat, geojson) {
 
   const pt = [lng, lat]
   if (geom.type === 'Polygon') {
-    for (const ring of geom.coordinates) {
-      if (isPointInGeoJSONPolygon(pt, ring)) return true
+    if (!geom.coordinates || geom.coordinates.length === 0) return true
+    if (!isPointInGeoJSONPolygon(pt, geom.coordinates[0])) return false
+    for (let i = 1; i < geom.coordinates.length; i++) {
+      if (isPointInGeoJSONPolygon(pt, geom.coordinates[i])) return false
     }
-    return false
+    return true
   } else if (geom.type === 'MultiPolygon') {
+    if (!geom.coordinates || geom.coordinates.length === 0) return true
     for (const poly of geom.coordinates) {
-      for (const ring of poly) {
-        if (isPointInGeoJSONPolygon(pt, ring)) return true
+      if (poly && poly.length > 0 && isPointInGeoJSONPolygon(pt, poly[0])) {
+        let inHole = false
+        for (let i = 1; i < poly.length; i++) {
+          if (isPointInGeoJSONPolygon(pt, poly[i])) {
+            inHole = true
+            break
+          }
+        }
+        if (!inHole) return true
       }
     }
     return false
@@ -1647,7 +1658,16 @@ async function loadRoadNetworkRange(networkId) {
     if (loadSeq !== currentNetworkLoadSeq || selectedNetworkId.value !== networkId) return
 
     // 3. 待地图平移到位后，直接利用解析出的边界 GeoJSON 渲染高亮虚线框
-    const boundaryGeo = currentNetworkBoundary ? currentNetworkBoundary.geojson : meta.boundaryGeoJSON
+    let boundaryGeo = currentNetworkBoundary ? currentNetworkBoundary.geojson : meta.boundaryGeoJSON
+    if (!boundaryGeo && selectedNetworkId.value === networkId) {
+      try {
+        const xzqBResp = await fetch(`${xzqApiBase}/boundary?networkId=${encodeURIComponent(networkId)}`).then(r => r.json())
+        if (xzqBResp.code === 200 && xzqBResp.data && xzqBResp.data.geojson) {
+          const rawGj = xzqBResp.data.geojson
+          boundaryGeo = typeof rawGj === 'string' ? JSON.parse(rawGj) : rawGj
+        }
+      } catch (e) { }
+    }
     if (map && selectedNetworkId.value === networkId && boundaryGeo) {
       if (xzqHighlightLayer) {
         map.removeLayer(xzqHighlightLayer)
@@ -1677,7 +1697,7 @@ async function getXzqListByLevel(level) {
     return xzqListCache.get(level)
   }
   try {
-    const res = await fetch(`${routeApiBase}/xzq/list?level=${level}`).then(r => r.json())
+    const res = await fetch(`${xzqApiBase}/list?level=${level}`).then(r => r.json())
     if (res.code === 200 && res.data && Array.isArray(res.data.list)) {
       xzqListCache.set(level, res.data.list)
       return res.data.list
@@ -1704,9 +1724,8 @@ async function enrichNetworksWithFullName(rawList) {
   await Promise.all(Array.from(levelsNeeded).map(lvl => getXzqListByLevel(lvl)))
 
   return rawList.map(net => {
-    let cleanNetName = (net.name || '').replace(/[\s\(\（]*3D(?:立体分层)?[\)\）]*/g, '').trim()
-    if (cleanNetName && (cleanNetName.includes('市') || cleanNetName.includes('州'))) {
-      return { ...net, name: cleanNetName }
+    if (net.name && (net.name.includes('市') || net.name.includes('州'))) {
+      return { ...net }
     }
 
     if (net.id && net.id.startsWith('xzq_')) {
@@ -1721,8 +1740,8 @@ async function enrichNetworksWithFullName(rawList) {
 
         const matchItem = list.find(item =>
           String(item.id) === String(featId) ||
-          item.name === cleanNetName ||
-          (item.fields && Object.values(item.fields).some(v => v === cleanNetName))
+          item.name === net.name ||
+          (item.fields && Object.values(item.fields).some(v => v === net.name))
         )
 
         if (matchItem && matchItem.fields) {
@@ -1732,11 +1751,11 @@ async function enrichNetworksWithFullName(rawList) {
           }
         }
       }
-    } else if (net.id === 'shjd_road' && (!cleanNetName || !cleanNetName.includes('市'))) {
+    } else if (net.id === 'shjd_road' && (!net.name || !net.name.includes('市'))) {
       return { ...net, name: '成都市成华区沙河街道' }
     }
 
-    return { ...net, name: cleanNetName || net.name }
+    return { ...net }
   })
 }
 
@@ -1784,7 +1803,7 @@ async function fetchRoadNetworks(targetSelectId = null, autoSwitchMap = true) {
 
     // 始终补充检测 PostgreSQL 中已构建但可能尚未落盘 .pgrb 的 3D 路网，避免路网丢失
     try {
-      const response = await fetch(`${routeApiBase}/networks?mode=3d`)
+      const response = await fetch(`${routeDataManageApiBase}/networks?mode=3d`)
       const res = await response.json()
       if (res.code === 200 && Array.isArray(res.data)) {
         const pgrbIds = new Set(listData.map(item => item.id))
@@ -2012,7 +2031,7 @@ async function triggerNavigationGuide(routeInfo) {
     try {
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), 3500)
-      const resp = await fetch(`${routeApiBase}/road-names`, {
+      const resp = await fetch(`${routeDataManageApiBase}/road-names`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -3034,7 +3053,7 @@ async function submitShpUpload() {
     formData.append('networkName', netName)
     formData.append('encoding', encoding)
 
-    const uploadRes = await fetch(`${routeApiBase}/upload-shp-folder`, {
+    const uploadRes = await fetch(`${routeDataManageApiBase}/upload-shp-folder`, {
       method: 'POST',
       body: formData
     }).then(r => r.json())
@@ -3156,7 +3175,7 @@ async function deleteNetwork(net) {
 
 async function initXzqLevels() {
   try {
-    const res = await fetch(`${routeApiBase}/xzq/levels`).then(r => r.json())
+    const res = await fetch(`${xzqApiBase}/levels`).then(r => r.json())
     if (res.code === 200 && Array.isArray(res.data) && res.data.length > 0) {
       xzqLevels.value = res.data
       currentLevel.value = res.data[0].key
@@ -3185,7 +3204,7 @@ async function loadXzqList(level, isAppend = false) {
 
   try {
     const kw = encodeURIComponent(xzqSearchKeyword.value || '')
-    const url = `${routeApiBase}/xzq/list?level=${level}&page=${xzqPage.value}&pageSize=${xzqPageSize.value}&keyword=${kw}`
+    const url = `${xzqApiBase}/list?level=${level}&page=${xzqPage.value}&pageSize=${xzqPageSize.value}&keyword=${kw}`
     const res = await fetch(url).then(r => r.json())
 
     if (res.code === 200 && res.data) {
@@ -3230,7 +3249,7 @@ async function onSelectXzqItem(item) {
   }
 
   try {
-    const res = await fetch(`${routeApiBase}/xzq/detail?level=${currentLevel.value}&featureId=${item.id}`).then(r => r.json())
+    const res = await fetch(`${xzqApiBase}/detail?level=${currentLevel.value}&featureId=${item.id}`).then(r => r.json())
     if (res.code === 200 && res.data && map) {
       const detail = res.data
       const geoData = detail.geojson ? (typeof detail.geojson === 'string' ? JSON.parse(detail.geojson) : detail.geojson) : null
@@ -3268,7 +3287,7 @@ async function pollCheckNetworkBuilt(targetNetId, maxAttempts = 16, intervalMs =
   for (let i = 0; i < maxAttempts; i++) {
     await new Promise(r => setTimeout(r, intervalMs))
     try {
-      const resp = await fetch(`${routeApiBase}/networks?mode=3d`)
+      const resp = await fetch(`${routeDataManageApiBase}/networks?mode=3d`)
       if (resp.ok) {
         const data = await resp.json()
         if (data.code === 200 && Array.isArray(data.data)) {
@@ -3442,7 +3461,7 @@ async function submitXzqBuild() {
 
     /*
     try {
-      const asyncResp = await fetch(`${routeApiBase}/xzq/build-async`, {
+      const asyncResp = await fetch(`${xzqApiBase}/build-async`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
@@ -3466,7 +3485,7 @@ async function submitXzqBuild() {
       // ===== 方案 A：后端真实进度轮询模式 =====
       xzqPollInterval = setInterval(async () => {
         try {
-          const pResp = await fetch(`${routeApiBase}/xzq/build-progress?taskId=${encodeURIComponent(asyncTaskId)}`)
+          const pResp = await fetch(`${xzqApiBase}/build-progress?taskId=${encodeURIComponent(asyncTaskId)}`)
           if (pResp.ok) {
             const pRes = await pResp.json()
             if (pRes.code === 200 && pRes.data) {
@@ -3494,7 +3513,7 @@ async function submitXzqBuild() {
       // ===== 方案 B：双模保障（智能阶段驱动 + 阻塞请求 + 504 自动轮询检测） =====
       startSmartProgressSimulation()
 
-      const response = await fetch(`${routeApiBase}/xzq/build-with-level`, {
+      const response = await fetch(`${xzqApiBase}/build-with-level`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',

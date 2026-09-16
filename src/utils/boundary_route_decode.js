@@ -62,7 +62,12 @@ var BoundaryRouteDecode = (function (root, factory) {
     BoundaryRouteDecode.isPGBB = function (buffer) {
         var view = createDataView(buffer);
         if (!view || view.byteLength < 16) return false;
-        return readMagic(view, 0) === 'PGBB';
+        var m = readMagic(view, 0);
+        return m === 'PGBB' || m === 'PGRR';
+    };
+
+    BoundaryRouteDecode.isPGRR = function (buffer) {
+        return BoundaryRouteDecode.isPGBB(buffer);
     };
 
     /**
@@ -97,8 +102,8 @@ var BoundaryRouteDecode = (function (root, factory) {
         }
 
         var magic = readMagic(view, 0);
-        if (magic !== 'PGBB') {
-            throw new Error('[BoundaryRouteDecode] 非法 PGBB 魔数: ' + magic);
+        if (magic !== 'PGBB' && magic !== 'PGRR') {
+            throw new Error('[BoundaryRouteDecode] 非法边界魔数: ' + magic);
         }
 
         var version = view.getUint16(4, true);
@@ -139,10 +144,59 @@ var BoundaryRouteDecode = (function (root, factory) {
         }
 
         // 构造标准的 GeoJSON 几何体
-        var geojson = {
-            type: "Polygon",
-            coordinates: rings
-        };
+        // 智能重构 GeoJSON 多边形/多部件要素（杜绝多环拼接导致的起终点横贯连线）
+        var geojson;
+        if (ringCount <= 1) {
+            geojson = {
+                type: "Polygon",
+                coordinates: rings
+            };
+        } else {
+            // 识别每个环是独立多边形(飞地/多部件)还是内部孔洞
+            var outerIndices = [];
+
+            for (var i = 0; i < ringCount; i++) {
+                var isInner = false;
+                for (var j = 0; j < ringCount; j++) {
+                    if (i !== j && rings[j].length >= 3) {
+                        if (rings[i].length > 0 && BoundaryRouteDecode.isPointInSingleRing(rings[i][0], rings[j])) {
+                            isInner = true;
+                            break;
+                        }
+                    }
+                }
+                if (!isInner) {
+                    outerIndices.push(i);
+                }
+            }
+
+            if (outerIndices.length <= 1) {
+                // 只有 1 个外环（其余为内孔），按标准 Polygon 构建
+                geojson = {
+                    type: "Polygon",
+                    coordinates: rings
+                };
+            } else {
+                // 存在多个独立外环（飞地/多区域组合），按归属关系构建为 MultiPolygon
+                var multiCoords = [];
+                for (var o = 0; o < outerIndices.length; o++) {
+                    var outIdx = outerIndices[o];
+                    var currentPoly = [rings[outIdx]];
+                    for (var r = 0; r < ringCount; r++) {
+                        if (outerIndices.indexOf(r) === -1) {
+                            if (rings[r].length > 0 && BoundaryRouteDecode.isPointInSingleRing(rings[r][0], rings[outIdx])) {
+                                currentPoly.push(rings[r]);
+                            }
+                        }
+                    }
+                    multiCoords.push(currentPoly);
+                }
+                geojson = {
+                    type: "MultiPolygon",
+                    coordinates: multiCoords
+                };
+            }
+        }
 
         return {
             magic: "PGBB",
@@ -256,43 +310,78 @@ var BoundaryRouteDecode = (function (root, factory) {
     };
 
     /**
-     * 射线法判定点是否在多边形环组内 (支持内外环判定)
+     * 单环射线法快速判断经纬度坐标是否落在环内部
+     * @param {Array<number>} pt [lng, lat]
+     * @param {Array<Array<number>>} ring [[lng, lat], ...]
+     * @returns {boolean}
+     */
+    BoundaryRouteDecode.isPointInSingleRing = function (pt, ring) {
+        if (!ring || ring.length < 3) return false;
+        var x = pt[0], y = pt[1];
+        var inside = false;
+        for (var i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+            var xi = ring[i][0], yi = ring[i][1];
+            var xj = ring[j][0], yj = ring[j][1];
+            var intersect = ((yi > y) !== (yj > y)) &&
+                (x < (xj - xi) * (y - yi) / (yj - yi + 1e-12) + xi);
+            if (intersect) inside = !inside;
+        }
+        return inside;
+    };
+
+    /**
+     * 射线法判断是否在多边形内部 (支持飞地多外环与孔洞)
      * @param {Array<number>} pt [lng, lat]
      * @param {Array<Array<Array<number>>>} rings [[ [lng, lat], ... ], ...]
      * @returns {boolean}
      */
     BoundaryRouteDecode.pointInPolygon = function (pt, rings) {
         if (!rings || rings.length === 0) return true;
-        var x = pt[0], y = pt[1];
-
-        // 判定外环 (第 0 个环必须包含该点)
-        var outer = rings[0];
-        var inside = false;
-        for (var i = 0, j = outer.length - 1; i < outer.length; j = i++) {
-            var xi = outer[i][0], yi = outer[i][1];
-            var xj = outer[j][0], yj = outer[j][1];
-            var intersect = ((yi > y) !== (yj > y)) &&
-                (x < (xj - xi) * (y - yi) / (yj - yi + 1e-12) + xi);
-            if (intersect) inside = !inside;
+        if (rings.length === 1) {
+            return BoundaryRouteDecode.isPointInSingleRing(pt, rings[0]);
         }
 
-        if (!inside) return false;
-
-        // 如果存在内环（洞孔），点落在内环中则视为不在区域内
-        for (var r = 1; r < rings.length; r++) {
-            var hole = rings[r];
-            var inHole = false;
-            for (var hi = 0, hj = hole.length - 1; hi < hole.length; hj = hi++) {
-                var hxi = hole[hi][0], hyi = hole[hi][1];
-                var hxj = hole[hj][0], hyj = hole[hj][1];
-                var hit = ((hyi > y) !== (hyj > y)) &&
-                    (x < (hxj - hxi) * (y - hyi) / (hyj - hyi + 1e-12) + hxi);
-                if (hit) inHole = !inHole;
+        // 多环/多部件：如果落在任一独立外环内且不在该外环的任何内孔洞内，则判定为有效在界
+        var outerIndices = [];
+        for (var i = 0; i < rings.length; i++) {
+            var isInner = false;
+            for (var j = 0; j < rings.length; j++) {
+                if (i !== j && rings[j].length >= 3) {
+                    if (rings[i].length > 0 && BoundaryRouteDecode.isPointInSingleRing(rings[i][0], rings[j])) {
+                        isInner = true;
+                        break;
+                    }
+                }
             }
-            if (inHole) return false;
+            if (!isInner) {
+                outerIndices.push(i);
+            }
         }
 
-        return true;
+        if (outerIndices.length <= 1) {
+            if (!BoundaryRouteDecode.isPointInSingleRing(pt, rings[0])) return false;
+            for (var h = 1; h < rings.length; h++) {
+                if (BoundaryRouteDecode.isPointInSingleRing(pt, rings[h])) return false;
+            }
+            return true;
+        }
+
+        for (var o = 0; o < outerIndices.length; o++) {
+            var outIdx = outerIndices[o];
+            if (BoundaryRouteDecode.isPointInSingleRing(pt, rings[outIdx])) {
+                var inHole = false;
+                for (var r = 0; r < rings.length; r++) {
+                    if (outerIndices.indexOf(r) === -1) {
+                        if (BoundaryRouteDecode.isPointInSingleRing(pt, rings[r])) {
+                            inHole = true;
+                            break;
+                        }
+                    }
+                }
+                if (!inHole) return true;
+            }
+        }
+        return false;
     };
 
     // =========================================================================

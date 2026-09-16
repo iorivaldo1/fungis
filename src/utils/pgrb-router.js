@@ -556,20 +556,48 @@ class PGRBRouter {
             return;
         }
 
-        this.boundaryPointCount = view.getUint32(boundaryOffset, true);
-        const ringCount = view.getUint32(boundaryOffset + 4, true);
+        let ringCount = 0;
+        let totalPts = 0;
+        let curOffset = boundaryOffset;
+
+        const magic = String.fromCharCode(
+            view.getUint8(boundaryOffset),
+            view.getUint8(boundaryOffset + 1),
+            view.getUint8(boundaryOffset + 2),
+            view.getUint8(boundaryOffset + 3)
+        );
+
+        const ringSizes = [];
+        if (magic === 'PGBB') {
+            const version = view.getUint16(boundaryOffset + 4, true);
+            const flags = view.getUint16(boundaryOffset + 6, true);
+            ringCount = view.getUint32(boundaryOffset + 8, true);
+            totalPts = view.getUint32(boundaryOffset + 12, true);
+            curOffset = boundaryOffset + 16;
+            for (let r = 0; r < ringCount; r++) {
+                ringSizes.push(view.getUint32(curOffset, true));
+                curOffset += 4;
+            }
+            this.boundaryPointCount = totalPts;
+        } else {
+            this.boundaryPointCount = view.getUint32(boundaryOffset, true);
+            ringCount = view.getUint32(boundaryOffset + 4, true);
+            if (this.boundaryPointCount === 0 || ringCount === 0) {
+                this.boundaryRings = null;
+                this.boundaryCoords = null;
+                return;
+            }
+            curOffset = boundaryOffset + 8;
+            for (let r = 0; r < ringCount; r++) {
+                ringSizes.push(view.getUint32(curOffset, true));
+                curOffset += 4;
+            }
+        }
 
         if (this.boundaryPointCount === 0 || ringCount === 0) {
             this.boundaryRings = null;
             this.boundaryCoords = null;
             return;
-        }
-
-        const ringSizes = [];
-        let curOffset = boundaryOffset + 8;
-        for (let r = 0; r < ringCount; r++) {
-            ringSizes.push(view.getUint32(curOffset, true));
-            curOffset += 4;
         }
 
         const coordsInt32 = new Int32Array(buffer, curOffset, this.boundaryPointCount * 2);
@@ -589,7 +617,7 @@ class PGRBRouter {
             ptIdx += rSize;
         }
 
-        console.log(`[PGRB v2] 🗺️ 成功解析矢量边界: ${ringCount} 个多边形环, 共 ${this.boundaryPointCount} 个顶点`);
+        console.log(`[PGRB] 🗺️ 成功解析矢量边界: ${ringCount} 个多边形环, 共 ${this.boundaryPointCount} 个顶点`);
     }
 
     /**
@@ -636,22 +664,59 @@ class PGRBRouter {
             }
             return null;
         }
-        if (this.boundaryRings.length === 1) {
-            return {
-                type: "Feature",
-                geometry: {
-                    type: "Polygon",
-                    coordinates: this.boundaryRings
-                },
-                properties: {}
+        const rings = this.boundaryRings;
+        const ringCount = rings.length;
+        let geojsonGeom;
+
+        if (ringCount <= 1) {
+            geojsonGeom = {
+                type: "Polygon",
+                coordinates: rings
             };
+        } else {
+            const outerIndices = [];
+            for (let i = 0; i < ringCount; i++) {
+                let isInner = false;
+                for (let j = 0; j < ringCount; j++) {
+                    if (i !== j && rings[j].length >= 3) {
+                        if (rings[i].length > 0 && this._isPointInPolygonRing(rings[i][0], rings[j])) {
+                            isInner = true;
+                            break;
+                        }
+                    }
+                }
+                if (!isInner) outerIndices.push(i);
+            }
+
+            if (outerIndices.length <= 1) {
+                geojsonGeom = {
+                    type: "Polygon",
+                    coordinates: rings
+                };
+            } else {
+                const multiCoords = [];
+                for (let o = 0; o < outerIndices.length; o++) {
+                    const outIdx = outerIndices[o];
+                    const currentPoly = [rings[outIdx]];
+                    for (let r = 0; r < ringCount; r++) {
+                        if (outerIndices.indexOf(r) === -1) {
+                            if (rings[r].length > 0 && this._isPointInPolygonRing(rings[r][0], rings[outIdx])) {
+                                currentPoly.push(rings[r]);
+                            }
+                        }
+                    }
+                    multiCoords.push(currentPoly);
+                }
+                geojsonGeom = {
+                    type: "MultiPolygon",
+                    coordinates: multiCoords
+                };
+            }
         }
+
         return {
             type: "Feature",
-            geometry: {
-                type: "MultiPolygon",
-                coordinates: this.boundaryRings.map(ring => [ring])
-            },
+            geometry: geojsonGeom,
             properties: {}
         };
     }
@@ -661,10 +726,46 @@ class PGRBRouter {
      */
     isPointInBoundary(lng, lat) {
         if (this.boundaryRings && this.boundaryRings.length > 0) {
+            const rings = this.boundaryRings;
             const pt = [lng, lat];
-            for (const ring of this.boundaryRings) {
-                if (this._isPointInPolygonRing(pt, ring)) {
-                    return true;
+            if (rings.length === 1) {
+                return this._isPointInPolygonRing(pt, rings[0]);
+            }
+            const outerIndices = [];
+            for (let i = 0; i < rings.length; i++) {
+                let isInner = false;
+                for (let j = 0; j < rings.length; j++) {
+                    if (i !== j && rings[j].length >= 3) {
+                        if (rings[i].length > 0 && this._isPointInPolygonRing(rings[i][0], rings[j])) {
+                            isInner = true;
+                            break;
+                        }
+                    }
+                }
+                if (!isInner) outerIndices.push(i);
+            }
+
+            if (outerIndices.length <= 1) {
+                if (!this._isPointInPolygonRing(pt, rings[0])) return false;
+                for (let h = 1; h < rings.length; h++) {
+                    if (this._isPointInPolygonRing(pt, rings[h])) return false;
+                }
+                return true;
+            }
+
+            for (let o = 0; o < outerIndices.length; o++) {
+                const outIdx = outerIndices[o];
+                if (this._isPointInPolygonRing(pt, rings[outIdx])) {
+                    let inHole = false;
+                    for (let r = 0; r < rings.length; r++) {
+                        if (outerIndices.indexOf(r) === -1) {
+                            if (this._isPointInPolygonRing(pt, rings[r])) {
+                                inHole = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (!inHole) return true;
                 }
             }
             return false;
