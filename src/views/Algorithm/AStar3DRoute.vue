@@ -692,7 +692,7 @@
     <div v-if="showUploadModal" class="modal-overlay" @click.self="showUploadModal = false">
       <div class="modal-content">
         <div class="modal-header">
-          <span class="modal-title">📁 上传 SHP 新建路网 (PGRB V3)</span>
+          <span class="modal-title">📁 上传 SHP 新建路网 (PGRB V4)</span>
           <span class="modal-close" @click="showUploadModal = false">&times;</span>
         </div>
         <div class="modal-body">
@@ -791,13 +791,14 @@
           </div>
         </div>
         <div class="modal-footer">
+          <button type="button" class="btn-cancel" @click="showUploadModal = false">取消</button>
           <button
             type="button"
             class="btn-submit"
             :disabled="isUploadingShp"
             @click="submitShpUpload"
           >
-            {{ isUploadingShp ? uploadSubmitText : '🚀 上传并编译为 V3 路网' }}
+            {{ isUploadingShp ? uploadSubmitText : '🚀 上传并编译为 V4 路网' }}
           </button>
         </div>
       </div>
@@ -1612,7 +1613,7 @@ async function loadRoadNetworkRange(networkId) {
     const targetNet = Array.isArray(networksList.value) ? networksList.value.find(n => n.id === networkId) : null
     const metaUrl = `${pgrbApiBase}/meta?networkId=${encodeURIComponent(networkId)}`
     const boundaryUrl = `${pgrbApiBase}/boundary-binary?networkId=${encodeURIComponent(networkId)}`
-    console.log(`[PGRB Meta] ⚡ 从服务端获取轻量元数据与 PGBB 紧凑边界流 (零全量拓扑下载，杜绝泄露): ${networkId}`)
+    console.log(`[PGRB Meta] ⚡ 从服务端获取轻量元数据与统一边界流 (零全量拓扑下载，杜绝泄露): ${networkId}`)
 
     const [metaResp, boundaryResp] = await Promise.all([
       fetch(metaUrl),
@@ -1632,16 +1633,20 @@ async function loadRoadNetworkRange(networkId) {
     const meta = res.data
     currentNetworkMeta = meta
 
-    // 解析 PGBB 紧凑边界二进制流 (体积缩减 80%+)
+    // 解析边界二进制流 (由 Header.version 统筹，体积缩减 80%+)
     if (boundaryResp.ok) {
       const boundaryBuf = await boundaryResp.arrayBuffer()
-      if (boundaryBuf && boundaryBuf.byteLength >= 16 && BoundaryRouteDecode.isPGBB(boundaryBuf)) {
-        currentNetworkBoundary = BoundaryRouteDecode.decodeBoundary(boundaryBuf)
-        console.log(`[PGBB Boundary] ✅ 边界二进制解码成功: ${currentNetworkBoundary.ringCount} 环, ${currentNetworkBoundary.totalPointCount} 顶点, 体积 ${(boundaryBuf.byteLength / 1024).toFixed(1)} KB`)
+      if (boundaryBuf && boundaryBuf.byteLength >= 8) {
+        try {
+          currentNetworkBoundary = BoundaryRouteDecode.decodeBoundary(boundaryBuf)
+          console.log(`[PGRB Boundary] ✅ 边界二进制解码成功: ${currentNetworkBoundary.ringCount} 环, ${currentNetworkBoundary.totalPointCount} 顶点, 体积 ${(boundaryBuf.byteLength / 1024).toFixed(1)} KB`)
+        } catch (bErr) {
+          console.warn(`[PGRB Boundary] 边界流解码异常:`, bErr)
+        }
       }
     }
 
-    console.log(`[PGRB v${meta.version || 2}] 服务端常驻内存图就绪: ${meta.nodeCount} 节点, ${meta.edgeCount} 边${meta.boundaryPointCount > 0 ? `, 边界点: ${meta.boundaryPointCount}` : ''} ⚡`)
+    console.log(`[PGRB v${meta.version || 4}] 服务端常驻内存图就绪: ${meta.nodeCount} 节点, ${meta.edgeCount} 边${meta.boundaryPointCount > 0 ? `, 边界点: ${meta.boundaryPointCount}` : ''}${meta.boundaryRingCount ? `, 边界环: ${meta.boundaryRingCount}` : ''} ⚡`)
 
     // 2. 地图平滑移动/缩放至路网 BBOX 范围
     if (meta.bbox && map) {
@@ -3062,8 +3067,8 @@ async function submitShpUpload() {
       throw new Error(uploadRes.msg || '上传并在 PostGIS 构建拓扑失败')
     }
 
-    uploadSubmitText.value = '⏳ 编译 V3...'
-    uploadMsg.text = '⏳ [步骤 2/2] PostGIS 拓扑构建成功，正在编译落盘为 V3 二进制路网与凹包边界...'
+    uploadSubmitText.value = '⏳ 编译 V4...'
+    uploadMsg.text = '⏳ [步骤 2/2] PostGIS 拓扑构建成功，正在编译落盘为 V4 紧凑二进制路网与统一多环边界...'
     const compileParams = new URLSearchParams()
     compileParams.append('networkId', netId)
     compileParams.append('level', 'shp')
@@ -3075,7 +3080,7 @@ async function submitShpUpload() {
     }).then(r => r.json())
 
     if (compileRes.code !== 200) {
-      throw new Error(compileRes.msg || '编译 V3 PGRB 失败')
+      throw new Error(compileRes.msg || '编译 V4 PGRB 失败')
     }
 
     const sizeFmt = compileRes.data && compileRes.data.fileSizeFmt ? compileRes.data.fileSizeFmt : '就绪'
@@ -3090,7 +3095,7 @@ async function submitShpUpload() {
   } catch (err) {
     console.error('SHP Upload and Build Error:', err)
     isUploadingShp.value = false
-    uploadSubmitText.value = '🚀 上传并编译为 V3 路网'
+    uploadSubmitText.value = '🚀 上传并编译为 V4 路网'
     uploadMsg.color = '#ef4444'
     uploadMsg.text = `❌ ${err.message}`
   }
@@ -3336,7 +3341,7 @@ async function finishBuildSmoothly(successMsg, netId) {
   clearBuildTimers()
   pendingBuiltNetId.value = netId
 
-  // 触发后台落盘 .pgrb 二进制文件加速算路
+  // 触发后台落盘 .pgrb 二进制文件加速算路 (兼容兜底)
   if (netId) {
     fetch(`${pgrbApiBase}/recompile?networkId=${encodeURIComponent(netId)}&level=${encodeURIComponent(currentLevel.value)}`, { method: 'POST' }).catch(() => { })
   }
@@ -3344,7 +3349,7 @@ async function finishBuildSmoothly(successMsg, netId) {
   const stepsTo100 = [
     { step: 4, percent: 75, title: '全局立体拓扑构建 (pgr_createTopology)', detail: '正在构建立体连通关系与端点顶点表...' },
     { step: 5, percent: 90, title: '通行代价与立体属性权值计算', detail: '正在根据单双向与高架隧道特征更新通行成本...' },
-    { step: 6, percent: 100, title: '✓ 3D立体路网构建成功！', detail: successMsg || '空间包围盒与路网系统表已全部注册完成' }
+    { step: 6, percent: 100, title: '✓ 3D立体路网 (PGRB v4) 构建成功！', detail: successMsg || '空间包围盒与路网系统表已全部注册完成' }
   ]
 
   for (const s of stepsTo100) {
@@ -3359,7 +3364,7 @@ async function finishBuildSmoothly(successMsg, netId) {
 
   xzqBuildPercent.value = 100
   xzqBuildCurrentStep.value = 6
-  xzqBuildStageTitle.value = '✓ 3D 立体分层路网构建成功！'
+  xzqBuildStageTitle.value = '✓ 3D 立体分层路网 (PGRB v4) 构建成功！'
   xzqBuildStageDetail.value = successMsg || '空间包围盒与系统注册就绪，可立即开启 3D 立体路径规划'
   isBuildFinishedSuccess.value = true
   isBuildFailed.value = false
@@ -3397,18 +3402,18 @@ function startSmartProgressSimulation() {
       xzqBuildPercent.value = Math.min(65, 35 + Math.floor(((sec - 18) / 37) * 30))
     } else if (sec < 75) {
       xzqBuildCurrentStep.value = 4
-      xzqBuildStageTitle.value = '全局立体拓扑构建 (pgr_createTopology)'
-      xzqBuildStageDetail.value = '正在构建立体连通关系与端点顶点表 (clean := true)...'
+      xzqBuildStageTitle.value = '全局立体拓扑构建与 v4 二进制编译'
+      xzqBuildStageDetail.value = '正在构建立体连通关系，并编译落盘为 PGRB v4 二进制路网...'
       xzqBuildPercent.value = Math.min(80, 65 + Math.floor(((sec - 55) / 20) * 15))
     } else if (sec < 90) {
       xzqBuildCurrentStep.value = 5
-      xzqBuildStageTitle.value = '通行代价与立体属性权值计算'
-      xzqBuildStageDetail.value = '正在根据单双向与高架隧道特征更新通行成本，并创建多维复合索引...'
+      xzqBuildStageTitle.value = '通行代价与 v4 多环边界落盘'
+      xzqBuildStageDetail.value = '正在根据单双向与立体特征更新通行成本，并抽取统一多环边界...'
       xzqBuildPercent.value = Math.min(92, 80 + Math.floor(((sec - 75) / 15) * 12))
     } else {
       xzqBuildCurrentStep.value = 6
       xzqBuildStageTitle.value = '空间包围盒与 3D 系统表注册'
-      xzqBuildStageDetail.value = '市级 3D 数据量庞大，后台正在完成包围盒分析与 3d_road 系统表注册...'
+      xzqBuildStageDetail.value = '数据量庞大，后台正在完成包围盒分析与 3d_road 系统表注册...'
       if (xzqBuildPercent.value < 98) {
         xzqBuildPercent.value = Math.min(98, xzqBuildPercent.value + 1)
       }
@@ -3459,28 +3464,6 @@ async function submitXzqBuild() {
     let isAsyncSupported = false
     let asyncTaskId = null
 
-    /*
-    try {
-      const asyncResp = await fetch(`${xzqApiBase}/build-async`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'Accept': 'application/json'
-        },
-        body: formData
-      })
-      if (asyncResp.ok) {
-        const asyncRes = await asyncResp.json()
-        if (asyncRes.code === 200 && asyncRes.data && asyncRes.data.taskId) {
-          isAsyncSupported = true
-          asyncTaskId = asyncRes.data.taskId
-        }
-      }
-    } catch (e) {
-      console.warn('[Build Progress 3D] /build-async 端点未就绪，降级为常规兼容模式:', e)
-    }
-    */
-
     if (isAsyncSupported && asyncTaskId) {
       // ===== 方案 A：后端真实进度轮询模式 =====
       xzqPollInterval = setInterval(async () => {
@@ -3510,10 +3493,11 @@ async function submitXzqBuild() {
         }
       }, 800)
     } else {
-      // ===== 方案 B：双模保障（智能阶段驱动 + 阻塞请求 + 504 自动轮询检测） =====
+      // ===== 方案 B：全流程一体化构建落盘 (优先调用 pgrb /build-and-save 核心端点) =====
       startSmartProgressSimulation()
 
-      const response = await fetch(`${xzqApiBase}/build-with-level`, {
+      const buildUrl = `${pgrbApiBase}/build-and-save`
+      const response = await fetch(buildUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
@@ -3547,7 +3531,7 @@ async function submitXzqBuild() {
       }
 
       if (res && res.code === 200) {
-        await finishBuildSmoothly((res.data && res.data.msg) || '空间索引与 3D 拓扑关系已注册完成', netId)
+        await finishBuildSmoothly((res.data && res.data.msg) || 'PGRB v4 二进制路网落盘与拓扑构建完成', netId)
       } else {
         clearBuildTimers()
         isBuildFailed.value = true

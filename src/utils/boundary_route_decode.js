@@ -57,13 +57,20 @@ var BoundaryRouteDecode = (function (root, factory) {
     }
 
     /**
-     * 判断是否为有效 PGBB 边界二进制流
+     * 判断是否为有效边界二进制流 (支持现行 8B 规约与历史 PGBB/PGRR 头部)
      */
     BoundaryRouteDecode.isPGBB = function (buffer) {
         var view = createDataView(buffer);
-        if (!view || view.byteLength < 16) return false;
+        if (!view || view.byteLength < 8) return false;
         var m = readMagic(view, 0);
-        return m === 'PGBB' || m === 'PGRR';
+        if (m === 'PGBB' || m === 'PGRR') return true;
+        var ringCount = view.getUint32(0, true);
+        var totalPointCount = view.getUint32(4, true);
+        return ringCount > 0 && ringCount < 10000 && totalPointCount >= ringCount && view.byteLength >= 8 + ringCount * 4 + totalPointCount * 8;
+    };
+
+    BoundaryRouteDecode.isBoundary = function (buffer) {
+        return BoundaryRouteDecode.isPGBB(buffer);
     };
 
     BoundaryRouteDecode.isPGRR = function (buffer) {
@@ -97,21 +104,32 @@ var BoundaryRouteDecode = (function (root, factory) {
      */
     BoundaryRouteDecode.decodeBoundary = function (buffer) {
         var view = createDataView(buffer);
-        if (!view || view.byteLength < 16) {
-            throw new Error('[BoundaryRouteDecode] PGBB 数据长度不足 16 字节');
+        if (!view || view.byteLength < 8) {
+            throw new Error('[BoundaryRouteDecode] 边界数据长度不足 8 字节');
         }
 
+        var offset = 0;
         var magic = readMagic(view, 0);
-        if (magic !== 'PGBB' && magic !== 'PGRR') {
-            throw new Error('[BoundaryRouteDecode] 非法边界魔数: ' + magic);
+        var ringCount, totalPointCount, version, flags;
+        if (magic === 'PGBB' || magic === 'PGRR') {
+            // 兼容过渡版本带 PGBB/PGRR 头部的数据流
+            if (view.byteLength < 16) {
+                throw new Error('[BoundaryRouteDecode] 边界数据长度不足 16 字节');
+            }
+            version = view.getUint16(4, true);
+            flags = view.getUint16(6, true);
+            ringCount = view.getUint32(8, true);
+            totalPointCount = view.getUint32(12, true);
+            offset = 16;
+        } else {
+            // 现行 PGRB v4 统一规约：由 ringCount(4B) 与 totalPointCount(4B) 直接引导
+            version = 4;
+            flags = 0;
+            ringCount = view.getUint32(0, true);
+            totalPointCount = view.getUint32(4, true);
+            offset = 8;
         }
 
-        var version = view.getUint16(4, true);
-        var flags = view.getUint16(6, true);
-        var ringCount = view.getUint32(8, true);
-        var totalPointCount = view.getUint32(12, true);
-
-        var offset = 16;
         var ringSizes = new Uint32Array(ringCount);
         for (var r = 0; r < ringCount; r++) {
             ringSizes[r] = view.getUint32(offset, true);
