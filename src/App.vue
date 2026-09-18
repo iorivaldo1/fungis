@@ -239,7 +239,7 @@
     </nav>
 
     <!-- 右侧主体 -->
-    <main class="main-content">
+    <main class="main-content" ref="mainContentRef">
       <!-- 视图区域 -->
       <div class="router-view-container" v-if="isReady">
         <router-view />
@@ -249,7 +249,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { setToken, getToken } from '@/utils/request.js'
 import IconLogo from './components/icons/IconLogo.vue'
@@ -265,6 +265,21 @@ import IconGear from './components/icons/IconGear.vue'
 const route = useRoute()
 const isHhglPage = computed(() => route.path.startsWith('/hhgl'))
 
+const mainContentRef = ref(null)
+let resizeObserver = null
+let transitionTimer = null
+
+// 统一调度视口重新计算事件，通知地图引擎（天地图、Leaflet、Cesium、Three.js 等）
+const dispatchResize = () => {
+  window.dispatchEvent(new Event('resize'))
+}
+
+// 侧边栏展开/收起过渡动画耗时 300ms，在动画结束时进行一次精准平稳的校准，避免过程与结束抖动
+const notifySidebarTransition = () => {
+  if (transitionTimer) clearTimeout(transitionTimer)
+  transitionTimer = setTimeout(dispatchResize, 310)
+}
+
 // 首页判断（包含根路径与别名 /gispros）
 const isHomePage = (path) => path === '/' || path === '/gispros'
 const isSidebarCollapsed = ref(!isHomePage(route.path))
@@ -274,6 +289,7 @@ watch(
   () => route.path,
   (newPath) => {
     isSidebarCollapsed.value = !isHomePage(newPath)
+    notifySidebarTransition()
   },
   { immediate: true }
 )
@@ -317,10 +333,34 @@ onMounted(async () => {
   } finally {
     isReady.value = true
   }
+
+  // 监听主体容器尺寸变化，自适应通知页面内所有地图和3D画布
+  if (typeof ResizeObserver !== 'undefined' && mainContentRef.value) {
+    let animFrame = null
+    resizeObserver = new ResizeObserver(() => {
+      if (animFrame) cancelAnimationFrame(animFrame)
+      animFrame = requestAnimationFrame(() => {
+        dispatchResize()
+      })
+    })
+    resizeObserver.observe(mainContentRef.value)
+  }
+})
+
+onUnmounted(() => {
+  if (transitionTimer) {
+    clearTimeout(transitionTimer)
+    transitionTimer = null
+  }
+  if (resizeObserver) {
+    resizeObserver.disconnect()
+    resizeObserver = null
+  }
 })
 
 const toggleSidebar = () => {
   isSidebarCollapsed.value = !isSidebarCollapsed.value
+  notifySidebarTransition()
 }
 
 const toggleCesiumMenu = () => {

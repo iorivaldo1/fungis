@@ -1,3 +1,33 @@
+/**
+ * ==============================================================================
+ * 天地图 JS API (tianditu.api.js 4.0) 本地定制与 Bug 修复记录
+ * ==============================================================================
+ * 
+ * 1. 修复侧边栏收起时右侧出现 240px 空白问题（容器级自动响应 Resize）：
+ *    - 位置：T.Map.prototype.initialize
+ *    - 原因：天地图仅监听了 window.resize，侧边栏收缩属于纯页面内部 DOM 变化，window 未变动，
+ *            导致天地图内部 clientWidth 缓存固化在旧宽度，右侧新增区域不加载瓦片。
+ *    - 修复：为地图容器 this.Ow 挂载原生 ResizeObserver，容器尺寸变动时自动触发瓦片补齐。
+ * 
+ * 2. 修复地图销毁时的内存泄漏：
+ *    - 位置：T.Map.prototype.Qq
+ *    - 修复：在地图销毁方法 Qq 中解绑并注销 this._ro (disconnect)。
+ * 
+ * 3. 修复侧边栏收起/展开后瓦片“向右多余位移/抖动”问题（禁用重置中心平移）：
+ *    - 位置：T.Map.prototype.checkResize
+ *    - 原因：天地图底层默认包含 t.qw && this.Ww(s) 居中平移逻辑。当容器宽度增加 240px 时，
+ *            底层会自动将瓦片整体向右位移 120px，破坏了侧边栏左收滑移的视觉连续性。
+ *    - 修复：改为 this.rw(T.extend({ qw: !1 }, t))，默认 qw: false (即 pan: false)，
+ *            禁止无意义的向右平移，保持视口内已有瓦片与地物纹丝不动，仅加载右侧补齐瓦片。
+ * 
+ * 4. 修复尺寸变化 200ms 后的延时吸附抽动：
+ *    - 位置：T.Map.prototype.dW
+ *    - 原因：旧代码调用 this.rw({ Yw: !0 })，参数 Yw: !0 导致 moveend 延时 200ms 执行，
+ *            使图层在动画停止 200ms 后产生二次跳变吸附。
+ *    - 修复：改为 this.rw({ qw: !1 })，消除延时与平移抖动，实现平滑同步对齐。
+ * ==============================================================================
+ */
+
 window.TMAP_AUTHKEY = window.TMAP_AUTHKEY || "";
 window.T = window.T || {};
 window.T.setAuthKey = function (token) {
@@ -661,7 +691,7 @@ window.T.setAuthKey = function (token) {
             aW: 1,
             datasourcesControl: !1
         }, initialize: function (t, i) {
-            i = T.setOptions(this, i), this.SW = "EPSG:900913", i.projection ? "EPSG:4326" == i.projection ? (i.IW = T.gq.uW, this.SW = "EPSG:4326", T.gq.EW = 1) : (i.IW = T.gq.UW, this.SW = "EPSG:900913", i.projection = this.SW, T.gq.EW = 0) : i.projection = this.SW, this.sW(t), this.DW(), this.dW = T.D(this.dW, this), this.FW(), i.maxBounds && this.setMaxBounds(i.maxBounds), void 0 !== i.zoom && (this.fW = this.GW(i.zoom)), i.center && void 0 !== i.zoom && this.gW(T.fq(i.center), i.zoom, { reset: !0 }), this.HW = [], this.hW = {}, this.JW = [], this.jW = [], this.KW = {}, this.kW = !0, this.initLayers = [], this.B(), this.defaultMapType = null, this.LW(this), this.lW(this.options.layers)
+            i = T.setOptions(this, i), this.SW = "EPSG:900913", i.projection ? "EPSG:4326" == i.projection ? (i.IW = T.gq.uW, this.SW = "EPSG:4326", T.gq.EW = 1) : (i.IW = T.gq.UW, this.SW = "EPSG:900913", i.projection = this.SW, T.gq.EW = 0) : i.projection = this.SW, this.sW(t), this.DW(), this.dW = T.D(this.dW, this), typeof ResizeObserver !== "undefined" && this.Ow && (function(self_m){ var ro_frame = null; self_m._ro = new ResizeObserver(function(){ if(self_m.Ow && self_m.Ow.clientWidth > 0){ if(ro_frame) cancelAnimationFrame(ro_frame); ro_frame = requestAnimationFrame(function(){ self_m.rw({ qw: !1 }); }); } }); self_m._ro.observe(self_m.Ow); })(this), this.FW(), i.maxBounds && this.setMaxBounds(i.maxBounds), void 0 !== i.zoom && (this.fW = this.GW(i.zoom)), i.center && void 0 !== i.zoom && this.gW(T.fq(i.center), i.zoom, { reset: !0 }), this.HW = [], this.hW = {}, this.JW = [], this.jW = [], this.KW = {}, this.kW = !0, this.initLayers = [], this.B(), this.defaultMapType = null, this.LW(this), this.lW(this.options.layers)
         }, getCode: function () {
             return this.SW
         }, gW: function (t, i) {
@@ -736,8 +766,8 @@ window.T.setAuthKey = function (token) {
                 oldSize: i,
                 newSize: n
             })) : this
-        }, checkResize: function () {
-            this.rw()
+        }, checkResize: function (t) {
+            this.rw(T.extend({ qw: !1 }, t))
         }, uw: function () {
             return this.setZoom(this.GW(this.fW)), this.options.AW || this.wQ("viewreset"), this.Iw()
         }, iw: function (t, i) {
@@ -745,6 +775,7 @@ window.T.setAuthKey = function (token) {
             var n = this[t] = new i(this);
             return this.HW.push(n), this.options[t] && n.enable(), this
         }, Qq: function () {
+            this._ro && (this._ro.disconnect(), this._ro = null);
             this.FW(!0);
             try {
                 delete this.Ow._tdt
@@ -884,7 +915,7 @@ window.T.setAuthKey = function (token) {
             }
         }, dW: function () {
             T.S.V(this.tE), this.tE = T.S.C(function () {
-                this.rw({ Yw: !0 })
+                this.rw({ qw: !1 })
             }, this)
         }, vw: function () {
             this.Ow.scrollTop = 0, this.Ow.scrollLeft = 0

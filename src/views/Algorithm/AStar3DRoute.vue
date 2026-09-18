@@ -7,7 +7,7 @@
     <div id="animateCtrlBar" class="animate-ctrl-bar" v-if="showAnimBar">
       <div class="anim-bar-header">
         <div class="anim-bar-title-group">
-          <span class="anim-icon">🎬</span>
+          <span class="anim-icon"></span>
           <span class="anim-title">A* 堆动画演进</span>
           <span class="anim-badge" :class="animBadgeClass">{{ animBadgeText }}</span>
         </div>
@@ -23,13 +23,19 @@
       </div>
       <div class="anim-bar-body">
         <div class="anim-ctrl-group">
-          <button type="button" class="anim-ctrl-btn" :disabled="animStepIndex <= 1" @click="jumpFirstAnimStep" title="跳转到第1步 (起点吸附)">⏮ 第一步</button>
-          <button type="button" class="anim-ctrl-btn" :disabled="animStepIndex <= 1" @click="prevAnimStep" title="上一步 (后退1步)">◀ 上一步</button>
-          <button type="button" class="anim-ctrl-btn" @click="togglePlayPauseAnim" title="暂停/播放">{{ isAnimRunning && !isAnimPaused ? '⏸️ 暂停' : '▶️ 播放' }}</button>
-          <button type="button" class="anim-ctrl-btn" :disabled="animStepIndex >= animTotalSteps" @click="nextAnimStep" title="下一步 (前进1步)">下一步 ▶</button>
-          <button type="button" class="anim-ctrl-btn" :disabled="animStepIndex >= animTotalSteps" @click="jumpLastAnimStep" title="跳转到最后一步 (生成最终最优路径)">最后一步 ⏭</button>
+          <button type="button" class="anim-ctrl-btn" :disabled="animStepIndex <= 1" @click="jumpFirstAnimStep"
+            title="跳转到第1步 (起点吸附)">⏮ 第一步</button>
+          <button type="button" class="anim-ctrl-btn" :disabled="animStepIndex <= 1" @click="prevAnimStep"
+            title="上一步 (后退1步)">◀ 上一步</button>
+          <button type="button" class="anim-ctrl-btn" @click="togglePlayPauseAnim" title="暂停/播放">{{ isAnimRunning &&
+            !isAnimPaused ? '⏸️ 暂停' : '▶️ 播放' }}</button>
+          <button type="button" class="anim-ctrl-btn" :disabled="animStepIndex >= animTotalSteps" @click="nextAnimStep"
+            title="下一步 (前进1步)">下一步 ▶</button>
+          <button type="button" class="anim-ctrl-btn" :disabled="animStepIndex >= animTotalSteps"
+            @click="jumpLastAnimStep" title="跳转到最后一步 (生成最终最优路径)">最后一步 ⏭</button>
           <button type="button" class="anim-ctrl-btn" @click="replayAnimation" title="从头重播">🔁 重播</button>
-          <button type="button" class="anim-ctrl-btn btn-anim-stop" @click="clearAnimateLayers" title="清除动画">⏹️ 清除</button>
+          <button type="button" class="anim-ctrl-btn btn-anim-stop" @click="clearAnimateLayers" title="清除动画">⏹️
+            清除</button>
         </div>
         <div class="anim-speed-group">
           <span class="anim-label">速度:</span>
@@ -40,7 +46,8 @@
           <span class="legend-item"><span class="legend-red-dot"></span> 出堆顶点(本步红)</span>
           <span class="legend-item"><span class="legend-blue-dot"></span> 堆顶/已出堆顶点(蓝)</span>
           <span class="legend-item"><span class="legend-green-line"></span> 堆顶连线(绿)</span>
-          <span class="legend-item"><span class="legend-gold-dot"></span><span class="legend-gold-line"></span> 未选分支/边(浅暗黄)</span>
+          <span class="legend-item"><span class="legend-gold-dot"></span><span class="legend-gold-line"></span>
+            未选分支/边(浅暗黄)</span>
           <span class="legend-item"><span class="legend-cyan-line"></span> 最优路径</span>
         </div>
       </div>
@@ -54,7 +61,6 @@
     <div id="navDrawerPanel" class="nav-drawer-panel" :class="{ open: isNavDrawerOpen }">
       <div class="nav-drawer-header">
         <div class="nav-header-left">
-          <span class="nav-drawer-icon">🧭</span>
           <div>
             <div class="nav-drawer-title">路径导航指引</div>
             <div class="nav-drawer-subtitle">{{ navTripSubtitle }}</div>
@@ -78,7 +84,7 @@
           </button>
           <button type="button" class="nav-ctrl-btn btn-curr"
             :disabled="!currentNavGuideCache || !currentNavGuideCache.steps" @click="currNavStep" title="地图定位当前步骤">
-            <span>🎯 当前步</span>
+            <span> 当前步</span>
           </button>
           <button type="button" class="nav-ctrl-btn btn-next"
             :disabled="!currentNavGuideCache || !currentNavGuideCache.steps || currentNavStepIdx >= currentNavGuideCache.steps.length - 1"
@@ -96,7 +102,7 @@
           <div
             v-else-if="!currentNavGuideCache || !currentNavGuideCache.steps || currentNavGuideCache.steps.length === 0"
             class="nav-loading-placeholder">
-            <div style="font-size: 26px; margin-bottom: 6px;">🧭</div>
+            <div style="font-size: 26px; margin-bottom: 6px;"></div>
             <div style="font-weight: 600; color: #cbd5e1; margin-bottom: 4px;">暂无分步指引内容</div>
             <div style="color: #64748b; font-size: 11.5px;">请完成路径规划后点击“查看详细导航指引”</div>
           </div>
@@ -126,7 +132,7 @@
             <!-- 当前步卡片 -->
             <div v-if="currStep" class="nav-three-node-item role-curr active" @click="currNavStep">
               <div class="node-header">
-                <span class="step-role-tag curr">🎯 当前步</span>
+                <span class="step-role-tag curr"> 当前步</span>
                 <span class="node-click-hint">正在指引</span>
               </div>
               <div class="node-body">
@@ -189,7 +195,7 @@
         <!-- 选择路网数据集 -->
         <div class="form-group">
           <div class="form-label">
-            <span>🌐 选择路网数据集</span>
+            <span> 选择路网数据集</span>
             <button type="button" class="pick-btn btn-manage-badge" @click="openManageModal">
               ⚙️ 路网管理
             </button>
@@ -242,7 +248,7 @@
         <!-- 寻路范式单选切换 (1:1 / 1:N / N:1) -->
         <div class="form-group">
           <div class="form-label">
-            <span>🎯 规划范式</span>
+            <span> 规划范式</span>
           </div>
           <div class="paradigm-selector-group">
             <div class="paradigm-item" :class="{ active: currentParadigm === '1_to_1' }"
@@ -269,7 +275,7 @@
             <span>📍 起点 (经度, 纬度)</span>
             <button type="button" class="pick-btn btn-manage-badge" :class="{ active: pickingMode === 'start' }"
               @click="togglePickMode('start')">
-              {{ pickingMode === 'start' ? '📍 正在选点...' : '🎯 地图选点' }}
+              {{ pickingMode === 'start' ? '📍 正在选点...' : ' 地图选点' }}
             </button>
           </div>
           <div class="coord-row">
@@ -319,7 +325,7 @@
             <span>🏁 终点 (经度, 纬度)</span>
             <button type="button" class="pick-btn btn-manage-badge" :class="{ active: pickingMode === 'end' }"
               @click="togglePickMode('end')">
-              {{ pickingMode === 'end' ? '🏁 正在选点...' : '🎯 地图选点' }}
+              {{ pickingMode === 'end' ? '🏁 正在选点...' : ' 地图选点' }}
             </button>
           </div>
           <div class="coord-row">
@@ -365,17 +371,17 @@
 
         <label class="option-row">
           <input type="checkbox" v-model="chkShowRoute" @change="updateRouteVisibility" />
-          <span>🛣️ 显示规划路径</span>
+          <span> 显示规划路径</span>
         </label>
 
         <label class="option-row">
           <input type="checkbox" v-model="chkShowBaseMap" @change="toggleBaseMap" />
-          <span>🗺️ 显示天地图底图</span>
+          <span>显示天地图底图</span>
         </label>
 
         <label class="option-row">
           <input type="checkbox" v-model="chkShowRoads" @change="toggleRoadLayer" />
-          <span>👁️ 显示数据源 (WMTS 瓦片)</span>
+          <span> 显示数据源 (WMTS 瓦片)</span>
         </label>
 
         <!-- 结果反馈区域 -->
@@ -428,7 +434,7 @@
           <!-- 查看详细导航指引按钮入口 -->
           <div class="result-action-row" v-if="currentRouteData" style="margin-top: 10px;">
             <button type="button" class="btn-nav-guide" @click="openAndTriggerNavGuide">
-              <span>🧭 查看详细导航指引</span>
+              <span> 查看详细导航指引</span>
               <span class="nav-guide-arrow">➔</span>
             </button>
           </div>
@@ -438,22 +444,19 @@
       <!-- 底部固定操作区：规划与重置按钮常驻可见 -->
       <div class="route-panel-footer">
         <div class="action-row" style="margin-bottom: 8px;">
-          <button
-            type="button"
-            class="btn-animate-action"
+          <button type="button" class="btn-animate-action"
             :disabled="currentParadigm !== '1_to_1' || isPlanning || isAnalyzing"
-            :title="currentParadigm !== '1_to_1' ? '1对N和N对1模式暂不支持路径演进分析 (仅支持1对1单路径模式)' : '🎬 分析1对1路径演进过程'"
-            @click="handleAnimateRoute"
-          >
-            {{ isAnalyzing ? '⏳ 分析计算中...' : '🎬 分析路径' }}
+            :title="currentParadigm !== '1_to_1' ? '1对N和N对1模式暂不支持路径演进分析 (仅支持1对1单路径模式)' : ' 分析1对1路径演进过程'"
+            @click="handleAnimateRoute">
+            {{ isAnalyzing ? '⏳ 分析计算中...' : ' 分析路径' }}
           </button>
         </div>
         <div class="action-row">
           <button type="button" class="btn-submit" :disabled="isPlanning || isAnalyzing" @click="planRoute">
-            {{ isPlanning ? '⏳ 计算中...' : '🚀 开始规划路径' }}
+            {{ isPlanning ? '⏳ 计算中...' : ' 开始规划路径' }}
           </button>
           <button type="button" class="btn-reset" @click="resetRoute">
-            🔄 重置
+            重置
           </button>
         </div>
       </div>
@@ -466,7 +469,8 @@
     </div>
 
     <!-- 路网管理 Modal 弹窗 -->
-    <div v-if="showManageModal" class="modal-overlay" @click.self="showManageModal = false">
+    <div v-if="showManageModal" class="modal-overlay" @mousedown="onOverlayMouseDown"
+      @click="handleOverlayClick(() => (showManageModal = false), $event)">
       <div class="modal-content manage-modal-width">
         <div class="modal-header">
           <span class="modal-title">⚙️ 数据库路网数据集管理 (3D 立体分层)</span>
@@ -476,10 +480,12 @@
           <div class="manage-sub-header">
             <span class="sub-header-desc">包含新建、名称修改与物理删除管理：</span>
             <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-              <button type="button" class="btn-submit btn-sm btn-upload-shp-badge" @click="openUploadFromManage('folder')">
+              <button type="button" class="btn-submit btn-sm btn-upload-shp-badge"
+                @click="openUploadFromManage('folder')">
                 📁 + 上传 SHP 文件夹
               </button>
-              <button type="button" class="btn-submit btn-sm btn-upload-shp-badge" @click="openUploadFromManage('files')">
+              <button type="button" class="btn-submit btn-sm btn-upload-shp-badge"
+                @click="openUploadFromManage('files')">
                 📑 + 多选 4 个 SHP 文件
               </button>
               <button type="button" class="btn-submit btn-sm" @click="openXzqFromManage">
@@ -560,7 +566,7 @@
                       💾 保存
                     </button>
                     <button type="button" class="pick-btn btn-sm-action" @click="recompileNetwork(net)">
-                      🔄 编译
+                      编译
                     </button>
                     <span v-if="net.id === 'shjd_road'" class="protected-badge">系统保护</span>
                     <button v-else type="button" class="pick-btn btn-del-net" @click="deleteNetwork(net)">
@@ -581,7 +587,8 @@
     </div>
 
     <!-- 行政区划相交新建路网 Modal 弹窗 -->
-    <div v-if="showXzqModal" class="modal-overlay" @click.self="showXzqModal = false">
+    <div v-if="showXzqModal" class="modal-overlay" @mousedown="onOverlayMouseDown"
+      @click="handleOverlayClick(() => (showXzqModal = false), $event)">
       <div class="modal-content">
         <div class="modal-header">
           <span class="modal-title">🏛️ 行政区划相交新建路网 (3D 立体分层)</span>
@@ -589,7 +596,7 @@
         </div>
         <div class="modal-body">
           <div class="form-group">
-            <label class="form-label">🌐 选择行政区划级别</label>
+            <label class="form-label"> 选择行政区划级别</label>
             <div class="xzq-level-container">
               <button v-for="lvl in xzqLevels" :key="lvl.key" type="button" class="pick-btn xzq-lvl-btn"
                 :class="{ active: currentLevel === lvl.key }" @click="switchXzqLevel(lvl.key)">
@@ -671,7 +678,7 @@
               <div class="percent-num-col">
                 <span class="percent-num"
                   :class="{ 'num-success': isBuildFinishedSuccess, 'num-fail': isBuildFailed }">{{
-                  xzqBuildPercent }}</span>
+                    xzqBuildPercent }}</span>
                 <span class="percent-symbol">%</span>
               </div>
             </div>
@@ -686,7 +693,7 @@
 
             <!-- 详细提示文字 -->
             <div class="progress-detail-row">
-              <span class="detail-icon">{{ isBuildFinishedSuccess ? '✅' : (isBuildFailed ? '⚠️' : '⚡') }}</span>
+              <span class="detail-icon">{{ isBuildFinishedSuccess ? '✅' : (isBuildFailed ? '⚠️' : '') }}</span>
               <span class="detail-text">{{ xzqBuildStageDetail }}</span>
             </div>
 
@@ -714,14 +721,14 @@
                 ✨ 将在 <strong>{{ buildSuccessCountdown }}</strong> 秒后自动载入并居中路网...
               </div>
               <button type="button" class="btn-enter-network" @click="confirmEnterBuiltNetwork">
-                🚀 立即进入路网
+                立即进入路网
               </button>
             </div>
 
             <!-- 构建失败后的重试按钮 -->
             <div v-if="isBuildFailed" class="build-failed-action-bar">
               <button type="button" class="btn-retry-build" @click="resetAndRetryBuild">
-                🔄 重新尝试构建
+                重新尝试构建
               </button>
             </div>
           </div>
@@ -733,7 +740,7 @@
         <div class="modal-footer">
           <button v-if="!isBuildFinishedSuccess" type="button" class="btn-submit" :disabled="isXzqBuilding"
             @click="submitXzqBuild">
-            {{ isXzqBuilding ? '⏳ 拓扑构建中 (' + xzqBuildPercent + '%)...' : '🚀 开始相交构建路网' }}
+            {{ isXzqBuilding ? '⏳ 拓扑构建中 (' + xzqBuildPercent + '%)...' : ' 开始相交构建路网' }}
           </button>
           <button v-else type="button" class="btn-submit btn-success-done" @click="confirmEnterBuiltNetwork">
             ✓ 完成并进入路网 ({{ buildSuccessCountdown }}s)
@@ -743,7 +750,8 @@
     </div>
 
     <!-- 上传 SHP 新建路网 Modal 弹窗 (支持文件夹与多选文件双方案) -->
-    <div v-if="showUploadModal" class="modal-overlay" @click.self="showUploadModal = false">
+    <div v-if="showUploadModal" class="modal-overlay" @mousedown="onOverlayMouseDown"
+      @click="handleOverlayClick(() => (showUploadModal = false), $event)">
       <div class="modal-content">
         <div class="modal-header">
           <span class="modal-title">📁 上传 SHP 新建路网 (PGRB V4)</span>
@@ -752,22 +760,14 @@
         <div class="modal-body">
           <!-- 上传模式方案选择 (方案 1: 按文件夹 / 方案 2: 多选 4 个基本文件) -->
           <div class="form-group">
-            <label class="form-label">🎯 选择上传方案</label>
+            <label class="form-label"> 选择上传方案</label>
             <div class="upload-mode-toggle">
-              <button
-                type="button"
-                class="upload-mode-btn"
-                :class="{ active: uploadMode === 'folder' }"
-                @click="switchUploadMode('folder')"
-              >
+              <button type="button" class="upload-mode-btn" :class="{ active: uploadMode === 'folder' }"
+                @click="switchUploadMode('folder')">
                 📁 方案 1：选择 SHP 文件夹
               </button>
-              <button
-                type="button"
-                class="upload-mode-btn"
-                :class="{ active: uploadMode === 'files' }"
-                @click="switchUploadMode('files')"
-              >
+              <button type="button" class="upload-mode-btn" :class="{ active: uploadMode === 'files' }"
+                @click="switchUploadMode('files')">
                 📑 方案 2：多选 4 个基本文件
               </button>
             </div>
@@ -776,20 +776,11 @@
           <!-- 方案 1: 选择本地包含 Shapefile 的文件夹 -->
           <div v-if="uploadMode === 'folder'" class="form-group">
             <label class="form-label">📂 选择本地包含 Shapefile 的文件夹 (.shp, .dbf, .shx, .prj)</label>
-            <input
-              type="file"
-              ref="shpFolderInputRef"
-              class="coord-input full-width-input"
-              webkitdirectory
-              directory
-              multiple
-              @change="handleShpFilesChange($event, 'folder')"
-            />
+            <input type="file" ref="shpFolderInputRef" class="coord-input full-width-input" webkitdirectory directory
+              multiple @change="handleShpFilesChange($event, 'folder')" />
             <div class="input-sub-tip">💡 提示：直接选中存放 Shapefile 的目录，系统将自动关联匹配的主矢量与全部配套文件。</div>
-            <div
-              v-if="shpFilesSummary.show"
-              :style="{ color: shpFilesSummary.color, fontSize: '11.5px', marginTop: '6px' }"
-            >
+            <div v-if="shpFilesSummary.show"
+              :style="{ color: shpFilesSummary.color, fontSize: '11.5px', marginTop: '6px' }">
               {{ shpFilesSummary.text }}
             </div>
           </div>
@@ -797,44 +788,28 @@
           <!-- 方案 2: 多选本地 4 个基本 Shapefile 文件 -->
           <div v-else class="form-group">
             <label class="form-label">📄 多选本地 4 个基本文件 (按住 Ctrl 或 Shift 键同时多选)</label>
-            <input
-              type="file"
-              ref="shpFilesInputRef"
-              class="coord-input full-width-input"
-              multiple
-              accept=".shp,.dbf,.shx,.prj,.cpg,.sbn,.sbx"
-              @change="handleShpFilesChange($event, 'files')"
-            />
+            <input type="file" ref="shpFilesInputRef" class="coord-input full-width-input" multiple
+              accept=".shp,.dbf,.shx,.prj,.cpg,.sbn,.sbx" @change="handleShpFilesChange($event, 'files')" />
             <div class="input-sub-tip">
-              📌 必备 4 大核心格式：<strong>.shp</strong> (几何形状)、<strong>.dbf</strong> (属性表)、<strong>.shx</strong> (空间索引)、<strong>.prj</strong> (坐标投影)
+              📌 必备 4 大核心格式：<strong>.shp</strong> (几何形状)、<strong>.dbf</strong> (属性表)、<strong>.shx</strong>
+              (空间索引)、<strong>.prj</strong> (坐标投影)
             </div>
-            <div
-              v-if="shpFilesSummary.show"
-              :style="{ color: shpFilesSummary.color, fontSize: '11.5px', marginTop: '6px' }"
-            >
+            <div v-if="shpFilesSummary.show"
+              :style="{ color: shpFilesSummary.color, fontSize: '11.5px', marginTop: '6px' }">
               {{ shpFilesSummary.text }}
             </div>
           </div>
           <div class="form-group">
             <label class="form-label">🔑 路网唯一标识 Code (英文字母、数字和下划线)</label>
-            <input
-              type="text"
-              v-model="uploadNetId"
-              class="coord-input full-width-input"
-              placeholder="例: shp_cd_road 或 cd_road"
-            />
+            <input type="text" v-model="uploadNetId" class="coord-input full-width-input"
+              placeholder="例: shp_cd_road 或 cd_road" />
           </div>
           <div class="form-group">
             <label class="form-label">🏷️ 路网前端显示名称</label>
-            <input
-              type="text"
-              v-model="uploadNetName"
-              class="coord-input full-width-input"
-              placeholder="例: 成都局部路网"
-            />
+            <input type="text" v-model="uploadNetName" class="coord-input full-width-input" placeholder="例: 成都局部路网" />
           </div>
           <div class="form-group">
-            <label class="form-label">🌐 属性表字符编码</label>
+            <label class="form-label"> 属性表字符编码</label>
             <select v-model="uploadEncoding" class="coord-input full-width-select">
               <option value="GBK">GBK (推荐中文常见标准，防止乱码)</option>
               <option value="UTF-8">UTF-8</option>
@@ -846,13 +821,8 @@
         </div>
         <div class="modal-footer">
           <button type="button" class="btn-cancel" @click="showUploadModal = false">取消</button>
-          <button
-            type="button"
-            class="btn-submit"
-            :disabled="isUploadingShp"
-            @click="submitShpUpload"
-          >
-            {{ isUploadingShp ? uploadSubmitText : '🚀 上传并编译为 V4 路网' }}
+          <button type="button" class="btn-submit" :disabled="isUploadingShp" @click="submitShpUpload">
+            {{ isUploadingShp ? uploadSubmitText : ' 上传并编译为 V4 路网' }}
           </button>
         </div>
       </div>
@@ -909,6 +879,20 @@ const selectedRouteIdx = ref(null)
 const showManageModal = ref(false)
 const manageLevelFilter = ref('county') // 'city' | 'county' | 'town' | 'village' | 'shp' | 'all'
 const showXzqModal = ref(false)
+
+// 遮罩层点击关闭防护：防止在弹窗内拖拽划选文字至遮罩层松开时误触关闭（闪退）
+let isMouseDownOnOverlay = false
+
+function onOverlayMouseDown(e) {
+  isMouseDownOnOverlay = e.target === e.currentTarget
+}
+
+function handleOverlayClick(closeCallback, e) {
+  if (isMouseDownOnOverlay && e.target === e.currentTarget) {
+    closeCallback()
+  }
+  isMouseDownOnOverlay = false
+}
 
 // 上传 SHP 状态 (支持按文件夹与多文件两种方案)
 const showUploadModal = ref(false)
@@ -1696,7 +1680,7 @@ async function loadRoadNetworkRange(networkId) {
     const targetNet = Array.isArray(networksList.value) ? networksList.value.find(n => n.id === networkId) : null
     const metaUrl = `${pgrbApiBase}/meta?networkId=${encodeURIComponent(networkId)}`
     const boundaryUrl = `${pgrbApiBase}/boundary-binary?networkId=${encodeURIComponent(networkId)}`
-    console.log(`[PGRB Meta] ⚡ 从服务端获取轻量元数据与统一边界流 (零全量拓扑下载，杜绝泄露): ${networkId}`)
+    console.log(`[PGRB Meta]  从服务端获取轻量元数据与统一边界流 (零全量拓扑下载，杜绝泄露): ${networkId}`)
 
     const [metaResp, boundaryResp] = await Promise.all([
       fetch(metaUrl),
@@ -1729,7 +1713,7 @@ async function loadRoadNetworkRange(networkId) {
       }
     }
 
-    console.log(`[PGRB v${meta.version || 4}] 服务端常驻内存图就绪: ${meta.nodeCount} 节点, ${meta.edgeCount} 边${meta.boundaryPointCount > 0 ? `, 边界点: ${meta.boundaryPointCount}` : ''}${meta.boundaryRingCount ? `, 边界环: ${meta.boundaryRingCount}` : ''} ⚡`)
+    console.log(`[PGRB v${meta.version || 4}] 服务端常驻内存图就绪: ${meta.nodeCount} 节点, ${meta.edgeCount} 边${meta.boundaryPointCount > 0 ? `, 边界点: ${meta.boundaryPointCount}` : ''}${meta.boundaryRingCount ? `, 边界环: ${meta.boundaryRingCount}` : ''} `)
 
     // 2. 地图平滑移动/缩放至路网 BBOX 范围
     if (meta.bbox && map) {
@@ -2084,7 +2068,7 @@ function clearNavGuideContent() {
 }
 
 async function triggerNavigationGuide(routeInfo) {
-  console.log('🧭 触发导航指引, routeInfo:', routeInfo)
+  console.log(' 触发导航指引, routeInfo:', routeInfo)
   if (!routeInfo || !routeInfo.coordinates || routeInfo.coordinates.length < 2) {
     alert('未检测到有效的路线几何折线，无法生成导航指引！')
     return
@@ -2095,7 +2079,7 @@ async function triggerNavigationGuide(routeInfo) {
 
   // 1. 优先命中导航步骤缓存：若已计算过导航指引，直接秒级呈现，0 次网络请求
   if (routeInfo.guideCache) {
-    console.log('🧭 命中路线导航指引缓存，无需请求后端路名接口 ⚡')
+    console.log(' 命中路线导航指引缓存，无需请求后端路名接口 ')
     currentNavGuideCache.value = routeInfo.guideCache
     currentNavStepIdx.value = 0
     clearNavHighlight()
@@ -2344,7 +2328,7 @@ function getManeuverBadge(maneuver, icon) {
     return { cls: 'badge-arrive', emoji: '🏁' }
   }
   if (m.includes('u-turn') || m.includes('uturn')) {
-    return { cls: 'badge-uturn', emoji: '🔄' }
+    return { cls: 'badge-uturn', emoji: '' }
   }
   if (m.includes('left')) {
     return { cls: 'badge-left', emoji: m.includes('slight') ? '↖️' : (m.includes('sharp') ? '↙️' : '⬅️') }
@@ -2394,7 +2378,7 @@ function renderRouteResult(res, engineType = '') {
       if (e && e.originalEvent) {
         e.originalEvent.stopPropagation()
       }
-      console.log('🗺️ 路线被点击，弹出导航指引')
+      console.log('路线被点击，弹出导航指引')
       if (currentRouteData.value) {
         triggerNavigationGuide(currentRouteData.value)
       }
@@ -2772,7 +2756,7 @@ async function planRoute() {
           endNode: r.endNode,
           geometry: r.geometry
         }))
-        renderMultiRoutesResult(routes, `${planRes.data.costTimeMs || calcCostMs} ms 服务端算路 ⚡`, '1_to_n')
+        renderMultiRoutesResult(routes, `${planRes.data.costTimeMs || calcCostMs} ms 服务端算路 `, '1_to_n')
       } else {
         isPlanning.value = false
         resStatusColor.value = '#ef4444'
@@ -2845,7 +2829,7 @@ async function planRoute() {
           endNode: r.endNode,
           geometry: r.geometry
         }))
-        renderMultiRoutesResult(routes, `${planRes.data.costTimeMs || calcCostMs} ms 服务端算路 ⚡`, 'n_to_1')
+        renderMultiRoutesResult(routes, `${planRes.data.costTimeMs || calcCostMs} ms 服务端算路 `, 'n_to_1')
       } else {
         isPlanning.value = false
         resStatusColor.value = '#ef4444'
@@ -2912,7 +2896,7 @@ async function planRoute() {
       const arrayBuf = await planResp.arrayBuffer()
       if (BoundaryRouteDecode.isPGRP(arrayBuf)) {
         planRes = BoundaryRouteDecode.decodeRoutePath(arrayBuf)
-        console.log(`[PGRP Route] ⚡ 路径二进制解码成功: 距离 ${(planRes.data.totalDistance / 1000).toFixed(2)} km, 点数 ${planRes.data.coordCount}, 字节 ${arrayBuf.byteLength} B`)
+        console.log(`[PGRP Route]  路径二进制解码成功: 距离 ${(planRes.data.totalDistance / 1000).toFixed(2)} km, 点数 ${planRes.data.coordCount}, 字节 ${arrayBuf.byteLength} B`)
       } else {
         planRes = JSON.parse(new TextDecoder().decode(arrayBuf))
       }
@@ -2933,7 +2917,7 @@ async function planRoute() {
     const calcCostMs = (t1 - t0).toFixed(1)
 
     if (planRes && planRes.code === 200 && planRes.data) {
-      renderRouteResult(planRes, `${planRes.data.costTimeMs || calcCostMs} ms PGRP二进制算路 ⚡`)
+      renderRouteResult(planRes, `${planRes.data.costTimeMs || calcCostMs} ms PGRP二进制算路 `)
     } else {
       isPlanning.value = false
       resStatusColor.value = '#ef4444'
@@ -3391,7 +3375,7 @@ function renderUpToStep(targetFrame) {
     if (currentAnimateData && currentAnimateData.finalPath) {
       showResultCard.value = true
       resStatusColor.value = '#10b981'
-      resStatus.value = 'A* 寻径动画演进完成 ⚡'
+      resStatus.value = 'A* 寻径动画演进完成 '
       resDistance.value = ((currentAnimateData.finalPath.totalDistance || 0) / 1000).toFixed(3) + ' km'
       const stats = currentAnimateData.statistics || {}
       resNodes.value = `总步数: ${frames.length} (POP: ${stats.popCount || '--'}, PUSH: ${stats.pushCount || '--'})`
@@ -3445,7 +3429,7 @@ function finishAnimation() {
   if (currentAnimateData && currentAnimateData.finalPath) {
     showResultCard.value = true
     resStatusColor.value = '#10b981'
-    resStatus.value = 'A* 寻径动画演进完成 ⚡'
+    resStatus.value = 'A* 寻径动画演进完成 '
     resDistance.value = ((currentAnimateData.finalPath.totalDistance || 0) / 1000).toFixed(3) + ' km'
     const stats = currentAnimateData.statistics || {}
     const totalFrames = (currentAnimationFrames && currentAnimationFrames.length > 0) ? currentAnimationFrames.length : currentAnimateData.steps.length
@@ -3849,7 +3833,7 @@ async function submitShpUpload() {
   } catch (err) {
     console.error('SHP Upload and Build Error:', err)
     isUploadingShp.value = false
-    uploadSubmitText.value = '🚀 上传并编译为 V4 路网'
+    uploadSubmitText.value = ' 上传并编译为 V4 路网'
     uploadMsg.color = '#ef4444'
     uploadMsg.text = `❌ ${err.message}`
   }
@@ -5914,17 +5898,7 @@ select.coord-input option {
   gap: 10px;
 }
 
-.nav-drawer-icon {
-  font-size: 20px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 34px;
-  height: 34px;
-  background: rgba(56, 189, 248, 0.15);
-  border: 1px solid rgba(56, 189, 248, 0.35);
-  border-radius: 8px;
-}
+
 
 .nav-drawer-title {
   font-size: 14px;
@@ -6616,6 +6590,7 @@ path.route-interactive-line:focus,
 }
 
 @keyframes badgePulse {
+
   0%,
   100% {
     opacity: 0.85;
