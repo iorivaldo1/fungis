@@ -249,7 +249,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { setToken, getToken } from '@/utils/request.js'
 import IconLogo from './components/icons/IconLogo.vue'
@@ -264,7 +264,20 @@ import IconGear from './components/icons/IconGear.vue'
 
 const route = useRoute()
 const isHhglPage = computed(() => route.path.startsWith('/hhgl'))
-const isSidebarCollapsed = ref(false)
+
+// 首页判断（包含根路径与别名 /gispros）
+const isHomePage = (path) => path === '/' || path === '/gispros'
+const isSidebarCollapsed = ref(!isHomePage(route.path))
+
+// 监听路由变化：只有在首页才展开左侧导航栏，其它页面自动收起
+watch(
+  () => route.path,
+  (newPath) => {
+    isSidebarCollapsed.value = !isHomePage(newPath)
+  },
+  { immediate: true }
+)
+
 const isCesiumMenuExpanded = ref(route.path.startsWith('/cesium'))
 const isRiverMenuExpanded = ref(route.path.startsWith('/tianditu') || route.path.startsWith('/river'))
 const isBaiduMenuExpanded = ref(route.path.startsWith('/baidu'))

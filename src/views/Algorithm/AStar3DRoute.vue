@@ -3,6 +3,49 @@
     <!-- 纯净全屏地图容器 -->
     <div id="map" ref="mapContainer"></div>
 
+    <!-- 悬浮动画演进控制栏 -->
+    <div id="animateCtrlBar" class="animate-ctrl-bar" v-if="showAnimBar">
+      <div class="anim-bar-header">
+        <div class="anim-bar-title-group">
+          <span class="anim-icon">🎬</span>
+          <span class="anim-title">A* 堆动画演进</span>
+          <span class="anim-badge" :class="animBadgeClass">{{ animBadgeText }}</span>
+        </div>
+        <div class="anim-bar-stats">
+          <span>步骤: <b style="color:#fbbf24;">{{ animStepIndex }}</b> / <span>{{ animTotalSteps }}</span></span>
+          <span class="anim-stat-sep">|</span>
+          <span>节点: <span style="color:#38bdf8; font-family:monospace;">{{ animNodeInfoText }}</span></span>
+          <button type="button" class="anim-close-btn" @click="clearAnimateLayers" title="关闭动画">&times;</button>
+        </div>
+      </div>
+      <div class="anim-progress-track">
+        <div class="anim-progress-fill" :style="{ width: animProgressPercent + '%' }"></div>
+      </div>
+      <div class="anim-bar-body">
+        <div class="anim-ctrl-group">
+          <button type="button" class="anim-ctrl-btn" :disabled="animStepIndex <= 1" @click="jumpFirstAnimStep" title="跳转到第1步 (起点吸附)">⏮ 第一步</button>
+          <button type="button" class="anim-ctrl-btn" :disabled="animStepIndex <= 1" @click="prevAnimStep" title="上一步 (后退1步)">◀ 上一步</button>
+          <button type="button" class="anim-ctrl-btn" @click="togglePlayPauseAnim" title="暂停/播放">{{ isAnimRunning && !isAnimPaused ? '⏸️ 暂停' : '▶️ 播放' }}</button>
+          <button type="button" class="anim-ctrl-btn" :disabled="animStepIndex >= animTotalSteps" @click="nextAnimStep" title="下一步 (前进1步)">下一步 ▶</button>
+          <button type="button" class="anim-ctrl-btn" :disabled="animStepIndex >= animTotalSteps" @click="jumpLastAnimStep" title="跳转到最后一步 (生成最终最优路径)">最后一步 ⏭</button>
+          <button type="button" class="anim-ctrl-btn" @click="replayAnimation" title="从头重播">🔁 重播</button>
+          <button type="button" class="anim-ctrl-btn btn-anim-stop" @click="clearAnimateLayers" title="清除动画">⏹️ 清除</button>
+        </div>
+        <div class="anim-speed-group">
+          <span class="anim-label">速度:</span>
+          <input type="range" min="0" max="150" step="5" v-model.number="animSpeedMs" @input="onAnimSpeedInput" />
+          <span class="anim-speed-badge">{{ animSpeedBadgeText }}</span>
+        </div>
+        <div class="anim-legend-group">
+          <span class="legend-item"><span class="legend-red-dot"></span> 出堆顶点(本步红)</span>
+          <span class="legend-item"><span class="legend-blue-dot"></span> 堆顶/已出堆顶点(蓝)</span>
+          <span class="legend-item"><span class="legend-green-line"></span> 堆顶连线(绿)</span>
+          <span class="legend-item"><span class="legend-gold-dot"></span><span class="legend-gold-line"></span> 未选分支/边(浅暗黄)</span>
+          <span class="legend-item"><span class="legend-cyan-line"></span> 最优路径</span>
+        </div>
+      </div>
+    </div>
+
     <!-- 右下角照片上传与定位公共组件 -->
     <UploadBtn :map="mapInstance" map-type="leaflet" :bottom="30" :right="450" />
     <LocationBtn :map="mapInstance" map-type="leaflet" :bottom="30" :right="380" />
@@ -394,8 +437,19 @@
 
       <!-- 底部固定操作区：规划与重置按钮常驻可见 -->
       <div class="route-panel-footer">
+        <div class="action-row" style="margin-bottom: 8px;">
+          <button
+            type="button"
+            class="btn-animate-action"
+            :disabled="currentParadigm !== '1_to_1' || isPlanning || isAnalyzing"
+            :title="currentParadigm !== '1_to_1' ? '1对N和N对1模式暂不支持路径演进分析 (仅支持1对1单路径模式)' : '🎬 分析1对1路径演进过程'"
+            @click="handleAnimateRoute"
+          >
+            {{ isAnalyzing ? '⏳ 分析计算中...' : '🎬 分析路径' }}
+          </button>
+        </div>
         <div class="action-row">
-          <button type="button" class="btn-submit" :disabled="isPlanning" @click="planRoute">
+          <button type="button" class="btn-submit" :disabled="isPlanning || isAnalyzing" @click="planRoute">
             {{ isPlanning ? '⏳ 计算中...' : '🚀 开始规划路径' }}
           </button>
           <button type="button" class="btn-reset" @click="resetRoute">
@@ -940,6 +994,35 @@ let routeArrowLayer = null
 let xzqHighlightLayer = null
 let currentRouteCoords = null
 let multiRouteLayers = []
+
+// A* 寻径动画图层与状态
+let animateCanvasRenderer = null
+let animateLayerGroup = null
+let animOptimalLayerGroup = null
+const animVisitedNodeMarkers = new Map()
+
+let currentAnimateData = null
+let currentAnimationFrames = []
+const showAnimBar = ref(false)
+const animStepIndex = ref(0)
+const animTotalSteps = ref(0)
+const isAnimRunning = ref(false)
+const isAnimPaused = ref(false)
+let animTimer = null
+const animSpeedMs = ref(40)
+const animBadgeText = ref('准备中')
+const animBadgeClass = ref('anim-badge-idle')
+const animNodeInfoText = ref('--')
+const isAnalyzing = ref(false)
+
+const animProgressPercent = computed(() => {
+  if (!animTotalSteps.value || animTotalSteps.value <= 0) return 0
+  return Math.min(100, Math.round((animStepIndex.value / animTotalSteps.value) * 100))
+})
+
+const animSpeedBadgeText = computed(() => {
+  return animSpeedMs.value === 0 ? '0ms (即时)' : `${animSpeedMs.value}ms`
+})
 
 let navSegmentLayer = null
 let navHighlightMarker = null
@@ -2616,6 +2699,7 @@ async function planRoute() {
 
   clearSingleRouteLayers()
   clearMultiRoutes()
+  clearAnimateLayers()
   clearNavHighlight()
   clearNavGuideContent()
   closeNavDrawer(true)
@@ -2874,6 +2958,7 @@ function resetRoute() {
   clearOrigPoints()
   clearSingleRouteLayers()
   clearMultiRoutes()
+  clearAnimateLayers()
   clearNavHighlight()
   clearNavGuideContent()
   closeNavDrawer(true)
@@ -2883,6 +2968,675 @@ function resetRoute() {
   showResultCard.value = false
   resStatus.value = '已重置'
   resStatusColor.value = '#38bdf8'
+}
+
+// =========================================================================
+// A* 寻径动画演进引擎核心逻辑 (入堆金色/红点，出堆绿色/蓝点，细粒度四阶段演进)
+// =========================================================================
+
+function stopAnimation() {
+  isAnimRunning.value = false
+  isAnimPaused.value = false
+  if (animTimer) {
+    clearTimeout(animTimer)
+    animTimer = null
+  }
+}
+
+function pauseAnimation() {
+  if (isAnimRunning.value && !isAnimPaused.value) {
+    isAnimPaused.value = true
+    if (animTimer) {
+      clearTimeout(animTimer)
+      animTimer = null
+    }
+    animBadgeText.value = '⏸️ 已暂停'
+  }
+}
+
+function clearAnimateLayers() {
+  stopAnimation()
+  if (animateLayerGroup) animateLayerGroup.clearLayers()
+  if (animOptimalLayerGroup) animOptimalLayerGroup.clearLayers()
+  animVisitedNodeMarkers.clear()
+  currentAnimationFrames = []
+  animStepIndex.value = 0
+  animTotalSteps.value = 0
+  showAnimBar.value = false
+  isAnalyzing.value = false
+}
+
+// 绘制最终最优路线折线及起终点吸附蓝色虚线
+function drawOptimalPath() {
+  if (animOptimalLayerGroup) animOptimalLayerGroup.clearLayers()
+  if (currentAnimateData && currentAnimateData.finalPath && currentAnimateData.finalPath.coordinates) {
+    const coords = currentAnimateData.finalPath.coordinates
+    const optLatLngs = coords.map(pt => [pt[1], pt[0]])
+    if (optLatLngs.length >= 2) {
+      // 1. 底层高光加宽线
+      L.polyline(optLatLngs, {
+        renderer: animateCanvasRenderer,
+        color: '#0284c7',
+        weight: 9,
+        opacity: 0.6,
+        lineJoin: 'round'
+      }).addTo(animOptimalLayerGroup)
+
+      // 2. 顶层主干天蓝线
+      L.polyline(optLatLngs, {
+        renderer: animateCanvasRenderer,
+        color: '#38bdf8',
+        weight: 4.5,
+        opacity: 1.0,
+        lineJoin: 'round'
+      }).addTo(animOptimalLayerGroup)
+
+      // 3. 绘制起终点到第一条边和最后一条边的蓝色虚线引线
+      const sLng = (currentAnimateData.start && currentAnimateData.start.lng) || parseFloat(startLng.value)
+      const sLat = (currentAnimateData.start && currentAnimateData.start.lat) || parseFloat(startLat.value)
+      const eLng = (currentAnimateData.end && currentAnimateData.end.lng) || parseFloat(endLng.value)
+      const eLat = (currentAnimateData.end && currentAnimateData.end.lat) || parseFloat(endLat.value)
+
+      const firstPt = [coords[0][1], coords[0][0]]
+      const lastPt = [coords[coords.length - 1][1], coords[coords.length - 1][0]]
+
+      // 起点 -> 第一条边 (首个折点) 的蓝色吸附虚线
+      if (!isNaN(sLat) && !isNaN(sLng)) {
+        L.polyline([[sLat, sLng], firstPt], {
+          renderer: animateCanvasRenderer,
+          color: '#38bdf8',
+          weight: 3,
+          dashArray: '5, 6',
+          opacity: 0.95
+        }).addTo(animOptimalLayerGroup)
+      }
+
+      // 最后一条边 (末尾折点) -> 终点的蓝色吸附虚线
+      if (!isNaN(eLat) && !isNaN(eLng)) {
+        L.polyline([lastPt, [eLat, eLng]], {
+          renderer: animateCanvasRenderer,
+          color: '#38bdf8',
+          weight: 3,
+          dashArray: '5, 6',
+          opacity: 0.95
+        }).addTo(animOptimalLayerGroup)
+      }
+    }
+  }
+}
+
+// 将后端粗粒度 steps 展开为包含细粒度交互的完整动画帧序：
+// Phase 1 (POP): 顶点出堆松弛（本步标红）
+// Phase 2 (PUSH): 邻接入堆（出堆的父节点变蓝，新入堆的所有分支和节点全为浅暗黄）
+// Phase 3 (TOP): 锁定堆顶（选出堆顶候选顶点标蓝）
+// Phase 4 (EDGE): 晚锁定顶点一步连绿线
+function buildAnimationFrames(rawSteps) {
+  const frames = []
+  if (!rawSteps || rawSteps.length === 0) return frames
+
+  for (let i = 0; i < rawSteps.length; i++) {
+    const st = rawSteps[i]
+    if (st.action === 'PUSH') {
+      const fromNode = (st.fromNode !== undefined && st.fromNode !== -1) ? st.fromNode : st.node
+      // 1. PUSH 帧：入堆拓展
+      frames.push({
+        type: 'PUSH',
+        rawIndex: i,
+        rawStep: st,
+        fromNode: fromNode,
+        branches: st.branches || [{ node: st.node, coord: st.coord, cost: st.cost }],
+        desc: `入堆拓展 (Node ${fromNode} 邻接全浅暗黄)`
+      })
+
+      // 查找下一个即将出堆的 POP 步骤
+      let nextPop = null
+      for (let j = i + 1; j < rawSteps.length; j++) {
+        if (rawSteps[j].action === 'POP') {
+          nextPop = rawSteps[j]
+          break
+        }
+      }
+
+      if (nextPop && nextPop.node !== undefined) {
+        const parentOfTop = (nextPop.fromNode !== undefined && nextPop.fromNode !== -1)
+          ? nextPop.fromNode
+          : fromNode
+
+        // 2. TOP 帧：锁定堆顶顶点 (顶点变蓝，线保持浅暗黄，尚未连绿线)
+        frames.push({
+          type: 'TOP',
+          rawIndex: i,
+          rawStep: st,
+          topNode: nextPop.node,
+          parentOfTop: parentOfTop,
+          topStep: nextPop,
+          desc: `锁定堆顶顶点 (Node ${nextPop.node} 变蓝)`
+        })
+
+        // 3. EDGE 帧：渲染绿线要晚锁定顶点一步 (上一步堆顶与现在的顶点用绿线连通)
+        if (parentOfTop !== -1 && parentOfTop !== nextPop.node) {
+          frames.push({
+            type: 'EDGE',
+            rawIndex: i,
+            rawStep: st,
+            topNode: nextPop.node,
+            parentOfTop: parentOfTop,
+            topStep: nextPop,
+            desc: `堆顶连线 (Node ${parentOfTop} ➔ Node ${nextPop.node})`
+          })
+        }
+      }
+    } else if (st.action === 'POP') {
+      // 4. POP 帧：该顶点出堆，本步单独标红
+      frames.push({
+        type: 'POP',
+        rawIndex: i,
+        rawStep: st,
+        node: st.node,
+        fromNode: st.fromNode,
+        desc: `顶点出堆 (Node ${st.node} 标红)`
+      })
+    }
+  }
+  return frames
+}
+
+function renderUpToStep(targetFrame) {
+  if (!currentAnimateData) return
+  const frames = (currentAnimationFrames && currentAnimationFrames.length > 0)
+    ? currentAnimationFrames
+    : buildAnimationFrames(currentAnimateData.steps || [])
+  if (frames.length === 0) return
+
+  if (targetFrame < 1) targetFrame = 1
+  if (targetFrame > frames.length) targetFrame = frames.length
+
+  animStepIndex.value = targetFrame
+
+  if (animateLayerGroup) animateLayerGroup.clearLayers()
+  if (animOptimalLayerGroup) animOptimalLayerGroup.clearLayers()
+  animVisitedNodeMarkers.clear()
+
+  const currFrame = frames[targetFrame - 1]
+  const rawSteps = currentAnimateData.steps || []
+
+  // 1. 收集截至当前帧之前所有已执行 POP 的顶点（Closed Set，已出堆顶点数组）
+  const poppedHistoryNodes = new Set()
+  for (let j = 0; j < targetFrame - 1; j++) {
+    if (frames[j].type === 'POP' && frames[j].node !== undefined && frames[j].node !== -1) {
+      poppedHistoryNodes.add(frames[j].node)
+    }
+  }
+
+  // 2. 当前帧出堆顶点（仅在 POP 帧标红；最后一步完成时清理出堆红点，转入已出堆蓝色集合）
+  let currentPoppedNode = (currFrame.type === 'POP') ? currFrame.node : null
+  if (targetFrame === frames.length) {
+    if (currentPoppedNode !== null) {
+      poppedHistoryNodes.add(currentPoppedNode)
+      currentPoppedNode = null
+    }
+  }
+
+  // 3. 当前帧堆顶候选顶点（在 TOP 帧和 EDGE 帧高亮为蓝）
+  const currentTopNode = (currFrame.type === 'TOP' || currFrame.type === 'EDGE') ? currFrame.topNode : null
+
+  // 4. 收集当前帧可见的所有边和节点
+  const edgesMap = new Map()
+  const nodesMap = new Map()
+
+  const limitRawIdx = currFrame.rawIndex
+  for (let i = 0; i <= limitRawIdx; i++) {
+    const st = rawSteps[i]
+    if (st.action === 'PUSH') {
+      if (st.branches && Array.isArray(st.branches) && st.branches.length > 0) {
+        st.branches.forEach(b => {
+          if (b.coord && b.coord.length >= 2) {
+            const nKey = (b.node !== undefined && b.node !== -1) ? b.node : `${b.coord[0]}_${b.coord[1]}`
+            nodesMap.set(nKey, { lat: b.coord[1], lng: b.coord[0], node: b.node })
+          }
+          let latlngs = []
+          if (b.edgeCoords && b.edgeCoords.length >= 2) {
+            latlngs = b.edgeCoords.map(pt => [pt[1], pt[0]])
+          } else if (st.fromCoord && b.coord) {
+            latlngs = [[st.fromCoord[1], st.fromCoord[0]], [b.coord[1], b.coord[0]]]
+          }
+          if (latlngs.length >= 2) {
+            const eKey = (st.fromNode !== undefined && b.node !== undefined)
+              ? `${st.fromNode}_${b.node}`
+              : `${latlngs[0]}_${latlngs[latlngs.length - 1]}`
+            edgesMap.set(eKey, {
+              latlngs: latlngs,
+              fromNode: st.fromNode,
+              toNode: b.node,
+              key: eKey
+            })
+          }
+        })
+      } else if (st.coord && st.coord.length >= 2) {
+        const nKey = (st.node !== undefined && st.node !== -1) ? st.node : `${st.coord[0]}_${st.coord[1]}`
+        nodesMap.set(nKey, { lat: st.coord[1], lng: st.coord[0], node: st.node })
+      }
+    } else if (st.action === 'POP') {
+      if (st.coord && st.coord.length >= 2) {
+        const nKey = (st.node !== undefined && st.node !== -1) ? st.node : `${st.coord[0]}_${st.coord[1]}`
+        nodesMap.set(nKey, { lat: st.coord[1], lng: st.coord[0], node: st.node })
+      }
+    }
+  }
+
+  // 5. 节点分类
+  const redNodes = []
+  const blueNodes = []
+  const yellowNodes = []
+
+  nodesMap.forEach(n => {
+    if (currentPoppedNode !== null && n.node === currentPoppedNode) {
+      // 本步正出堆的顶点 -> 独占标红
+      redNodes.push(n)
+    } else if (poppedHistoryNodes.has(n.node) || (currentTopNode !== null && n.node === currentTopNode)) {
+      // 历史已出堆的顶点，或当前选中的堆顶候选顶点 -> 标记为蓝色
+      blueNodes.push(n)
+    } else {
+      // 其它的未出堆候选拓展顶点 -> 浅暗黄色
+      yellowNodes.push(n)
+    }
+  })
+
+  // 6. 边渲染规则
+  const greenEdgeKeys = new Set()
+  for (let j = 0; j < targetFrame; j++) {
+    const f = frames[j]
+    if (f.type === 'EDGE') {
+      if (f.parentOfTop !== undefined && f.topNode !== undefined && f.parentOfTop !== -1) {
+        greenEdgeKeys.add(`${f.parentOfTop}_${f.topNode}`)
+        greenEdgeKeys.add(`${f.topNode}_${f.parentOfTop}`)
+      }
+    } else if (f.type === 'POP') {
+      if (f.fromNode !== undefined && f.fromNode !== -1 && f.node !== undefined) {
+        greenEdgeKeys.add(`${f.fromNode}_${f.node}`)
+        greenEdgeKeys.add(`${f.node}_${f.fromNode}`)
+      }
+    }
+  }
+
+  const greenEdges = []
+  const yellowEdges = []
+
+  edgesMap.forEach(e => {
+    const k1 = `${e.fromNode}_${e.toNode}`
+    const k2 = `${e.toNode}_${e.fromNode}`
+    let isGreen = false
+
+    if (greenEdgeKeys.has(k1) || greenEdgeKeys.has(k2)) {
+      isGreen = true
+    } else if (currFrame.type === 'EDGE') {
+      if (e.toNode === currFrame.topNode && (e.fromNode === currFrame.parentOfTop || e.fromNode === -1 || e.fromNode === undefined)) {
+        isGreen = true
+      }
+    }
+
+    if (isGreen) {
+      greenEdges.push(e)
+    } else {
+      yellowEdges.push(e)
+    }
+  })
+
+  // 6.1 绘制底层浅暗黄色边 (未选候选分支)
+  yellowEdges.forEach(e => {
+    L.polyline(e.latlngs, {
+      renderer: animateCanvasRenderer,
+      color: '#d97706',
+      weight: 2.8,
+      opacity: 0.70,
+      lineJoin: 'round'
+    }).addTo(animateLayerGroup)
+  })
+
+  // 6.2 绘制绿色边 (上一步堆顶点 -> 现在顶点的连线)
+  greenEdges.forEach(e => {
+    L.polyline(e.latlngs, {
+      renderer: animateCanvasRenderer,
+      color: '#10b981',
+      weight: 4.2,
+      opacity: 0.95,
+      lineJoin: 'round'
+    }).addTo(animateLayerGroup)
+  })
+
+  // 7. 节点渲染
+  // 7.1 黄色候选拓展节点
+  yellowNodes.forEach(n => {
+    const marker = L.circleMarker([n.lat, n.lng], {
+      renderer: animateCanvasRenderer,
+      radius: 4.5,
+      color: '#78350f',
+      weight: 1.5,
+      fillColor: '#d97706',
+      fillOpacity: 0.85
+    }).addTo(animateLayerGroup)
+    animVisitedNodeMarkers.set(n.node, marker)
+  })
+
+  // 7.2 蓝色已出堆/堆顶节点
+  blueNodes.forEach(n => {
+    const marker = L.circleMarker([n.lat, n.lng], {
+      renderer: animateCanvasRenderer,
+      radius: 6,
+      color: '#1e3a8a',
+      weight: 2,
+      fillColor: '#3b82f6',
+      fillOpacity: 1.0
+    }).addTo(animateLayerGroup)
+    animVisitedNodeMarkers.set(n.node, marker)
+  })
+
+  // 7.3 红色本步出堆节点
+  redNodes.forEach(n => {
+    const marker = L.circleMarker([n.lat, n.lng], {
+      renderer: animateCanvasRenderer,
+      radius: 6.5,
+      color: '#991b1b',
+      weight: 2,
+      fillColor: '#ef4444',
+      fillOpacity: 1.0
+    }).addTo(animateLayerGroup)
+    animVisitedNodeMarkers.set(n.node, marker)
+  })
+
+  // 7.4 单步演进过程中，绘制起点到第一条边的吸附蓝色虚线引线
+  if (targetFrame < frames.length && currentAnimateData && currentAnimateData.finalPath && currentAnimateData.finalPath.coordinates) {
+    const coords = currentAnimateData.finalPath.coordinates
+    if (coords.length > 0) {
+      const sLng = (currentAnimateData.start && currentAnimateData.start.lng) || parseFloat(startLng.value)
+      const sLat = (currentAnimateData.start && currentAnimateData.start.lat) || parseFloat(startLat.value)
+      if (!isNaN(sLat) && !isNaN(sLng)) {
+        L.polyline([[sLat, sLng], [coords[0][1], coords[0][0]]], {
+          renderer: animateCanvasRenderer,
+          color: '#38bdf8',
+          weight: 2.8,
+          dashArray: '5, 6',
+          opacity: 0.90
+        }).addTo(animateLayerGroup)
+      }
+    }
+  }
+
+  // 8. 看板指标与状态同步
+  if (currFrame.type === 'POP') {
+    animBadgeClass.value = 'anim-badge-pop'
+    animBadgeText.value = '🔴 顶点出堆松弛'
+    animNodeInfoText.value = `Node ${currFrame.node} 顶点出堆松弛 | 已出堆 ${poppedHistoryNodes.size + 1} 点(蓝)`
+  } else if (currFrame.type === 'PUSH') {
+    const bCount = (currFrame.branches && Array.isArray(currFrame.branches)) ? currFrame.branches.length : 1
+    animBadgeClass.value = 'anim-badge-push'
+    animBadgeText.value = '🟡 邻接分支入堆'
+    animNodeInfoText.value = `Node ${currFrame.fromNode}(蓝) 拓展入堆 -> ${bCount}`
+  } else if (currFrame.type === 'TOP') {
+    animBadgeClass.value = 'anim-badge-top'
+    animBadgeText.value = '🔵 锁定堆顶顶点'
+    animNodeInfoText.value = `堆顶 Node ${currFrame.topNode}(蓝) 锁定`
+  } else if (currFrame.type === 'EDGE') {
+    animBadgeClass.value = 'anim-badge-edge'
+    animBadgeText.value = '🟢 堆顶连线'
+    animNodeInfoText.value = `上一步堆顶 Node ${currFrame.parentOfTop} ➔ 现在堆顶 Node ${currFrame.topNode}`
+  }
+
+  if (targetFrame === frames.length) {
+    drawOptimalPath()
+    animBadgeClass.value = 'anim-badge-done'
+    animBadgeText.value = '✅ 最优路径生成完成'
+    animNodeInfoText.value = '终点命中，生成最优路径'
+
+    if (currentAnimateData && currentAnimateData.finalPath) {
+      showResultCard.value = true
+      resStatusColor.value = '#10b981'
+      resStatus.value = 'A* 寻径动画演进完成 ⚡'
+      resDistance.value = ((currentAnimateData.finalPath.totalDistance || 0) / 1000).toFixed(3) + ' km'
+      const stats = currentAnimateData.statistics || {}
+      resNodes.value = `总步数: ${frames.length} (POP: ${stats.popCount || '--'}, PUSH: ${stats.pushCount || '--'})`
+    }
+  }
+}
+
+function runAnimateLoop() {
+  if (!isAnimRunning.value || isAnimPaused.value) return
+  if (!currentAnimationFrames || currentAnimationFrames.length === 0) return
+
+  // 速度为 0 时直接完成全部渲染并终止定时器
+  if (animSpeedMs.value === 0) {
+    if (animTimer) {
+      clearTimeout(animTimer)
+      animTimer = null
+    }
+    if (animStepIndex.value !== currentAnimationFrames.length) {
+      renderUpToStep(currentAnimationFrames.length)
+      finishAnimation()
+    }
+    return
+  }
+
+  if (animStepIndex.value < currentAnimationFrames.length) {
+    animStepIndex.value++
+    renderUpToStep(animStepIndex.value)
+    animTimer = setTimeout(runAnimateLoop, animSpeedMs.value)
+  } else {
+    finishAnimation()
+  }
+}
+
+function finishAnimation() {
+  isAnimRunning.value = false
+  isAnimPaused.value = false
+  if (animTimer) {
+    clearTimeout(animTimer)
+    animTimer = null
+  }
+
+  animBadgeClass.value = 'anim-badge-done'
+  animBadgeText.value = '✅ 最优路径生成完成'
+  animNodeInfoText.value = '终点命中，生成最优路径'
+
+  // 若最优路径图层尚未绘制，才调用 drawOptimalPath()，避免同一帧内重复清空和重绘
+  if (animOptimalLayerGroup && animOptimalLayerGroup.getLayers().length === 0) {
+    drawOptimalPath()
+  }
+
+  if (currentAnimateData && currentAnimateData.finalPath) {
+    showResultCard.value = true
+    resStatusColor.value = '#10b981'
+    resStatus.value = 'A* 寻径动画演进完成 ⚡'
+    resDistance.value = ((currentAnimateData.finalPath.totalDistance || 0) / 1000).toFixed(3) + ' km'
+    const stats = currentAnimateData.statistics || {}
+    const totalFrames = (currentAnimationFrames && currentAnimationFrames.length > 0) ? currentAnimationFrames.length : currentAnimateData.steps.length
+    resNodes.value = `总演进步数: ${totalFrames} (POP: ${stats.popCount || '--'}, PUSH: ${stats.pushCount || '--'})`
+  }
+
+  isAnalyzing.value = false
+}
+
+function startAnimation(animateData) {
+  clearAnimateLayers()
+  currentAnimateData = animateData
+  currentAnimationFrames = buildAnimationFrames(animateData.steps || [])
+  const totalFrames = currentAnimationFrames.length
+  animTotalSteps.value = totalFrames
+  if (totalFrames === 0) return
+
+  showAnimBar.value = true
+
+  // 若速度设置为 0ms：不用步进，直接渲染出 route_animate 返回的全部内容
+  if (animSpeedMs.value === 0) {
+    renderUpToStep(totalFrames)
+    finishAnimation()
+    return
+  }
+
+  // 速度大于 0：初始为暂停状态，停在第1步，而不是自动播放
+  animStepIndex.value = 1
+  isAnimRunning.value = true
+  isAnimPaused.value = true
+
+  renderUpToStep(1)
+}
+
+// 悬浮控制栏按钮与交互方法
+function jumpFirstAnimStep() {
+  if (!currentAnimationFrames || currentAnimationFrames.length === 0) return
+  pauseAnimation()
+  renderUpToStep(1)
+}
+
+function prevAnimStep() {
+  if (!currentAnimationFrames || currentAnimationFrames.length === 0) return
+  pauseAnimation()
+  if (animStepIndex.value > 1) {
+    renderUpToStep(animStepIndex.value - 1)
+  }
+}
+
+function nextAnimStep() {
+  if (!currentAnimationFrames || currentAnimationFrames.length === 0) return
+  pauseAnimation()
+  if (animStepIndex.value < currentAnimationFrames.length) {
+    renderUpToStep(animStepIndex.value + 1)
+  }
+}
+
+function jumpLastAnimStep() {
+  if (!currentAnimationFrames || currentAnimationFrames.length === 0) return
+  pauseAnimation()
+  renderUpToStep(currentAnimationFrames.length)
+}
+
+function replayAnimation() {
+  if (currentAnimateData) {
+    startAnimation(currentAnimateData)
+  }
+}
+
+function togglePlayPauseAnim() {
+  if (!currentAnimationFrames || currentAnimationFrames.length === 0) return
+
+  if (animSpeedMs.value === 0) {
+    renderUpToStep(currentAnimationFrames.length)
+    finishAnimation()
+    return
+  }
+
+  if (animStepIndex.value >= currentAnimationFrames.length) {
+    animStepIndex.value = 0
+    isAnimPaused.value = false
+    isAnimRunning.value = true
+    runAnimateLoop()
+    return
+  }
+
+  if (isAnimRunning.value && !isAnimPaused.value) {
+    pauseAnimation()
+  } else {
+    isAnimPaused.value = false
+    isAnimRunning.value = true
+    runAnimateLoop()
+  }
+}
+
+function onAnimSpeedInput() {
+  if (animSpeedMs.value === 0 && currentAnimationFrames && currentAnimationFrames.length > 0) {
+    if (animTimer) {
+      clearTimeout(animTimer)
+      animTimer = null
+    }
+    isAnimRunning.value = false
+    isAnimPaused.value = false
+
+    // 核心防闪烁：若当前已经是最后一步，直接 return，严禁重复清空画布！
+    if (animStepIndex.value === currentAnimationFrames.length) {
+      return
+    }
+
+    renderUpToStep(currentAnimationFrames.length)
+    finishAnimation()
+  }
+}
+
+// 点击“分析路径”按钮核心请求逻辑
+async function handleAnimateRoute() {
+  if (currentParadigm.value === '1_to_n' || currentParadigm.value === 'n_to_1') {
+    alert('1对N和N对1模式暂不支持路径演进分析，请切换为1对1模式！')
+    return
+  }
+  if (!selectedNetworkId.value) {
+    alert('请先选择有效的路网！')
+    return
+  }
+
+  const sLng = parseFloat(startLng.value)
+  const sLat = parseFloat(startLat.value)
+  const eLng = parseFloat(endLng.value)
+  const eLat = parseFloat(endLat.value)
+
+  if (isNaN(sLng) || isNaN(sLat) || isNaN(eLng) || isNaN(eLat)) {
+    alert('请先在地图上选定或输入有效的起点与终点经纬度坐标！')
+    return
+  }
+
+  if (!isPointInCurrentBoundary(sLng, sLat)) {
+    showBoundaryWarningPopup([sLat, sLng], '起点坐标超出路网边界范围')
+    return
+  }
+
+  if (!isPointInCurrentBoundary(eLng, eLat)) {
+    showBoundaryWarningPopup([eLat, eLng], '终点坐标超出路网边界范围')
+    return
+  }
+
+  clearSingleRouteLayers()
+  clearMultiRoutes()
+  clearNavHighlight()
+  clearNavGuideContent()
+  closeNavDrawer(true)
+  clearAnimateLayers()
+
+  showResultCard.value = true
+  resStatusColor.value = '#fbbf24'
+  resStatus.value = 'A* 动画数据分析中...'
+  resDistance.value = '-- km'
+  resNodes.value = '-- -> --'
+  isAnalyzing.value = true
+
+  try {
+    const resp = await fetch(`${pgrbApiBase}/route_animate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        networkId: selectedNetworkId.value,
+        startLng: sLng,
+        startLat: sLat,
+        endLng: eLng,
+        endLat: eLat,
+        directed: true,
+        maxSteps: 0
+      })
+    })
+
+    const json = await resp.json()
+    if (json && json.code === 200 && json.data) {
+      isAnalyzing.value = false
+      startAnimation(json.data)
+    } else {
+      isAnalyzing.value = false
+      const errMsg = (json && (json.msg || json.message)) ? (json.msg || json.message) : '起点与终点之间未找到连通路径'
+      resStatusColor.value = '#ef4444'
+      resStatus.value = errMsg
+      alert(errMsg)
+    }
+  } catch (e) {
+    isAnalyzing.value = false
+    resStatusColor.value = '#ef4444'
+    resStatus.value = '请求动画接口异常: ' + e.message
+    alert('请求动画接口异常: ' + e.message)
+  }
 }
 
 function openManageModal() {
@@ -3588,6 +4342,11 @@ onMounted(() => {
 
   baseMapGroup = L.layerGroup([vecLayer, cvaLayer])
 
+  // A* 动画专用 Canvas 渲染器与独立图层组
+  animateCanvasRenderer = L.canvas({ padding: 0.5 })
+  animateLayerGroup = L.layerGroup().addTo(map)
+  animOptimalLayerGroup = L.layerGroup().addTo(map)
+
   // 2. WMTS 背景瓦片
   const wmtsTileUrl = `${apiBaseUrl || 'http://localhost:8080'}/geoserver/gwc/service/wmts?` +
     'Request=GetTile&Service=WMTS&Version=1.0.0' +
@@ -3620,6 +4379,16 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  stopAnimation()
+  clearAnimateLayers()
+  if (animateLayerGroup && map) {
+    map.removeLayer(animateLayerGroup)
+    animateLayerGroup = null
+  }
+  if (animOptimalLayerGroup && map) {
+    map.removeLayer(animOptimalLayerGroup)
+    animOptimalLayerGroup = null
+  }
   clearBuildTimers()
   window.removeEventListener('keydown', onNavKeyDown)
   clearNavHighlight()
@@ -5703,5 +6472,348 @@ path.route-interactive-line:focus,
     transform: scale(1.9);
     opacity: 0;
   }
+}
+
+/* 动画分析专用操作按钮 */
+.btn-animate-action {
+  width: 100%;
+  background: linear-gradient(135deg, #d97706 0%, #f59e0b 100%);
+  border: 1px solid #fbbf24;
+  color: #ffffff;
+  font-weight: 700;
+  border-radius: 8px;
+  padding: 9px;
+  font-size: 13px;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(245, 158, 11, 0.45);
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.btn-animate-action:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(245, 158, 11, 0.7);
+  background: linear-gradient(135deg, #b45309 0%, #d97706 100%);
+}
+
+.btn-animate-action:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+  background: linear-gradient(135deg, #475569 0%, #64748b 100%);
+  border-color: #64748b;
+  color: #94a3b8;
+}
+
+/* 悬浮动画演进控制栏 */
+.animate-ctrl-bar {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1050;
+  width: 780px;
+  max-width: calc(100vw - 360px);
+  background: rgba(15, 23, 42, 0.95);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  border-radius: 14px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.7), 0 0 24px rgba(245, 158, 11, 0.15);
+  padding: 12px 18px;
+  color: #f8fafc;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  animation: animBarSlideUp 0.3s ease forwards;
+}
+
+@keyframes animBarSlideUp {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+.anim-bar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.anim-bar-title-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.anim-icon {
+  font-size: 16px;
+}
+
+.anim-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #fbbf24;
+  letter-spacing: 0.3px;
+}
+
+.anim-badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-weight: 600;
+}
+
+.anim-badge-idle {
+  background: rgba(148, 163, 184, 0.15);
+  color: #94a3b8;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+.anim-badge-push {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.5);
+  animation: badgePulse 1.2s infinite;
+}
+
+.anim-badge-pop {
+  background: rgba(239, 68, 68, 0.2);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.5);
+  animation: badgePulse 1.2s infinite;
+}
+
+.anim-badge-top {
+  background: rgba(59, 130, 246, 0.2);
+  color: #60a5fa;
+  border: 1px solid rgba(59, 130, 246, 0.5);
+  animation: badgePulse 1.2s infinite;
+}
+
+.anim-badge-edge {
+  background: rgba(16, 185, 129, 0.2);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.5);
+  animation: badgePulse 1.2s infinite;
+}
+
+.anim-badge-done {
+  background: rgba(56, 189, 248, 0.2);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.5);
+}
+
+@keyframes badgePulse {
+  0%,
+  100% {
+    opacity: 0.85;
+  }
+
+  50% {
+    opacity: 1;
+    filter: brightness(1.2);
+  }
+}
+
+.anim-bar-stats {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: #cbd5e1;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.anim-stat-sep {
+  color: rgba(255, 255, 255, 0.2);
+}
+
+.anim-close-btn {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+  transition: color 0.15s ease;
+}
+
+.anim-close-btn:hover {
+  color: #ef4444;
+}
+
+.anim-progress-track {
+  width: 100%;
+  height: 5px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.anim-progress-fill {
+  width: 0%;
+  height: 100%;
+  background: linear-gradient(90deg, #f59e0b, #10b981, #38bdf8);
+  border-radius: 4px;
+  transition: width 0.08s linear;
+}
+
+.anim-bar-body {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.anim-ctrl-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.anim-ctrl-btn {
+  background: rgba(30, 41, 59, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #f8fafc;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.anim-ctrl-btn:hover {
+  background: rgba(56, 189, 248, 0.2);
+  border-color: rgba(56, 189, 248, 0.4);
+  color: #38bdf8;
+}
+
+.anim-ctrl-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  pointer-events: none;
+  filter: grayscale(0.8);
+}
+
+.btn-anim-stop:hover {
+  background: rgba(239, 68, 68, 0.2) !important;
+  border-color: rgba(239, 68, 68, 0.4) !important;
+  color: #f87171 !important;
+}
+
+.anim-speed-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: #cbd5e1;
+}
+
+.anim-speed-group input[type="range"] {
+  width: 75px;
+  cursor: pointer;
+  accent-color: #f59e0b;
+}
+
+.anim-speed-badge {
+  font-size: 10.5px;
+  font-family: monospace;
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+  padding: 1px 5px;
+  border-radius: 4px;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  display: inline-block;
+  min-width: 62px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.anim-legend-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.legend-gold-line {
+  display: inline-block;
+  width: 14px;
+  height: 3px;
+  background: #f59e0b;
+  border-radius: 2px;
+}
+
+.legend-gold-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  background: #d97706;
+  border-radius: 50%;
+}
+
+.legend-red-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  background: #ef4444;
+  border-radius: 50%;
+}
+
+.legend-green-line {
+  display: inline-block;
+  width: 14px;
+  height: 3px;
+  background: #10b981;
+  border-radius: 2px;
+}
+
+.legend-blue-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  background: #3b82f6;
+  border-radius: 50%;
+}
+
+.legend-cyan-line {
+  display: inline-block;
+  width: 14px;
+  height: 3px;
+  background: #38bdf8;
+  box-shadow: 0 0 6px #38bdf8;
+  border-radius: 2px;
+}
+
+:deep(.leaflet-overlay-pane canvas) {
+  will-change: transform;
+  pointer-events: none;
 }
 </style>
