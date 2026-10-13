@@ -315,6 +315,7 @@ const handleFileChange = async (event) => {
                     pixelSize: 8,
                     outlineColor: Cesium.Color.DARKSLATEGREY,
                     outlineWidth: 3,
+                    heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
                     disableDepthTestDistance: Number.POSITIVE_INFINITY
                   }
                 })
@@ -328,6 +329,7 @@ const handleFileChange = async (event) => {
                     pixelSize: 8,
                     outlineColor: Cesium.Color.DARKSLATEGREY,
                     outlineWidth: 3,
+                    heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
                     disableDepthTestDistance: Number.POSITIVE_INFINITY
                   }
                 })

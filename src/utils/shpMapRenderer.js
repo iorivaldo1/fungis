@@ -350,7 +350,7 @@ export function getFeatureCenterAndBounds(feature) {
   const pts = []
   function extractPts(coords) {
     if (typeof coords[0] === 'number' && typeof coords[1] === 'number') {
-      pts.push([coords[0], coords[1]])
+      pts.push(typeof coords[2] === 'number' ? [coords[0], coords[1], coords[2]] : [coords[0], coords[1]])
     } else if (Array.isArray(coords)) {
       coords.forEach(extractPts)
     }
@@ -549,50 +549,188 @@ export function flashFeatureBaidu(map, feature, highlightColor = '#ff0055') {
   }, 280)
 }
 
+// 全局保存当前选中的 Cesium 高亮对象
+let activeCesiumHighlight = null
+
+export function clearCesiumHighlight(viewer) {
+  if (!viewer) return
+  if (activeCesiumHighlight) {
+    if (activeCesiumHighlight.dataSource) {
+      try {
+        viewer.dataSources.remove(activeCesiumHighlight.dataSource, true)
+      } catch (_) {}
+    }
+    if (Array.isArray(activeCesiumHighlight.entities)) {
+      activeCesiumHighlight.entities.forEach(ent => {
+        try {
+          viewer.entities.remove(ent)
+        } catch (_) {}
+      })
+    }
+    activeCesiumHighlight = null
+  }
+  // 额外清理可能残留的以 selected_highlight_ 为前缀的实体
+  try {
+    const toRemove = []
+    viewer.entities.values.forEach(ent => {
+      if (ent.id && String(ent.id).startsWith('selected_highlight_')) {
+        toRemove.push(ent)
+      }
+    })
+    toRemove.forEach(ent => viewer.entities.remove(ent))
+  } catch (_) {}
+}
+
 /**
- * 在 Cesium 3D 上聚焦并高亮闪烁 Feature 3 次
+ * 从要素属性中提取有意义的名称标识用于高亮悬浮标注
  */
-export function flashFeatureCesium(viewer, feature, highlightColor = '#ff0055') {
+function getFeatureLabelText(feature) {
+  if (!feature || !feature.properties) return ''
+  const props = feature.properties
+  const priorityKeys = ['name', 'NAME', 'Name', 'mc', 'MC', '名称', '点名', 'title', 'TITLE', 'id', 'ID', 'Id']
+  for (const k of priorityKeys) {
+    if (props[k] !== undefined && props[k] !== null && String(props[k]).trim() !== '') {
+      return String(props[k])
+    }
+  }
+  for (const k of Object.keys(props)) {
+    const v = props[k]
+    if (v !== undefined && v !== null && String(v).trim() !== '' && typeof v !== 'object') {
+      return `${v}`
+    }
+  }
+  return ''
+}
+
+/**
+ * 在 Cesium 3D 上聚焦并高亮显示 Feature（常驻高亮显示，并带有动态呼吸光圈动画）
+ */
+export function flashFeatureCesium(viewer, feature, highlightColor = '#ff0055', customAltitude = null) {
   if (!viewer || !feature || !feature.geometry) return
 
   const info = getFeatureCenterAndBounds(feature)
   if (!info) return
 
   const [lng, lat] = info.center
+  const [[minLng, minLat], [maxLng, maxLat]] = info.bounds
+
+  // 清除上一次选中的高亮
+  clearCesiumHighlight(viewer)
+
+  // 计算要素的经纬度范围跨度（估算水平/垂直米数）
+  const spanLngMeters = Math.abs(maxLng - minLng) * 111000 * Math.cos((lat * Math.PI) / 180)
+  const spanLatMeters = Math.abs(maxLat - minLat) * 111000
+  const maxSpanMeters = Math.max(spanLngMeters, spanLatMeters)
+
+  // 获取地表/要素基础高程（支持 3D SHP Z 轴坐标或 Cesium 地表高程采样）
+  let groundHeight = 0
+  if (typeof info.pts[0]?.[2] === 'number') {
+    groundHeight = info.pts[0][2]
+  } else if (viewer.scene?.globe) {
+    const carto = Cesium.Cartographic.fromDegrees(lng, lat)
+    const h = viewer.scene.globe.getHeight(carto)
+    if (typeof h === 'number' && !isNaN(h)) {
+      groundHeight = Math.max(0, h)
+    }
+  }
+
+  // 计算适宜的镜头高度：点要素默认 5000 米，线面要素按包围盒自适应
+  let targetAltitude
+  if (typeof customAltitude === 'number' && customAltitude > 0) {
+    targetAltitude = customAltitude
+  } else {
+    const viewDistance = maxSpanMeters > 0 ? Math.max(5000, maxSpanMeters * 1.8) : 5000
+    targetAltitude = groundHeight + viewDistance
+  }
 
   // 1. 视角 FlyTo 居中
   viewer.camera.flyTo({
-    destination: Cesium.Cartesian3.fromDegrees(lng, lat, 600),
-    duration: 1.0
+    destination: Cesium.Cartesian3.fromDegrees(lng, lat, targetAltitude),
+    duration: 1.2
   })
 
-  // 2. 加载高亮 GeoJSON 要素
-  const singleFeatureGeojson = {
-    type: 'FeatureCollection',
-    features: [feature]
-  }
+  const isPoint = feature.geometry.type === 'Point' || feature.geometry.type === 'MultiPoint' || (info.pts && info.pts.length === 1)
+  const labelText = getFeatureLabelText(feature)
+  const colorObj = Cesium.Color.fromCssColorString(highlightColor)
 
-  const cesiumColor = Cesium.Color.fromCssColorString(highlightColor)
-
-  Cesium.GeoJsonDataSource.load(singleFeatureGeojson, {
-    stroke: cesiumColor,
-    fill: cesiumColor.withAlpha(0.6),
-    strokeWidth: 6,
-    markerColor: cesiumColor,
-    clampToGround: true
-  }).then(ds => {
-    viewer.dataSources.add(ds)
-
-    let count = 0
-    const interval = setInterval(() => {
-      count++
-      ds.show = count % 2 === 1
-      if (count >= 6) {
-        clearInterval(interval)
-        viewer.dataSources.remove(ds, true)
+  if (isPoint) {
+    // 2. 如果是点要素，创建醒目的常驻高亮标记实体（中心点 + 动态呼吸光晕波纹 + 浮动标签）
+    const haloStartTime = Date.now()
+    const haloEntity = viewer.entities.add({
+      id: `selected_highlight_halo_${Date.now()}`,
+      position: Cesium.Cartesian3.fromDegrees(lng, lat),
+      point: {
+        pixelSize: new Cesium.CallbackProperty(() => {
+          const progress = ((Date.now() - haloStartTime) % 1800) / 1800
+          return 22 + progress * 32 // 22px -> 54px 动态扩散光环
+        }, false),
+        color: Cesium.Color.TRANSPARENT,
+        outlineColor: new Cesium.CallbackProperty(() => {
+          const progress = ((Date.now() - haloStartTime) % 1800) / 1800
+          return colorObj.withAlpha(Math.max(0, 1.0 - progress * 0.9))
+        }, false),
+        outlineWidth: 3,
+        heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+        disableDepthTestDistance: Number.POSITIVE_INFINITY
       }
-    }, 280)
-  })
+    })
+
+    const coreEntity = viewer.entities.add({
+      id: `selected_highlight_core_${Date.now()}`,
+      position: Cesium.Cartesian3.fromDegrees(lng, lat),
+      point: {
+        color: colorObj,
+        pixelSize: 18,
+        outlineColor: Cesium.Color.WHITE,
+        outlineWidth: 3,
+        heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+        disableDepthTestDistance: Number.POSITIVE_INFINITY
+      },
+      label: labelText ? {
+        text: String(labelText),
+        font: 'bold 13px sans-serif',
+        fillColor: Cesium.Color.WHITE,
+        style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+        outlineColor: Cesium.Color.fromCssColorString('#1e293b'),
+        outlineWidth: 3,
+        verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+        pixelOffset: new Cesium.Cartesian2(0, -24),
+        heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+        disableDepthTestDistance: Number.POSITIVE_INFINITY
+      } : undefined
+    })
+
+    activeCesiumHighlight = {
+      entities: [haloEntity, coreEntity]
+    }
+  } else {
+    // 3. 如果是线或面要素，加载高亮 GeoJSON 并常驻显示
+    const singleFeatureGeojson = {
+      type: 'FeatureCollection',
+      features: [feature]
+    }
+
+    Cesium.GeoJsonDataSource.load(singleFeatureGeojson, {
+      stroke: colorObj,
+      fill: colorObj.withAlpha(0.45),
+      strokeWidth: 6,
+      markerColor: colorObj,
+      clampToGround: true
+    }).then(ds => {
+      const entities = ds.entities.values
+      for (let i = 0; i < entities.length; i++) {
+        const entity = entities[i]
+        if (entity.billboard) {
+          entity.billboard = undefined
+        }
+        if (entity.point) {
+          entity.point.heightReference = Cesium.HeightReference.CLAMP_TO_GROUND
+        }
+      }
+      viewer.dataSources.add(ds)
+      activeCesiumHighlight = { dataSource: ds }
+    })
+  }
 }
 
 /**
@@ -783,6 +921,37 @@ export async function renderGeoJsonToCesium(viewer, rawGeojson, colorCss = '#3b8
     markerColor: cesiumColor,
     clampToGround: true
   })
+
+  // 实体样式处理：
+  // 1. 彻底移除 Cesium 默认生成的蓝色大图钉 Billboard（解决用户提出的“不要使用这个图标”问题）
+  // 2. 统一替换为紧贴地表的蓝色圆形 Point 图标（蓝色填充 + 白色边框）
+  // 3. 严格遵从地形深度遮挡（绝不设置 disableDepthTestDistance = Infinity），山体背面的点自然被山峰遮挡，绝不浮在空中！
+  const entities = dataSource.entities.values
+  for (let i = 0; i < entities.length; i++) {
+    const entity = entities[i]
+    if (entity.billboard) {
+      entity.billboard.show = false
+      entity.billboard = undefined
+    }
+    if (!entity.polygon && !entity.polyline && entity.position) {
+      entity.point = new Cesium.PointGraphics({
+        pixelSize: 10,
+        color: Cesium.Color.fromCssColorString('#2563eb'),
+        outlineColor: Cesium.Color.WHITE,
+        outlineWidth: 2,
+        heightReference: Cesium.HeightReference.CLAMP_TO_GROUND
+      })
+    } else if (entity.point) {
+      entity.point.color = Cesium.Color.fromCssColorString('#2563eb')
+      entity.point.pixelSize = 10
+      entity.point.outlineColor = Cesium.Color.WHITE
+      entity.point.outlineWidth = 2
+      entity.point.heightReference = Cesium.HeightReference.CLAMP_TO_GROUND
+    }
+    if (entity.label) {
+      entity.label.heightReference = Cesium.HeightReference.CLAMP_TO_GROUND
+    }
+  }
 
   viewer.dataSources.add(dataSource)
   return dataSource

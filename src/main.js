@@ -203,6 +203,12 @@ const router = createRouter({
       ]
     },
     {
+      path: '/maplibre-gl',
+      name: 'MapLibre_GL',
+      component: () => import('./views/MapLibre_GL.vue'),
+      alias: ['/maplibre', '/maplibregl']
+    },
+    {
       path: '/blog',
       name: 'Blog',
       component: RouterView,

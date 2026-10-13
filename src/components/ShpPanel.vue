@@ -96,6 +96,7 @@
       :theme="theme"
       @focus-feature="handleFocusFeature"
       @toggle-label-field="handleToggleLabelField"
+      @toggle-layer="handleToggleVisible"
     />
 
     <!-- SHP 坐标系确认与设置弹窗 -->
@@ -343,12 +344,14 @@ const handleCrsCancel = () => {
 }
 
 const addParsedLayer = (name, geojson) => {
+  const isPurePoint = geojson.features && geojson.features.length > 0 &&
+    geojson.features.every(f => f.geometry && (f.geometry.type === 'Point' || f.geometry.type === 'MultiPoint'))
   const id = 'shp_layer_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7)
   const layer = {
     id,
     name,
     featureCount: geojson.features ? geojson.features.length : 0,
-    visible: true,
+    visible: !isPurePoint,
     color: getRandomColor(),
     geojson
   }

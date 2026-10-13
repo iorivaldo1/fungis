@@ -202,9 +202,11 @@
             </transition>
           </div>
 
-
-
-
+          <!-- MapLibre-GL 菜单 -->
+          <router-link to="/maplibre-gl" class="menu-item" active-class="active">
+            <IconRoute />
+            <span class="menu-text">MapLibre-GL</span>
+          </router-link>
 
           <!-- Blog 多级菜单 -->
           <div class="menu-group" :class="{ expanded: isBlogMenuExpanded }">
@@ -260,6 +262,7 @@ import IconArrow from './components/icons/IconArrow.vue'
 import IconRiver from './components/icons/IconRiver.vue'
 import IconThree from './components/icons/IconThree.vue'
 import IconWrench from './components/icons/IconWrench.vue'
+import IconRoute from './components/icons/IconRoute.vue'
 import IconGear from './components/icons/IconGear.vue'
 
 const route = useRoute()
@@ -432,6 +435,8 @@ const currentRouteName = computed(() => {
     // 'LeafletAStarRouteCalc': 'astar路径计算',
     // 'LeafletDijkstraRouteCalc': 'dijkstra路径计算',
     'LeafletRoadRouteCalc': '道路路径计算',
+    'MapLibre_GL': 'MapLibre-GL',
+    'MapLibreGL': 'MapLibre-GL',
     'Blog': 'Blog',
     'BlogGlsl': 'glsl'
   }

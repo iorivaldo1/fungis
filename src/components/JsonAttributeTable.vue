@@ -24,6 +24,14 @@
             placeholder="🔍 搜索属性..." 
             class="search-input"
           />
+          <button 
+            class="action-btn toggle-vis-btn" 
+            :class="{ active: layer?.visible }"
+            @click="toggleLayerVisibility" 
+            :title="layer?.visible ? '隐藏全部背景点（仅看选中点）' : '显示全图层所有点'"
+          >
+            {{ layer?.visible ? '👁️ 显示全部点' : '🕶️ 仅看选中点' }}
+          </button>
           <button class="action-btn" @click="toggleMaximize" :title="isMaximized ? '还原' : '最大化'">
             {{ isMaximized ? '❐' : '□' }}
           </button>
@@ -66,6 +74,7 @@
                 v-for="(row, idx) in paginatedDisplayRows" 
                 :key="idx" 
                 class="table-row"
+                :class="{ 'is-selected': activeFeature === row.rawFeature }"
                 @click="handleRowClick(row.rawFeature)"
               >
                 <td class="col-num">{{ (currentPage - 1) * pageSize + idx + 1 }}</td>
@@ -117,7 +126,14 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['update:visible', 'close', 'focus-feature', 'toggle-label-field'])
+const emit = defineEmits(['update:visible', 'close', 'focus-feature', 'toggle-label-field', 'toggle-layer'])
+
+const toggleLayerVisibility = () => {
+  if (props.layer) {
+    props.layer.visible = !props.layer.visible
+    emit('toggle-layer', props.layer)
+  }
+}
 
 const searchQuery = ref('')
 const currentPage = ref(1)
@@ -329,7 +345,10 @@ const handleClose = () => {
   emit('close')
 }
 
+const activeFeature = ref(null)
+
 const handleRowClick = (feature) => {
+  activeFeature.value = feature
   emit('focus-feature', feature)
 }
 </script>
@@ -464,6 +483,29 @@ const handleRowClick = (feature) => {
 .json-table-modal.dark .action-btn:hover {
   background: rgba(255, 255, 255, 0.2);
   color: #ffffff;
+}
+
+.toggle-vis-btn {
+  font-size: 11px;
+  padding: 0 8px;
+  height: 24px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
+}
+
+.json-table-modal.dark .toggle-vis-btn.active {
+  background: rgba(37, 99, 235, 0.4) !important;
+  color: #93c5fd !important;
+  border: 1px solid #3b82f6 !important;
+}
+
+.json-table-modal.light .toggle-vis-btn.active {
+  background: #eff6ff !important;
+  color: #2563eb !important;
+  border: 1px solid #3b82f6 !important;
 }
 
 .json-table-modal.dark .data-table th {
@@ -673,6 +715,12 @@ const handleRowClick = (feature) => {
 .table-row {
   cursor: pointer;
   transition: background 0.15s;
+}
+
+.table-row.is-selected {
+  background: rgba(59, 130, 246, 0.3) !important;
+  color: #38bdf8 !important;
+  font-weight: 600;
 }
 
 /* Footer & Pagination */

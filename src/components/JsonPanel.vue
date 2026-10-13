@@ -95,6 +95,7 @@
       :theme="theme"
       @focus-feature="handleFocusFeature"
       @toggle-label-field="handleToggleLabelField"
+      @toggle-layer="handleToggleVisible"
     />
 
     <!-- JSON 字段映射与渲染确认弹窗 -->
@@ -294,12 +295,14 @@ const handleMappingCancel = () => {
 }
 
 const addParsedLayer = (name, geojson) => {
+  const isPurePoint = geojson.features && geojson.features.length > 0 &&
+    geojson.features.every(f => f.geometry && (f.geometry.type === 'Point' || f.geometry.type === 'MultiPoint'))
   const id = 'json_layer_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7)
   const layer = {
     id,
     name,
     featureCount: geojson.features ? geojson.features.length : 0,
-    visible: true,
+    visible: !isPurePoint,
     color: getRandomColor(),
     geojson
   }

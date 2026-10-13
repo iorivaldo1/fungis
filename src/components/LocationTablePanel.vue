@@ -23,7 +23,7 @@
               <tr 
                 v-for="item in points" 
                 :key="item.id" 
-                :class="{ 'is-hidden': !item.visible }"
+                :class="{ 'is-hidden': !item.visible, 'is-selected': activeId === item.id }"
                 @click="onRowClick(item)"
               >
                 <td class="col-id">
@@ -216,11 +216,15 @@ const onDelete = (item) => {
   emit('delete-item', item)
 }
 
+const activeId = ref(null)
+
 const onFocus = (item) => {
+  activeId.value = item.id
   emit('focus-item', item)
 }
 
 const onRowClick = (item) => {
+  activeId.value = item.id
   emit('focus-item', item)
 }
 
@@ -437,6 +441,12 @@ const closeNavModal = () => {
 
 .location-table tr {
   cursor: pointer;
+}
+
+.location-table tr.is-selected td {
+  background: rgba(59, 130, 246, 0.25) !important;
+  color: #38bdf8 !important;
+  font-weight: 600;
 }
 
 .col-id {

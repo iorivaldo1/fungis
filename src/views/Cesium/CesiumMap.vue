@@ -147,7 +147,7 @@ import LocatePanel from '@/components/LocatePanel.vue'
 import LocationTablePanel from '@/components/LocationTablePanel.vue'
 import ShpPanel from '@/components/ShpPanel.vue'
 import JsonPanel from '@/components/JsonPanel.vue'
-import { renderGeoJsonToCesium, flashFeatureCesium, renderGeoJsonLabelsCesium, clearGeoJsonLabelsCesium } from '@/utils/shpMapRenderer.js'
+import { renderGeoJsonToCesium, flashFeatureCesium, clearCesiumHighlight, renderGeoJsonLabelsCesium, clearGeoJsonLabelsCesium } from '@/utils/shpMapRenderer.js'
 
 
 const router = useRouter()
@@ -181,7 +181,7 @@ const updateClickMarker = (cartesian) => {
           pixelSize: 10,
           outlineColor: Cesium.Color.WHITE,
           outlineWidth: 2,
-          disableDepthTestDistance: Number.POSITIVE_INFINITY
+          heightReference: Cesium.HeightReference.CLAMP_TO_GROUND
         }
       })
     } else {
@@ -259,11 +259,11 @@ const handleLocate = ({ longitude, latitude, rawX, rawY }) => {
       id: pointId,
       position: lastInputCartesian,
       point: {
-        color: Cesium.Color.fromCssColorString('#3b82f6'),
-        pixelSize: 12,
+        color: Cesium.Color.fromCssColorString('#2563eb'),
+        pixelSize: 10,
         outlineColor: Cesium.Color.WHITE,
         outlineWidth: 2,
-        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
       },
       label: {
         text: `ID: ${currentId} (${rawX.toFixed(2)}, ${rawY.toFixed(2)})`,
@@ -274,7 +274,7 @@ const handleLocate = ({ longitude, latitude, rawX, rawY }) => {
         outlineWidth: 3,
         verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
         pixelOffset: new Cesium.Cartesian2(0, -20),
-        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
       }
     })
 
@@ -330,14 +330,22 @@ const handleDeleteItem = (item) => {
 
 const handleFocusItem = (item) => {
   if (viewer && item) {
-    viewer.camera.flyTo({
-      destination: Cesium.Cartesian3.fromDegrees(item.longitude, item.latitude, (item.height || 0) + 5000),
-      duration: 1.5
-    })
+    const feature = {
+      type: 'Feature',
+      geometry: {
+        type: 'Point',
+        coordinates: [item.longitude, item.latitude, item.height || 0]
+      },
+      properties: {
+        name: `ID: #${item.id} (${item.rawX.toFixed(2)}, ${item.rawY.toFixed(2)})`
+      }
+    }
+    flashFeatureCesium(viewer, feature)
   }
 }
 
 const handleClear = () => {
+  if (viewer) clearCesiumHighlight(viewer)
   inputPointIds.value.forEach(id => {
     viewer.entities.removeById(id)
   })
@@ -358,13 +366,27 @@ const handleClear = () => {
 // SHP 图层渲染与交互处理
 const shpDataSourcesMap = {}
 
+const flyToDataSourceSafe = (ds) => {
+  if (!viewer || !ds) return
+  const entities = ds.entities?.values || []
+  if (entities.length === 1 && (entities[0].position || entities[0].billboard || entities[0].point)) {
+    viewer.flyTo(ds, {
+      duration: 1.5,
+      offset: new Cesium.HeadingPitchRange(0, Cesium.Math.toRadians(-89.9), 5000)
+    })
+  } else {
+    viewer.flyTo(ds)
+  }
+}
+
 const handleShpAddLayer = async (layer) => {
   if (!viewer) return
   try {
     const ds = await renderGeoJsonToCesium(viewer, layer.geojson, layer.color)
     if (ds) {
       shpDataSourcesMap[layer.id] = ds
-      viewer.flyTo(ds)
+      ds.show = layer.visible !== false
+      flyToDataSourceSafe(ds)
     }
   } catch (err) {
     console.error('Cesium 加载 SHP GeoJSON 失败:', err)
@@ -408,7 +430,7 @@ const handleShpDeleteLayer = (layer) => {
 const handleShpFocusLayer = (layer) => {
   const ds = shpDataSourcesMap[layer.id]
   if (ds && viewer) {
-    viewer.flyTo(ds)
+    flyToDataSourceSafe(ds)
   }
 }
 
@@ -419,6 +441,7 @@ const handleShpFocusFeature = (feature) => {
 
 const handleShpClearAll = () => {
   if (!viewer) return
+  clearCesiumHighlight(viewer)
   Object.keys(shpDataSourcesMap).forEach(id => {
     const ds = shpDataSourcesMap[id]
     if (shpLabelEntitiesMap[id]) {
@@ -439,7 +462,8 @@ const handleJsonAddLayer = async (layer) => {
     const ds = await renderGeoJsonToCesium(viewer, layer.geojson, layer.color)
     if (ds) {
       jsonDataSourcesMap[layer.id] = ds
-      viewer.flyTo(ds)
+      ds.show = layer.visible !== false
+      flyToDataSourceSafe(ds)
     }
   } catch (err) {
     console.error('Cesium 加载 JSON GeoJSON 失败:', err)
@@ -483,7 +507,7 @@ const handleJsonDeleteLayer = (layer) => {
 const handleJsonFocusLayer = (layer) => {
   const ds = jsonDataSourcesMap[layer.id]
   if (ds && viewer) {
-    viewer.flyTo(ds)
+    flyToDataSourceSafe(ds)
   }
 }
 
@@ -494,6 +518,7 @@ const handleJsonFocusFeature = (feature) => {
 
 const handleJsonClearAll = () => {
   if (!viewer) return
+  clearCesiumHighlight(viewer)
   Object.keys(jsonDataSourcesMap).forEach(id => {
     const ds = jsonDataSourcesMap[id]
     if (jsonLabelEntitiesMap[id]) {
@@ -651,6 +676,9 @@ const initCesium = () => {
     fullscreenButton: false,
     skyAtmosphere: false,
   })
+
+  // 开启地形深度测试，使实体紧贴地表且视角变动时不产生视差相对漂移
+  viewer.scene.globe.depthTestAgainstTerrain = true
 
   viewerInstance.value = viewer
 

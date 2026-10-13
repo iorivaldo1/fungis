@@ -50,6 +50,31 @@ function removeCesiumInjectPlugin() {
   }
 }
 
+function preventPbfSpaFallbackPlugin() {
+  return {
+    name: 'prevent-pbf-spa-fallback',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        if (req.url && req.url.includes('.pbf')) {
+          const cleanPath = req.url.split('?')[0]
+          const decodedPath = decodeURIComponent(cleanPath)
+          const localPublicPath = resolve(__dirname, 'public', decodedPath.replace(/^\//, ''))
+          if (!fs.existsSync(localPublicPath)) {
+            if (cleanPath.startsWith('/tiles_base') || cleanPath.startsWith('/tiles_sichuan')) {
+              return next()
+            }
+            res.statusCode = 404
+            res.setHeader('Content-Type', 'text/plain; charset=utf-8')
+            res.end('PBF Not Found')
+            return
+          }
+        }
+        next()
+      })
+    }
+  }
+}
+
 export default defineConfig(({ mode }) => {
   // 加载环境变量，根据当前工作目录和 mode (例如 development)
   const env = loadEnv(mode, process.cwd(), '')
@@ -60,7 +85,8 @@ export default defineConfig(({ mode }) => {
     plugins: [
       vue(),
       cesium(),
-      removeCesiumInjectPlugin()
+      removeCesiumInjectPlugin(),
+      preventPbfSpaFallbackPlugin()
     ],
     resolve: {
       alias: {
@@ -96,6 +122,16 @@ export default defineConfig(({ mode }) => {
           target: proxyTarget,
           changeOrigin: true,
           timeout: 600000
+        },
+
+        '/tiles_base': {
+          target: 'http://localhost:8088',
+          changeOrigin: true
+        },
+
+        '/tiles_sichuan': {
+          target: 'http://localhost:8088',
+          changeOrigin: true
         }
       }
     }
