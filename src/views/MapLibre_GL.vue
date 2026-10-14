@@ -979,7 +979,7 @@ const loadScript = (src) => {
   })
 }
 
-// 预加载所有雪碧图 SVG 图标
+// 预加载所有雪碧图 SVG 图标 (通过 Canvas 转为 ImageData 栅格像素，规避 MapLibre 不支持直接使用 SVG DOM 报错)
 const decodedImagesMap = new Map()
 
 function preloadAllIcons() {
@@ -992,7 +992,19 @@ function preloadAllIcons() {
       const img = new Image()
       img.crossOrigin = 'anonymous'
       img.onload = () => {
-        decodedImagesMap.set(item.name, img)
+        try {
+          const width = img.naturalWidth || img.width || 32
+          const height = img.naturalHeight || img.height || 32
+          const canvas = document.createElement('canvas')
+          canvas.width = width
+          canvas.height = height
+          const ctx = canvas.getContext('2d')
+          ctx.drawImage(img, 0, 0, width, height)
+          const imageData = ctx.getImageData(0, 0, width, height)
+          decodedImagesMap.set(item.name, imageData)
+        } catch (e) {
+          decodedImagesMap.set(item.name, img)
+        }
         resolve()
       }
       img.onerror = () => resolve()
@@ -1274,9 +1286,10 @@ onMounted(async () => {
 
       const $ = window.jQuery || window.$
 
-      // 1. 独立初始化 WMTS 背景道路切片与图层控制
+      // 1. 独立初始化 WMTS 背景道路切片与图层控制 (线上生产走当前域名 Nginx /geoserver/ 反向代理)
+      const baseApiUrl = isHttps ? '' : (currentHost === 'localhost' ? '' : `http://${currentHost}:8080`)
       if (window.WmtsRoadManager) {
-        window.WmtsRoadManager.init(map, { serverPort: '8080' })
+        window.WmtsRoadManager.init(map, { geoserverUrl: baseApiUrl, apiBaseUrl: baseApiUrl })
       }
 
       // 2. 点击路径规划按钮后，初次调用并初始化公共路径规划业务引擎
@@ -1288,7 +1301,7 @@ onMounted(async () => {
         if (!isRouteManagerInited) {
           isRouteManagerInited = true
           if (window.PgrbRouteManager) {
-            window.PgrbRouteManager.init(map, { serverPort: '8080' })
+            window.PgrbRouteManager.init(map, { geoserverUrl: baseApiUrl, apiBaseUrl: baseApiUrl })
           }
           $routePanel.fadeIn(200)
           $btnToggleRoute.addClass('active')

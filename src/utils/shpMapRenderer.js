@@ -1,6 +1,7 @@
 import { wgs84ToGcj02, gcj02ToBd09 } from '@/utils/baiduUtils.js'
 import * as Cesium from 'cesium'
 import proj4 from 'proj4'
+import L from 'leaflet'
 
 /**
  * 提取 PRJ 文本中的中央经线 (Central Meridian)
@@ -955,4 +956,144 @@ export async function renderGeoJsonToCesium(viewer, rawGeojson, colorCss = '#3b8
 
   viewer.dataSources.add(dataSource)
   return dataSource
+}
+
+/**
+ * 将 GeoJSON 渲染为 Leaflet 图层
+ * @param {Object} map Leaflet Map 实例
+ * @param {Object} rawGeojson GeoJSON 数据 (经纬度)
+ * @param {String} color 渲染颜色
+ * @returns {Object} { layerGroup, bounds }
+ */
+export function renderGeoJsonToLeaflet(map, rawGeojson, color = '#3b82f6', onFeatureClick = null) {
+  const geojson = ensureWgs84GeoJson(rawGeojson)
+  if (!map || !geojson || !geojson.features) return { layerGroup: null, bounds: null }
+
+  const layerGroup = L.geoJSON(geojson, {
+    style: () => ({
+      color: color,
+      weight: 3,
+      opacity: 0.9,
+      fillColor: color,
+      fillOpacity: 0.35
+    }),
+    pointToLayer: (feature, latlng) => {
+      return L.circleMarker(latlng, {
+        radius: 6,
+        fillColor: color,
+        color: '#ffffff',
+        weight: 2,
+        opacity: 1,
+        fillOpacity: 0.9
+      })
+    },
+    onEachFeature: (feature, layer) => {
+      layer.on('click', (e) => {
+        if (e && e.originalEvent) {
+          L.DomEvent.stopPropagation(e)
+        }
+        if (onFeatureClick) {
+          onFeatureClick(feature, layer, e)
+        }
+      })
+    }
+  })
+
+  layerGroup.addTo(map)
+  let bounds = null
+  try {
+    bounds = layerGroup.getBounds()
+  } catch (_) {}
+
+  return { layerGroup, bounds }
+}
+
+/**
+ * 在 Leaflet 地图上聚焦并高亮闪烁 Feature 3 次
+ */
+export function flashFeatureLeaflet(map, feature, highlightColor = '#ff0055') {
+  if (!map || !feature || !feature.geometry) return
+
+  const info = getFeatureCenterAndBounds(feature)
+  if (!info) return
+
+  const [lng, lat] = info.center
+  const currentZoom = map.getZoom ? map.getZoom() : 15
+  map.setView([lat, lng], Math.max(currentZoom, 16))
+
+  const highlightLayer = L.geoJSON(feature, {
+    style: () => ({
+      color: highlightColor,
+      weight: 5,
+      opacity: 1,
+      fillColor: highlightColor,
+      fillOpacity: 0.55
+    }),
+    pointToLayer: (feat, latlng) => {
+      return L.circleMarker(latlng, {
+        radius: 12,
+        fillColor: highlightColor,
+        color: '#ffffff',
+        weight: 3,
+        opacity: 1,
+        fillOpacity: 0.9
+      })
+    }
+  }).addTo(map)
+
+  let count = 0
+  const interval = setInterval(() => {
+    count++
+    const visible = count % 2 === 1
+    if (visible) {
+      if (!map.hasLayer(highlightLayer)) map.addLayer(highlightLayer)
+    } else {
+      if (map.hasLayer(highlightLayer)) map.removeLayer(highlightLayer)
+    }
+    if (count >= 6) {
+      clearInterval(interval)
+      if (map.hasLayer(highlightLayer)) map.removeLayer(highlightLayer)
+    }
+  }, 280)
+}
+
+/**
+ * 在 Leaflet 地图上生成属性文字标注
+ */
+export function renderGeoJsonLabelsLeaflet(map, geojson, fieldName, labelColor = '#1e293b') {
+  if (!map || !geojson || !geojson.features || !fieldName) return []
+
+  const labelMarkers = []
+
+  geojson.features.forEach(feature => {
+    const val = feature.properties ? feature.properties[fieldName] : null
+    if (val === undefined || val === null || String(val).trim() === '') return
+
+    const info = getFeatureCenterAndBounds(feature)
+    if (!info) return
+
+    const [lng, lat] = info.center
+    const labelHtml = `<div class="leaflet-shp-label" style="background: rgba(255, 255, 255, 0.92); color: ${labelColor}; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: bold; border: 1px solid rgba(0,0,0,0.25); box-shadow: 0 2px 4px rgba(0,0,0,0.2); white-space: nowrap; pointer-events: none;">${val}</div>`
+
+    const icon = L.divIcon({
+      className: 'leaflet-label-wrapper',
+      html: labelHtml,
+      iconAnchor: [12, 12]
+    })
+
+    const marker = L.marker([lat, lng], { icon, interactive: false }).addTo(map)
+    labelMarkers.push(marker)
+  })
+
+  return labelMarkers
+}
+
+/**
+ * 清除 Leaflet 地图上的属性文字标注
+ */
+export function clearGeoJsonLabelsLeaflet(map, labelMarkers = []) {
+  if (!map || !Array.isArray(labelMarkers)) return
+  labelMarkers.forEach(m => {
+    if (map.hasLayer(m)) map.removeLayer(m)
+  })
 }

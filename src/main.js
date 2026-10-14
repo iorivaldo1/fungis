@@ -203,6 +203,24 @@ const router = createRouter({
       ]
     },
     {
+      path: '/leaflet',
+      name: 'Leaflet',
+      component: RouterView,
+      redirect: '/leaflet/location',
+      children: [
+        {
+          path: 'location',
+          name: 'LeafletLocation',
+          component: () => import('./views/Leaflet/LocationMap.vue')
+        },
+        {
+          path: 'road-route-calc',
+          name: 'LeafletRoadRouteCalc',
+          component: () => import('./views/Leaflet/RoadRouteCalc.vue')
+        }
+      ]
+    },
+    {
       path: '/maplibre-gl',
       name: 'MapLibre_GL',
       component: () => import('./views/MapLibre_GL.vue'),

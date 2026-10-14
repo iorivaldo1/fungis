@@ -351,6 +351,85 @@ const handleRowClick = (feature) => {
   activeFeature.value = feature
   emit('focus-feature', feature)
 }
+
+// 查找要素在当前数据集中的索引
+const findFeatureIndex = (target) => {
+  if (!target || !displayRows.value.length) return -1
+
+  // 1. 严格全等引用匹配
+  let idx = displayRows.value.findIndex(r => r.rawFeature === target)
+  if (idx !== -1) return idx
+
+  // 2. 关键属性匹配 (优先 clean_id, id, OBJECTID, FID, name 等)
+  if (target.properties && Object.keys(target.properties).length > 0) {
+    const tProps = target.properties
+    const uniqueKeys = ['clean_id', 'id', 'OBJECTID', 'FID', 'fid', 'gid', 'name']
+    for (const key of uniqueKeys) {
+      if (tProps[key] !== undefined && tProps[key] !== null) {
+        idx = displayRows.value.findIndex(r => r.props && r.props[key] === tProps[key])
+        if (idx !== -1) return idx
+      }
+    }
+
+    const targetPropsJson = JSON.stringify(tProps)
+    idx = displayRows.value.findIndex(r => r.props && JSON.stringify(r.props) === targetPropsJson)
+    if (idx !== -1) return idx
+  }
+
+  // 3. 几何坐标匹配
+  if (target.geometry && target.geometry.coordinates) {
+    const coordsStr = JSON.stringify(target.geometry.coordinates)
+    idx = displayRows.value.findIndex(r => 
+      r.rawFeature?.geometry?.coordinates && 
+      JSON.stringify(r.rawFeature.geometry.coordinates) === coordsStr
+    )
+    if (idx !== -1) return idx
+  }
+
+  return -1
+}
+
+// 核心定位函数：供外部联动调用，自动翻页、选中行、滚动并高亮
+const locateFeature = (targetFeature) => {
+  if (!targetFeature) return
+
+  // 1. 查找要素所在索引，若因搜索词过滤未找到则清空搜索框后重试
+  let idx = findFeatureIndex(targetFeature)
+  if (idx === -1 && searchQuery.value.trim()) {
+    searchQuery.value = ''
+    idx = findFeatureIndex(targetFeature)
+  }
+
+  if (idx === -1) return
+
+  // 2. 计算要素所在的页码并自动翻页
+  const targetPage = Math.floor(idx / pageSize.value) + 1
+  currentPage.value = targetPage
+
+  // 3. 选中要素并关联激活
+  const matchedRow = displayRows.value[idx]
+  activeFeature.value = matchedRow ? matchedRow.rawFeature : targetFeature
+
+  // 4. 等待 DOM 渲染后平滑滚动到该行并触发脉冲高亮
+  const performScroll = () => {
+    const selectedRow = dialogRef.value?.querySelector('.table-row.is-selected')
+    if (selectedRow) {
+      selectedRow.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+      selectedRow.classList.remove('row-pulse-highlight')
+      void selectedRow.offsetWidth
+      selectedRow.classList.add('row-pulse-highlight')
+    }
+  }
+
+  nextTick(() => {
+    performScroll()
+    setTimeout(performScroll, 120)
+  })
+}
+
+defineExpose({
+  locateFeature
+})
 </script>
 
 <style scoped>
@@ -715,6 +794,25 @@ const handleRowClick = (feature) => {
 .table-row {
   cursor: pointer;
   transition: background 0.15s;
+}
+
+@keyframes shpRowPulse {
+  0% {
+    background-color: rgba(59, 130, 246, 0.8) !important;
+    box-shadow: inset 0 0 16px rgba(59, 130, 246, 0.9);
+  }
+  50% {
+    background-color: rgba(59, 130, 246, 0.45) !important;
+    box-shadow: inset 0 0 8px rgba(59, 130, 246, 0.6);
+  }
+  100% {
+    background-color: rgba(59, 130, 246, 0.3) !important;
+    box-shadow: none;
+  }
+}
+
+.table-row.row-pulse-highlight {
+  animation: shpRowPulse 1.2s ease-out;
 }
 
 .table-row.is-selected {

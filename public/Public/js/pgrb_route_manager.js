@@ -9,8 +9,26 @@
 
     const DEFAULT_CONFIG = {
         serverPort: '8080',
-        get apiBaseUrl() { return `http://localhost:${this.serverPort}`; },
-        get geoserverUrl() { return `http://localhost:8080`; },
+        _apiBaseUrl: null,
+        _geoserverUrl: null,
+        get apiBaseUrl() {
+            if (this._apiBaseUrl !== null && this._apiBaseUrl !== undefined) return this._apiBaseUrl;
+            // 线上生产环境 (如 https://www.fungis.site) 或走开发反向代理时使用同源相对路径
+            if (typeof window !== 'undefined' && (window.location.protocol === 'https:' || window.location.port === '3000')) {
+                return '';
+            }
+            return `http://localhost:${this.serverPort}`;
+        },
+        set apiBaseUrl(val) { this._apiBaseUrl = val; },
+        get geoserverUrl() {
+            if (this._geoserverUrl !== null && this._geoserverUrl !== undefined) return this._geoserverUrl;
+            // 线上生产环境或走开发反向代理时使用同源相对路径
+            if (typeof window !== 'undefined' && (window.location.protocol === 'https:' || window.location.port === '3000')) {
+                return '';
+            }
+            return `http://localhost:${this.serverPort}`;
+        },
+        set geoserverUrl(val) { this._geoserverUrl = val; },
         get routeDataManageApiBase() { return `${this.apiBaseUrl}/get_geo_pg/geo/route/data-manage`; },
         get xzqApiBase() { return `${this.apiBaseUrl}/get_geo_pg/geo/route/xzq`; },
         get pgrbApiBase() { return `${this.apiBaseUrl}/get_geo_pg/geo/route/pgrb`; },
@@ -52,7 +70,10 @@
             if (options.serverPort) {
                 this.config.serverPort = String(options.serverPort);
             }
-            if (options.geoserverUrl) {
+            if (options.apiBaseUrl !== undefined) {
+                this.config.apiBaseUrl = String(options.apiBaseUrl);
+            }
+            if (options.geoserverUrl !== undefined) {
                 this.config.geoserverUrl = String(options.geoserverUrl);
             }
             if (options.wmtsBounds) {
@@ -306,6 +327,12 @@
             this.map = mapInstance;
             if (options.serverPort) {
                 this.config.serverPort = String(options.serverPort);
+            }
+            if (options.apiBaseUrl !== undefined) {
+                this.config.apiBaseUrl = String(options.apiBaseUrl);
+            }
+            if (options.geoserverUrl !== undefined) {
+                this.config.geoserverUrl = String(options.geoserverUrl);
             }
 
             try {

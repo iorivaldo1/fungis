@@ -23,6 +23,7 @@
               <tr 
                 v-for="item in points" 
                 :key="item.id" 
+                :id="`loc-row-${item.id}`"
                 :class="{ 'is-hidden': !item.visible, 'is-selected': activeId === item.id }"
                 @click="onRowClick(item)"
               >
@@ -162,7 +163,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, watch, nextTick } from 'vue'
 import IconChevronDown from '@/components/icons/IconChevronDown.vue'
 import { getMapNavUrls } from '@/utils/coordTransform.js'
 
@@ -178,6 +179,10 @@ const props = defineProps({
   defaultCollapsed: {
     type: Boolean,
     default: false
+  },
+  selectedId: {
+    type: [Number, String],
+    default: null
   }
 })
 
@@ -216,7 +221,7 @@ const onDelete = (item) => {
   emit('delete-item', item)
 }
 
-const activeId = ref(null)
+const activeId = ref(props.selectedId)
 
 const onFocus = (item) => {
   activeId.value = item.id
@@ -231,6 +236,38 @@ const onRowClick = (item) => {
 const onClearAll = () => {
   emit('clear-all')
 }
+
+// 供外部联动调用：高亮并平滑滚动到指定纪录
+const scrollToItem = (id) => {
+  if (id === null || id === undefined) return
+  activeId.value = id
+  isCollapsed.value = false // 展开面板
+  const performScroll = () => {
+    const rowEl = document.getElementById(`loc-row-${id}`)
+    if (rowEl) {
+      rowEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+      rowEl.classList.remove('row-pulse-highlight')
+      void rowEl.offsetWidth
+      rowEl.classList.add('row-pulse-highlight')
+    }
+  }
+  nextTick(() => {
+    performScroll()
+    setTimeout(performScroll, 80)
+  })
+}
+
+watch(() => props.selectedId, (newId) => {
+  if (newId !== null && newId !== undefined) {
+    scrollToItem(newId)
+  }
+})
+
+defineExpose({
+  scrollToItem,
+  setActiveId: (id) => { activeId.value = id },
+  expand: () => { isCollapsed.value = false }
+})
 
 // 打开导航弹窗并计算目标坐标
 const onOpenNav = (item) => {
@@ -441,12 +478,42 @@ const closeNavModal = () => {
 
 .location-table tr {
   cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+@keyframes rowPulse {
+  0% {
+    background-color: rgba(59, 130, 246, 0.75) !important;
+    box-shadow: inset 0 0 16px rgba(59, 130, 246, 0.9);
+  }
+  50% {
+    background-color: rgba(59, 130, 246, 0.45) !important;
+    box-shadow: inset 0 0 8px rgba(59, 130, 246, 0.6);
+  }
+  100% {
+    background-color: rgba(59, 130, 246, 0.28) !important;
+    box-shadow: none;
+  }
+}
+
+.location-table tr.row-pulse-highlight td {
+  animation: rowPulse 1.2s ease-out;
 }
 
 .location-table tr.is-selected td {
-  background: rgba(59, 130, 246, 0.25) !important;
+  background: rgba(59, 130, 246, 0.28) !important;
   color: #38bdf8 !important;
   font-weight: 600;
+}
+
+.location-table-panel.dark .location-table tr.is-selected td {
+  background: rgba(59, 130, 246, 0.35) !important;
+  color: #60a5fa !important;
+}
+
+.location-table-panel.light .location-table tr.is-selected td {
+  background: rgba(59, 130, 246, 0.18) !important;
+  color: #1d4ed8 !important;
 }
 
 .col-id {
@@ -792,6 +859,25 @@ const closeNavModal = () => {
 @keyframes slideUp {
   from { transform: translateY(16px); opacity: 0; }
   to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes rowPulse {
+  0% {
+    background-color: rgba(56, 189, 248, 0.5) !important;
+    box-shadow: inset 0 0 0 2px #38bdf8, 0 0 16px rgba(56, 189, 248, 0.6);
+  }
+  50% {
+    background-color: rgba(56, 189, 248, 0.35) !important;
+    box-shadow: inset 0 0 0 2px #38bdf8, 0 0 22px rgba(56, 189, 248, 0.7);
+  }
+  100% {
+    background-color: rgba(59, 130, 246, 0.25) !important;
+    box-shadow: none;
+  }
+}
+
+.row-pulse-highlight td {
+  animation: rowPulse 1.4s ease-out;
 }
 </style>
 

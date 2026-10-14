@@ -90,6 +90,7 @@
 
     <!-- 可拖拽与缩放的 JSON 属性表弹窗 -->
     <JsonAttributeTable 
+      ref="jsonTableRef"
       v-model:visible="isTableVisible" 
       :layer="activeTableLayer" 
       :theme="theme"
@@ -111,7 +112,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, nextTick } from 'vue'
 import IconChevronDown from '@/components/icons/IconChevronDown.vue'
 import JsonAttributeTable from '@/components/JsonAttributeTable.vue'
 import JsonFieldMappingModal from '@/components/JsonFieldMappingModal.vue'
@@ -312,6 +313,21 @@ const addParsedLayer = (name, geojson) => {
 
 const isTableVisible = ref(false)
 const activeTableLayer = ref(null)
+const jsonTableRef = ref(null)
+
+const locateFeature = (layer, feature) => {
+  if (!layer) return
+  if (activeTableLayer.value?.id !== layer.id) {
+    activeTableLayer.value = layer
+  }
+  isTableVisible.value = true
+
+  nextTick(() => {
+    if (jsonTableRef.value?.locateFeature) {
+      jsonTableRef.value.locateFeature(feature)
+    }
+  })
+}
 
 const handleToggleVisible = (layer) => {
   emit('toggle-layer', layer)
@@ -353,6 +369,11 @@ const handleClearAll = () => {
   layers.value = []
   emit('clear-all')
 }
+
+defineExpose({
+  locateFeature,
+  openTable: handleToggleTable
+})
 </script>
 
 <style scoped>

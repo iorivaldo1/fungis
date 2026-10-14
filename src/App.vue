@@ -202,6 +202,28 @@
             </transition>
           </div>
 
+          <!-- Leaflet 多级菜单 -->
+          <div class="menu-group" :class="{ expanded: isLeafletMenuExpanded }">
+            <div class="menu-item parent" @click="toggleLeafletMenu"
+              :class="{ active: route.path.startsWith('/leaflet') }">
+              <IconLeaflet />
+              <span class="menu-text">Leaflet</span>
+              <IconArrow class="arrow-icon" :class="{ rotated: isLeafletMenuExpanded }" width="16" height="16" />
+            </div>
+            <transition name="menu-slide">
+              <div v-show="isLeafletMenuExpanded" class="sub-menu">
+                <router-link to="/leaflet/location" class="menu-item sub" active-class="active">
+                  <div class="sub-dot"></div>
+                  <span class="menu-text">二维定位</span>
+                </router-link>
+                <router-link to="/leaflet/road-route-calc" class="menu-item sub" active-class="active">
+                  <div class="sub-dot"></div>
+                  <span class="menu-text">道路路径计算</span>
+                </router-link>
+              </div>
+            </transition>
+          </div>
+
           <!-- MapLibre-GL 菜单 -->
           <router-link to="/maplibre-gl" class="menu-item" active-class="active">
             <IconRoute />
@@ -263,6 +285,7 @@ import IconRiver from './components/icons/IconRiver.vue'
 import IconThree from './components/icons/IconThree.vue'
 import IconWrench from './components/icons/IconWrench.vue'
 import IconRoute from './components/icons/IconRoute.vue'
+import IconLeaflet from './components/icons/IconLeaflet.vue'
 import IconGear from './components/icons/IconGear.vue'
 
 const route = useRoute()
@@ -302,6 +325,7 @@ const isRiverMenuExpanded = ref(route.path.startsWith('/tianditu') || route.path
 const isBaiduMenuExpanded = ref(route.path.startsWith('/baidu'))
 const isThreeMenuExpanded = ref(route.path === '/three' || route.path.startsWith('/three/'))
 const isAlgorithmMenuExpanded = ref(route.path.startsWith('/algorithm'))
+const isLeafletMenuExpanded = ref(route.path.startsWith('/leaflet'))
 const isBlogMenuExpanded = ref(route.path.startsWith('/blog'))
 const isReady = ref(false)
 
@@ -386,6 +410,10 @@ const toggleAlgorithmMenu = () => {
   isAlgorithmMenuExpanded.value = !isAlgorithmMenuExpanded.value
 }
 
+const toggleLeafletMenu = () => {
+  isLeafletMenuExpanded.value = !isLeafletMenuExpanded.value
+}
+
 const toggleBlogMenu = () => {
   isBlogMenuExpanded.value = !isBlogMenuExpanded.value
 }
@@ -431,9 +459,8 @@ const currentRouteName = computed(() => {
     // 'AStarRoute': 'astar路径计算(PGRB v2)',
     'AStar3DRoute': '3D立体分层路径规划',
     // 'DijkstraRouteCalc': 'dijkstra路径计算',
-    // 'Leaflet': 'Leaflet',
-    // 'LeafletAStarRouteCalc': 'astar路径计算',
-    // 'LeafletDijkstraRouteCalc': 'dijkstra路径计算',
+    'Leaflet': 'Leaflet',
+    'LeafletLocation': '二维定位',
     'LeafletRoadRouteCalc': '道路路径计算',
     'MapLibre_GL': 'MapLibre-GL',
     'MapLibreGL': 'MapLibre-GL',

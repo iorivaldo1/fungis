@@ -91,6 +91,7 @@
 
     <!-- 可拖拽与缩放的 SHP 属性表弹窗 -->
     <ShpAttributeTable 
+      ref="shpTableRef"
       v-model:visible="isTableVisible" 
       :layer="activeTableLayer" 
       :theme="theme"
@@ -112,7 +113,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, nextTick } from 'vue'
 import shp, { parseShp, parseDbf, combine } from 'shpjs'
 import { ensureWgs84GeoJson } from '@/utils/shpMapRenderer.js'
 import IconChevronDown from '@/components/icons/IconChevronDown.vue'
@@ -361,6 +362,21 @@ const addParsedLayer = (name, geojson) => {
 
 const isTableVisible = ref(false)
 const activeTableLayer = ref(null)
+const shpTableRef = ref(null)
+
+const locateFeature = (layer, feature) => {
+  if (!layer) return
+  if (activeTableLayer.value?.id !== layer.id) {
+    activeTableLayer.value = layer
+  }
+  isTableVisible.value = true
+
+  nextTick(() => {
+    if (shpTableRef.value?.locateFeature) {
+      shpTableRef.value.locateFeature(feature)
+    }
+  })
+}
 
 const handleToggleVisible = (layer) => {
   emit('toggle-layer', layer)
@@ -402,6 +418,11 @@ const handleClearAll = () => {
   layers.value = []
   emit('clear-all')
 }
+
+defineExpose({
+  locateFeature,
+  openTable: handleToggleTable
+})
 </script>
 
 <style scoped>
