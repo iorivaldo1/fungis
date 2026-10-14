@@ -102,6 +102,94 @@
         </div>
         <div class="skeleton-loader" v-else></div>
       </div>
+
+      <!-- MapLibre 矢量瓦片最大级别配置卡片 -->
+      <div class="metric-card maplibre-zoom-card">
+        <div class="card-header">
+          <div class="service-info">
+            <div class="service-icon maplibre-icon">📐</div>
+            <h3>MapLibre 切片最大层级配置</h3>
+          </div>
+          <span class="status-badge" :class="isAdmin ? 'online' : 'warning'">
+            <span class="pulse-dot"></span>
+            {{ isAdmin ? '管理员(可配置)' : '只读权限' }}
+          </span>
+        </div>
+        <div class="card-body" v-if="!loadingZoom">
+          <div class="token-info-box">
+            <div class="stat-row">
+              <span>当前生效层级</span>
+              <span class="zoom-display">
+                <code class="zoom-badge">Level {{ currentMaxZoom }}</code>
+                <span class="zoom-desc" style="font-size: 12px; color: #94a3b8; margin-left: 8px;">
+                  ({{ getZoomDescription(currentMaxZoom) }})
+                </span>
+              </span>
+            </div>
+            <div class="stat-row mt" v-if="zoomUpdatedAt">
+              <span>配置更新时间</span>
+              <span class="stat-value" style="font-size: 12px; color: #94a3b8;">{{ zoomUpdatedAt }}</span>
+            </div>
+          </div>
+
+          <div class="token-edit-form">
+            <div class="preset-tokens">
+              <span class="preset-label">快捷预设级别选择：</span>
+              <div class="preset-btns">
+                <button 
+                  v-for="(preset, idx) in presetZooms" 
+                  :key="idx" 
+                  class="preset-btn"
+                  :class="{ active: (newZoomInput ? Number(newZoomInput) === preset.val : currentMaxZoom === preset.val) }"
+                  @click="newZoomInput = preset.val"
+                  :title="preset.desc"
+                  :disabled="!isAdmin"
+                >
+                  {{ preset.label }}
+                </button>
+              </div>
+            </div>
+            <div class="input-group">
+              <input 
+                type="number" 
+                v-model.number="newZoomInput" 
+                placeholder="输入切片最大层级 (例如 14)" 
+                min="1"
+                max="22"
+                :disabled="!isAdmin || updatingZoom"
+                class="token-input"
+                @keyup.enter="handleSaveZoom"
+              />
+              <button 
+                class="save-token-btn save-zoom-btn" 
+                @click="handleSaveZoom" 
+                :disabled="!isAdmin || updatingZoom || !newZoomInput"
+              >
+                {{ updatingZoom ? '保存中...' : '保存配置' }}
+              </button>
+            </div>
+            <div class="permission-tip" v-if="!isAdmin">
+              🔒 只有后台管理员 (serverAdmin 权限) 可以修改切片最大层级配置。
+            </div>
+            <div class="token-msg" :class="zoomMsgType" v-if="zoomMsg">
+              {{ zoomMsg }}
+            </div>
+
+            <!-- 服务端全局同步命令展示（可复制） -->
+            <div class="server-sync-hint" v-if="showServerSyncCommand">
+              <div class="hint-title">💡 服务端全局同步命令 (选填，多终端/访客统一生效)：</div>
+              <div class="command-box">
+                <code>{{ serverSyncCommand }}</code>
+                <button class="copy-cmd-btn" @click="copySyncCommand" :title="'点击复制命令'">
+                  {{ copiedCmd ? '已复制 ✔️' : '复制命令' }}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="skeleton-loader" v-else></div>
+      </div>
+
       <!-- 整体服务器状态 -->
       <div class="metric-card server-card">
         <div class="card-header">
@@ -273,6 +361,13 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { setToken, api } from '@/utils/request.js'
 import { getTiandituToken, switchTiandituToken } from '@/utils/tiandituToken.js'
+import {
+  getLocalMaxZoom,
+  saveLocalMaxZoom,
+  getZoomDescription,
+  generateServerSyncCommand,
+  STORAGE_TIME_KEY
+} from '@/utils/mapConfig.js'
 
 const router = useRouter()
 const loading = ref(true)
@@ -332,6 +427,82 @@ const handleSaveToken = async () => {
   }
 }
 
+// MapLibre 最大瓦片层级配置
+const presetZooms = [
+  { val: 12, label: '12 级 (市级)', desc: '市级宏观概览' },
+  { val: 13, label: '13 级 (区县)', desc: '区县级中尺度' },
+  { val: 14, label: '14 级 (默认街道)', desc: '街道/村级，当前已解压数据层级' },
+  { val: 15, label: '15 级 (高精细)', desc: '高精细建筑道路 (需服务器解压15级)' },
+  { val: 16, label: '16 级 (极精细)', desc: '极高精度局部瓦片' }
+]
+
+const currentMaxZoom = ref(14)
+const newZoomInput = ref(14)
+const zoomUpdatedAt = ref('')
+const loadingZoom = ref(true)
+const updatingZoom = ref(false)
+const zoomMsg = ref('')
+const zoomMsgType = ref('success')
+const copiedCmd = ref(false)
+const showServerSyncCommand = ref(false)
+const serverSyncCommand = ref('')
+
+const fetchZoomData = async () => {
+  loadingZoom.value = true
+  try {
+    const z = await getLocalMaxZoom()
+    currentMaxZoom.value = z
+    newZoomInput.value = z
+    zoomUpdatedAt.value = localStorage.getItem(STORAGE_TIME_KEY) || ''
+    serverSyncCommand.value = generateServerSyncCommand(z)
+  } catch (e) {
+    console.error('加载 MapLibre 切片层级配置失败:', e)
+  } finally {
+    loadingZoom.value = false
+  }
+}
+
+const handleSaveZoom = async () => {
+  if (!newZoomInput.value) return
+  updatingZoom.value = true
+  zoomMsg.value = ''
+  try {
+    const val = await saveLocalMaxZoom(newZoomInput.value)
+    currentMaxZoom.value = val
+    zoomUpdatedAt.value = new Date().toLocaleString()
+    serverSyncCommand.value = generateServerSyncCommand(val)
+    showServerSyncCommand.value = true
+    zoomMsg.value = `✅ MapLibre 切片最大层级已更新为 ${val} 级！本浏览器已即时生效。`
+    zoomMsgType.value = 'success'
+  } catch (err) {
+    zoomMsg.value = '❌ ' + (err.message || '保存配置失败')
+    zoomMsgType.value = 'error'
+  } finally {
+    updatingZoom.value = false
+  }
+}
+
+const copySyncCommand = async () => {
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(serverSyncCommand.value)
+    } else {
+      const textarea = document.createElement('textarea')
+      textarea.value = serverSyncCommand.value
+      document.body.appendChild(textarea)
+      textarea.select()
+      document.execCommand('copy')
+      document.body.removeChild(textarea)
+    }
+    copiedCmd.value = true
+    setTimeout(() => {
+      copiedCmd.value = false
+    }, 2500)
+  } catch (e) {
+    console.error('复制命令失败:', e)
+  }
+}
+
 const status = ref({
   server: { state: 'online', cpu: 0, memory: 0, uptime: '0天 0小时', totalMemoryStr: '0 GB', usedMemoryStr: '0 GB' },
   springboot: { state: 'online', latency: 0, connections: 0, memory: 0, processes: [] },
@@ -344,6 +515,7 @@ const handleRefresh = async () => {
   loading.value = true;
   await updateMetrics();
   await fetchTokenData();
+  await fetchZoomData();
   loading.value = false;
 }
 
@@ -383,6 +555,7 @@ const handleLogout = () => {
 onMounted(() => {
   fetchStatus()
   fetchTokenData()
+  fetchZoomData()
 })
 </script>
 
@@ -978,6 +1151,97 @@ onMounted(() => {
   background: rgba(239, 68, 68, 0.15);
   color: #f87171;
   border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+/* MapLibre 瓦片最大层级特有样式 */
+.maplibre-zoom-card {
+  grid-column: span 1;
+}
+
+.maplibre-icon {
+  background: rgba(168, 85, 247, 0.15);
+  color: #c084fc;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+}
+
+.zoom-display {
+  display: flex;
+  align-items: center;
+}
+
+.zoom-badge {
+  font-family: monospace;
+  background: rgba(168, 85, 247, 0.2);
+  border: 1px solid rgba(168, 85, 247, 0.4);
+  padding: 3px 10px;
+  border-radius: 6px;
+  color: #d8b4fe;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+.save-zoom-btn {
+  background: linear-gradient(135deg, #9333ea 0%, #7e22ce 100%) !important;
+}
+
+.save-zoom-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #a855f7 0%, #9333ea 100%) !important;
+  box-shadow: 0 4px 12px rgba(168, 85, 247, 0.3) !important;
+}
+
+.server-sync-hint {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px dashed rgba(168, 85, 247, 0.35);
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.hint-title {
+  color: #cbd5e1;
+  font-weight: 500;
+  margin-bottom: 6px;
+}
+
+.command-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: #090d16;
+  padding: 6px 10px;
+  border-radius: 6px;
+  overflow-x: auto;
+}
+
+.command-box code {
+  color: #38bdf8;
+  font-family: monospace;
+  font-size: 11.5px;
+  white-space: nowrap;
+  user-select: all;
+}
+
+.copy-cmd-btn {
+  background: rgba(168, 85, 247, 0.2);
+  color: #e9d5ff;
+  border: 1px solid rgba(168, 85, 247, 0.4);
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s;
+}
+
+.copy-cmd-btn:hover {
+  background: rgba(168, 85, 247, 0.35);
+  color: #fff;
 }
 
 @media (min-width: 1200px) {

@@ -942,6 +942,7 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
+import { getLocalMaxZoom, getLocalMaxZoomSync } from '@/utils/mapConfig.js'
 
 const mapContainerRef = ref(null)
 let mapInstance = null
@@ -1060,7 +1061,8 @@ onMounted(async () => {
     const isHttps = window.location.protocol === 'https:'
     const currentHost = window.location.hostname || 'localhost'
     const NGINX_TILE_HOST = isHttps ? `https://${currentHost}` : `http://${currentHost}:8088`
-    const LOCAL_MAX_ZOOM = 13
+    const LOCAL_MAX_ZOOM = await getLocalMaxZoom()
+    console.log(`[MapLibre] 动态加载本地矢量切片最大层级 LOCAL_MAX_ZOOM: ${LOCAL_MAX_ZOOM}`)
 
     const OFFICIAL_CHINA_CENTER = [103.54, 36]
     const OFFICIAL_CHINA_ZOOM = 3.6
@@ -1075,7 +1077,8 @@ onMounted(async () => {
             if (match) {
               const [, zStr, x, y] = match
               const z = parseInt(zStr, 10)
-              if (z <= LOCAL_MAX_ZOOM) {
+              const maxAllowedZoom = getLocalMaxZoomSync()
+              if (z <= maxAllowedZoom) {
                 const urlsToTry = [
                   `${NGINX_TILE_HOST}/tiles_base/${z}/${x}/${y}.pbf`,
                   `/tiles_base/${z}/${x}/${y}.pbf`
