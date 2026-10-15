@@ -294,16 +294,23 @@ const isHhglPage = computed(() => route.path.startsWith('/hhgl'))
 const mainContentRef = ref(null)
 let resizeObserver = null
 let transitionTimer = null
+let isSidebarTransitioning = false
+let onTransitionStart = null
+let onTransitionEnd = null
 
-// 统一调度视口重新计算事件，通知地图引擎（天地图、Leaflet、Cesium、Three.js 等）
+// 统一调度视口重新计算事件，通知地图引擎（天地图、Leaflet、Cesium、Three.js、MapLibre 等）
 const dispatchResize = () => {
   window.dispatchEvent(new Event('resize'))
 }
 
-// 侧边栏展开/收起过渡动画耗时 300ms，在动画结束时进行一次精准平稳的校准，避免过程与结束抖动
+// 侧边栏展开/收起过渡动画耗时 300ms，在动画期间加锁，屏蔽中间过程的频繁重绘；在动画结束时进行一次精准平稳的校准，避免过程与结束抖动
 const notifySidebarTransition = () => {
+  isSidebarTransitioning = true
   if (transitionTimer) clearTimeout(transitionTimer)
-  transitionTimer = setTimeout(dispatchResize, 310)
+  transitionTimer = setTimeout(() => {
+    isSidebarTransitioning = false
+    dispatchResize()
+  }, 320)
 }
 
 // 首页判断（包含根路径与别名 /gispros）
@@ -365,12 +372,32 @@ onMounted(async () => {
   if (typeof ResizeObserver !== 'undefined' && mainContentRef.value) {
     let animFrame = null
     resizeObserver = new ResizeObserver(() => {
+      // 侧边栏折叠/展开过渡动画进行期间，屏蔽高频尺寸变更派发，防止 WebGL 画布频繁清屏与重绘产生黑闪
+      if (isSidebarTransitioning) return
       if (animFrame) cancelAnimationFrame(animFrame)
       animFrame = requestAnimationFrame(() => {
         dispatchResize()
       })
     })
     resizeObserver.observe(mainContentRef.value)
+
+    // 双重保障：监听主内容区 CSS 过渡事件
+    onTransitionStart = (e) => {
+      if (e.target === mainContentRef.value && (e.propertyName === 'margin-left' || e.propertyName === 'width')) {
+        isSidebarTransitioning = true
+      }
+    }
+    onTransitionEnd = (e) => {
+      if (e.target === mainContentRef.value && (e.propertyName === 'margin-left' || e.propertyName === 'width')) {
+        if (transitionTimer) clearTimeout(transitionTimer)
+        transitionTimer = setTimeout(() => {
+          isSidebarTransitioning = false
+          dispatchResize()
+        }, 20)
+      }
+    }
+    mainContentRef.value.addEventListener('transitionstart', onTransitionStart)
+    mainContentRef.value.addEventListener('transitionend', onTransitionEnd)
   }
 })
 
@@ -382,6 +409,10 @@ onUnmounted(() => {
   if (resizeObserver) {
     resizeObserver.disconnect()
     resizeObserver = null
+  }
+  if (mainContentRef.value && onTransitionStart && onTransitionEnd) {
+    mainContentRef.value.removeEventListener('transitionstart', onTransitionStart)
+    mainContentRef.value.removeEventListener('transitionend', onTransitionEnd)
   }
 })
 

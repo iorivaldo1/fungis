@@ -733,7 +733,7 @@
           </div>
           <div class="layer-panel-body">
             <label class="layer-toggle-item">
-              <input type="checkbox" id="chkShowRoads" checked>
+              <input type="checkbox" id="chkShowRoads">
               <span class="layer-item-content">
                 <span class="layer-color-dot" style="background: #fbbf24; box-shadow: 0 0 6px #fbbf24;"></span>
                 <span class="layer-label-text">叠加 WMTS 背景道路切片</span>
@@ -947,6 +947,7 @@ import { getLocalMaxZoom, getLocalMaxZoomSync } from '@/utils/mapConfig.js'
 const mapContainerRef = ref(null)
 let mapInstance = null
 let resizeHandler = null
+let resizeRaf = null
 let middleMouseDownHandler = null
 let mouseMoveHandler = null
 let mouseUpHandler = null
@@ -1182,6 +1183,7 @@ onMounted(async () => {
       minZoom: 1,
       maxZoom: 18,
       refreshExpiredTiles: false,
+      trackResize: false,
       dragRotate: true,
       pitch: 0,
       maxPitch: 85,
@@ -1253,11 +1255,14 @@ onMounted(async () => {
     window.addEventListener('mousemove', mouseMoveHandler)
     window.addEventListener('mouseup', mouseUpHandler)
 
-    // 响应 App.vue 侧边栏与窗口尺寸自适应
+    // 响应 App.vue 侧边栏与窗口尺寸自适应 (结合 requestAnimationFrame 保证仅在帧末统一重绘)
     resizeHandler = () => {
-      if (map) {
-        map.resize()
-      }
+      if (resizeRaf) cancelAnimationFrame(resizeRaf)
+      resizeRaf = requestAnimationFrame(() => {
+        if (map) {
+          map.resize()
+        }
+      })
     }
     window.addEventListener('resize', resizeHandler)
 
@@ -1373,14 +1378,20 @@ onMounted(async () => {
       })
 
       // 6. 显示规划路径模块：点击“开始规划路径”后才动态出现
-      $('#btnPlanRoute').off('click').on('click', function () {
+      $('#btnPlanRoute').off('click.mlglUi').on('click.mlglUi', function () {
         const sLng = $('#startLng').val()
         const eLng = $('#endLng').val()
         if (sLng && eLng) {
+          if (window.PgrbRouteManager && window.PgrbRouteManager.isInitialized) {
+            window.PgrbRouteManager.planRoute()
+          }
           $('#routeResultSection').slideDown(200)
         }
       })
-      $('#btnResetRoute').off('click').on('click', function () {
+      $('#btnResetRoute').off('click.mlglUi').on('click.mlglUi', function () {
+        if (window.PgrbRouteManager && window.PgrbRouteManager.isInitialized) {
+          window.PgrbRouteManager.resetRoute()
+        }
         $('#routeResultSection').slideUp(200)
         $('#textStartCoord').text('在地图上点击选起点')
         $('#textEndCoord').text('在地图上点击选终点')
@@ -1398,6 +1409,10 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  if (resizeRaf) {
+    cancelAnimationFrame(resizeRaf)
+    resizeRaf = null
+  }
   if (resizeHandler) {
     window.removeEventListener('resize', resizeHandler)
     resizeHandler = null

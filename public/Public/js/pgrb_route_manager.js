@@ -103,9 +103,9 @@
                 });
             }
 
-            // 2. WMTS 背景道路切片图层 (根据当前复选框状态决定初始显隐)
+            // 2. WMTS 背景道路切片图层 (根据当前复选框状态决定初始显隐，默认不开启)
             const chkRoads = document.getElementById('chkShowRoads');
-            const isShowRoads = chkRoads ? chkRoads.checked : true;
+            const isShowRoads = chkRoads ? chkRoads.checked : false;
 
             if (!map.getLayer('wmts-roads-layer')) {
                 map.addLayer({
@@ -730,7 +730,7 @@
 
             // 1. 确保 WMTS 道路图层显隐与当前复选框保持一致
             const chkRoads = document.getElementById('chkShowRoads');
-            const isShowRoads = chkRoads ? chkRoads.checked : true;
+            const isShowRoads = chkRoads ? chkRoads.checked : false;
             if (map.getLayer('wmts-roads-layer')) {
                 map.setLayoutProperty('wmts-roads-layer', 'visibility', isShowRoads ? 'visible' : 'none');
             }
@@ -924,6 +924,12 @@
             $('#selRoadNetwork').on('change', function () {
                 self.selectedNetworkId = this.value;
                 try { localStorage.setItem('pgrb_last_network_id', self.selectedNetworkId); } catch (e) { }
+                self.currentRouteCoords = null;
+                self.currentRouteData = null;
+                self.currentDashGeojson = null;
+                if (self.rollingDashLayer) {
+                    self.rollingDashLayer.clear();
+                }
                 self.resetRoute();
                 self.loadRoadNetworkRange(self.selectedNetworkId);
             });
@@ -1129,6 +1135,8 @@
                         $('#endLng').val(lng);
                         $('#endLat').val(lat);
                     }
+                    // 重新选点后，旧路径与吸附虚线立即重置失效
+                    this.clearSingleRouteLayers();
                     this.updateMarkers();
                     this.resetPickingMode();
                     return;
@@ -1332,6 +1340,12 @@
                     $(this).removeClass('active');
                 }
             });
+            this.currentRouteCoords = null;
+            this.currentRouteData = null;
+            this.currentDashGeojson = null;
+            if (this.rollingDashLayer) {
+                this.rollingDashLayer.clear();
+            }
             this.resetRoute();
             this.updateNetworkDropdown();
         }
@@ -1339,6 +1353,12 @@
         async loadRoadNetworkRange(networkId) {
             this.currentNetworkMeta = null;
             this.currentNetworkBoundary = null;
+            this.currentRouteCoords = null;
+            this.currentRouteData = null;
+            this.currentDashGeojson = null;
+            if (this.rollingDashLayer) {
+                this.rollingDashLayer.clear();
+            }
             this.resetRoute();
             this.clearXzqBoundaryData();
             if (!networkId) return;
@@ -1696,29 +1716,37 @@
         resetRoute() {
             this.resetPickingMode();
             this.stopContinuousPicking();
+            this.currentRouteCoords = null;
+            this.currentRouteData = null;
+            this.currentDashGeojson = null;
+            if (this.rollingDashLayer) {
+                this.rollingDashLayer.clear();
+            }
             $('#startLng, #startLat, #endLng, #endLat').val('');
             $('#textStartCoord').text('在地图上点击选起点');
             $('#textEndCoord').text('在地图上点击选终点');
             $('#groupSingleStart, #groupSingleEnd').removeClass('has-coord');
             $('#routeResultSection').slideUp(200);
+            this.clearSingleRouteLayers();
+            this.clearMultiRoutes();
             this.updateMarkers();
             this.clearDestPoints();
             this.clearOrigPoints();
-            this.clearSingleRouteLayers();
-            this.clearMultiRoutes();
             this.clearNavHighlight();
             this.closeNavDrawer();
             if (this.currentWarningPopup) {
                 this.currentWarningPopup.remove();
                 this.currentWarningPopup = null;
             }
-            this.currentRouteData = null;
             $('#rowNavAction').hide();
             $('#resultCard').removeClass('show');
             $('#resStatus').text('已重置').css('color', '#38bdf8');
         }
 
         clearSingleRouteLayers() {
+            this.currentRouteCoords = null;
+            this.currentRouteData = null;
+            this.currentDashGeojson = null;
             if (this.map && this.map.getSource('route-single-source')) {
                 this.map.getSource('route-single-source').setData({ type: 'FeatureCollection', features: [] });
             }
@@ -1728,6 +1756,9 @@
         }
 
         clearMultiRoutes() {
+            this.currentRouteCoords = null;
+            this.currentMultiRoutesData = [];
+            this.currentMultiGeojson = { type: 'FeatureCollection', features: [] };
             if (this.map && this.map.getSource('route-multi-source')) {
                 this.map.getSource('route-multi-source').setData({ type: 'FeatureCollection', features: [] });
             }
